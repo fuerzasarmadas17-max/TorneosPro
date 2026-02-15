@@ -23,6 +23,7 @@ export function RegisterForm() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [emailSent, setEmailSent] = useState(false);
   const { register } = useAuth();
   const router = useRouter();
 
@@ -52,12 +53,42 @@ export function RegisterForm() {
     setLoading(false);
 
     if (result.success) {
-      toast.success("Cuenta creada correctamente");
-      router.push("/dashboard");
+      if (result.needsEmailConfirmation) {
+        setEmailSent(true);
+      } else {
+        toast.success("Cuenta creada correctamente");
+        router.push("/dashboard");
+      }
     } else {
       setError(result.error || "Error al registrarse");
     }
   };
+
+  if (emailSent) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-2xl">Revisa tu correo</CardTitle>
+          <CardDescription>
+            Hemos enviado un enlace de confirmacion a <strong>{email}</strong>
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Haz clic en el enlace del correo para activar tu cuenta. Una vez confirmado, podras iniciar sesion.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            No lo ves? Revisa tu carpeta de spam.
+          </p>
+        </CardContent>
+        <CardFooter>
+          <Button variant="outline" className="w-full" asChild>
+            <Link href="/login">Ir a Iniciar Sesion</Link>
+          </Button>
+        </CardFooter>
+      </Card>
+    );
+  }
 
   return (
     <Card>

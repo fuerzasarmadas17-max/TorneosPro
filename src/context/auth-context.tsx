@@ -16,7 +16,7 @@ type SafeUser = Omit<User, "password">;
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  register: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string; needsEmailConfirmation?: boolean }>;
   logout: () => Promise<void>;
   updateOrganizationProfile: (profile: OrganizationProfile) => Promise<{ success: boolean; error?: string }>;
   getAllUsers: () => Promise<SafeUser[]>;
@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(
     async (name: string, email: string, password: string) => {
-      const { data, error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signUp({
         email,
         password,
         options: { data: { name } },
@@ -152,27 +152,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: error.message };
       }
 
-      if (!data.user) return { success: false, error: "Error al registrar usuario" };
-
-      // Insert into our users table
-      const { error: insertError } = await supabase.from("users").insert({
-        id: data.user.id,
-        name,
-        email,
-        role: "user",
-        is_active: true,
-      });
-
-      if (insertError) {
-        return { success: false, error: "Error al crear el perfil de usuario" };
-      }
-
-      const userData = await loadUserData(data.user.id);
-      if (userData) {
-        setAuthState({ user: userData, isAuthenticated: true });
-      }
-
-      return { success: true };
+      // The user row in public.users is created automatically by a DB trigger.
+      // If email confirmation is enabled, the user must verify their email first.
+      // Once confirmed, onAuthStateChange will fire and load their data.
+      return { success: true, needsEmailConfirmation: true };
     },
     []
   );
