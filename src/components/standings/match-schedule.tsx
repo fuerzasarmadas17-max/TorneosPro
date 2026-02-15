@@ -1,0 +1,711 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Tournament, Match, MatchStatus } from "@/types";
+import { useTournaments } from "@/context/tournament-context";
+import {
+  generateEliminationMatches,
+  generateRoundRobinMatches,
+  generateGroupRoundRobinMatches,
+  generateGroupPlayoffMatches,
+  generateEmptyEliminationBracket,
+  shuffleArray,
+  getPendingMatchups,
+} from "@/data/helpers";
+import { Shuffle, LayoutList, CalendarIcon, Clock, MapPin, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
+import { JornadaBuilder } from "./jornada-builder";
+
+interface MatchScheduleProps {
+  tournament: Tournament;
+  canEdit: boolean;
+}
+
+const statusLabels: Record<MatchStatus, string> = {
+  unscheduled: "Sin Programar",
+  scheduled: "Programado",
+  postponed: "Aplazado",
+  completed: "Completado",
+};
+
+export function MatchSchedule({ tournament, canEdit }: MatchScheduleProps) {
+  const { getTeamById } = useTournaments();
+  const [manualMode, setManualMode] = useState(false);
+
+  const isRoundRobinType = tournament.format === "round-robin" || tournament.format === "group-playoff";
+
+  // --- Empty state ---
+  if (tournament.matches.length === 0 && canEdit) {
+    // Elimination: bracket options
+    if (tournament.format === "elimination") {
+      return <EliminationEmptySchedule tournament={tournament} />;
+    }
+    // Liga / Groups: jornada options
+    if (manualMode) {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold">Programar Manualmente</h3>
+            <Button variant="ghost" size="sm" onClick={() => setManualMode(false)}>
+              Volver
+            </Button>
+          </div>
+          {tournament.format === "group-playoff" && tournament.groups ? (
+            <GroupJornadaBuilder tournament={tournament} />
+          ) : (
+            <JornadaBuilder tournament={tournament} />
+          )}
+        </div>
+      );
+    }
+    return <RoundRobinEmptySchedule tournament={tournament} onManual={() => setManualMode(true)} />;
+  }
+
+  if (tournament.matches.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        El calendario aun no ha sido generado.
+      </div>
+    );
+  }
+
+  // --- Has matches: display schedule + optional JornadaBuilder ---
+  // For round-robin types, check if there are pending matchups
+  const hasPendingMatchups = isRoundRobinType && canEdit && (() => {
+    if (tournament.format === "group-playoff") {
+      return (tournament.groups || []).some((g) => {
+        const groupMatches = tournament.matches.filter((m) => m.phase === "group" && m.groupId === g.id);
+        return getPendingMatchups(g.teamIds, groupMatches, tournament.doubleRoundRobin).length > 0;
+      });
+    }
+    const regularMatches = tournament.matches.filter((m) => !m.phase);
+    return getPendingMatchups(tournament.teamIds, regularMatches, tournament.doubleRoundRobin).length > 0;
+  })();
+
+  return (
+    <div className="space-y-6">
+      {/* Match display */}
+      <MatchDisplay
+        tournament={tournament}
+        canEdit={canEdit}
+        getTeamById={getTeamById}
+      />
+
+      {/* JornadaBuilder for incomplete schedules */}
+      {hasPendingMatchups && (
+        <div className="space-y-3">
+          <div className="border-t pt-4">
+            <h3 className="font-semibold text-sm mb-3">Agregar mas partidos</h3>
+            {tournament.format === "group-playoff" && tournament.groups ? (
+              <GroupJornadaBuilder tournament={tournament} />
+            ) : (
+              <JornadaBuilder tournament={tournament} />
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Match display (read-only + result buttons) ---
+
+function MatchDisplay({
+  tournament,
+  canEdit,
+  getTeamById,
+}: {
+  tournament: Tournament;
+  canEdit: boolean;
+  getTeamById: (id: string) => import("@/types").Team | undefined;
+}) {
+  const { updateMatchDetails } = useTournaments();
+  const [postponingId, setPostponingId] = useState<string | null>(null);
+  const [postponeReason, setPostponeReason] = useState("");
+
+  // Collect unique venues already used across the tournament
+  const usedVenues = Array.from(new Set(
+    tournament.matches.map((m) => m.venue).filter(Boolean) as string[]
+  ));
+
+  // Filter out unscheduled matches for public view
+  const visibleMatches = canEdit
+    ? tournament.matches
+    : tournament.matches.filter((m) => m.status !== "unscheduled");
+
+  // Separate postponed from active matches
+  const activeMatches = visibleMatches.filter((m) => m.status !== "postponed");
+  const postponedMatches = visibleMatches.filter((m) => m.status === "postponed");
+
+  const groupPhaseMatches = activeMatches.filter((m) => m.phase === "group");
+  const playoffMatches = activeMatches.filter((m) => m.phase === "playoff");
+  const regularMatches = activeMatches.filter((m) => !m.phase);
+
+  const allSections: { label: string; matches: Match[] }[] = [];
+
+  if (regularMatches.length > 0) {
+    const rounds = new Map<number, Match[]>();
+    for (const m of regularMatches) {
+      const arr = rounds.get(m.round) || [];
+      arr.push(m);
+      rounds.set(m.round, arr);
+    }
+    for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
+      allSections.push({ label: `Jornada ${round}`, matches });
+    }
+  }
+
+  if (groupPhaseMatches.length > 0) {
+    const rounds = new Map<number, Match[]>();
+    for (const m of groupPhaseMatches) {
+      const arr = rounds.get(m.round) || [];
+      arr.push(m);
+      rounds.set(m.round, arr);
+    }
+    for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
+      allSections.push({ label: `Jornada ${round} (Grupos)`, matches });
+    }
+  }
+
+  if (playoffMatches.length > 0) {
+    const rounds = new Map<number, Match[]>();
+    for (const m of playoffMatches) {
+      const arr = rounds.get(m.round) || [];
+      arr.push(m);
+      rounds.set(m.round, arr);
+    }
+    for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
+      allSections.push({ label: `Playoff - Ronda ${round}`, matches });
+    }
+  }
+
+  const handleStatusChange = (matchId: string, newStatus: MatchStatus) => {
+    if (newStatus === "postponed") {
+      setPostponingId(matchId);
+      setPostponeReason("");
+      return;
+    }
+    // Validate: "scheduled" requires date, time, and venue
+    if (newStatus === "scheduled") {
+      const match = tournament.matches.find((m) => m.id === matchId);
+      if (!match?.date || !match?.time || !match?.venue) {
+        toast.error("Debes completar la fecha, hora y estadio para programar el partido");
+        return;
+      }
+    }
+    updateMatchDetails(tournament.id, matchId, {
+      status: newStatus,
+      postponedReason: undefined,
+    });
+    toast.success(`Estado cambiado a ${statusLabels[newStatus]}`);
+  };
+
+  const handlePostponeConfirm = (matchId: string) => {
+    if (!postponeReason.trim()) return;
+    updateMatchDetails(tournament.id, matchId, {
+      status: "postponed",
+      postponedReason: postponeReason.trim(),
+      date: undefined,
+      time: undefined,
+    });
+    setPostponingId(null);
+    setPostponeReason("");
+    toast.success("Partido aplazado");
+  };
+
+  const renderMatchCard = (match: Match, recoveryLabel?: string) => {
+    const home = match.homeTeamId ? getTeamById(match.homeTeamId) : null;
+    const away = match.awayTeamId ? getTeamById(match.awayTeamId) : null;
+    const isPostponed = match.status === "postponed";
+    const isCompleted = match.status === "completed";
+    const canEditDetails = canEdit && !isCompleted;
+    const hasFullDetails = !!(match.date && match.time && match.venue);
+
+    return (
+      <div key={match.id} className={`rounded-lg border overflow-hidden ${isPostponed ? "border-amber-500/40" : ""}`}>
+        {/* Recovery label */}
+        {recoveryLabel && (
+          <div className="px-3 py-1.5 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-1.5">
+            <AlertTriangle className="h-3 w-3 text-amber-600" />
+            <span className="text-xs font-medium text-amber-700">{recoveryLabel}</span>
+          </div>
+        )}
+
+        {/* Teams row */}
+        <div className="flex items-center justify-between gap-2 p-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 truncate">
+              {home && (home.primaryColor || home.secondaryColor) && (
+                <div className="w-5 h-5 rounded border border-border overflow-hidden flex shrink-0">
+                  <div className="w-1/2 h-full" style={{ backgroundColor: home.primaryColor || "#fff" }} />
+                  <div className="w-1/2 h-full" style={{ backgroundColor: home.secondaryColor || "#000" }} />
+                </div>
+              )}
+              <span className="font-medium truncate">{home?.name || "TBD"}</span>
+            </div>
+
+            {isCompleted ? (
+              <div className="text-center">
+                <span className="font-bold tabular-nums whitespace-nowrap">
+                  {match.homeScore} - {match.awayScore}
+                </span>
+                {match.sets && match.sets.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {match.sets.map((s) => `${s.homePoints}-${s.awayPoints}`).join(", ")}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <span className="text-muted-foreground text-sm">vs</span>
+            )}
+
+            <div className="flex items-center gap-1.5 truncate">
+              <span className="font-medium truncate">{away?.name || "TBD"}</span>
+              {away && (away.primaryColor || away.secondaryColor) && (
+                <div className="w-5 h-5 rounded border border-border overflow-hidden flex shrink-0">
+                  <div className="w-1/2 h-full" style={{ backgroundColor: away.primaryColor || "#fff" }} />
+                  <div className="w-1/2 h-full" style={{ backgroundColor: away.secondaryColor || "#000" }} />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {match.groupId && (
+              <Badge variant="secondary" className="text-xs">
+                {tournament.groups?.find((g) => g.id === match.groupId)?.name || ""}
+              </Badge>
+            )}
+
+            {/* Status dropdown or read-only badge */}
+            {canEdit && !isCompleted ? (
+              <Select
+                value={match.status}
+                onValueChange={(value) => handleStatusChange(match.id, value as MatchStatus)}
+              >
+                <SelectTrigger className="h-7 w-auto text-xs gap-1 min-w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {match.status === "unscheduled" && (
+                    <>
+                      <SelectItem value="unscheduled">Sin Programar</SelectItem>
+                      <SelectItem value="scheduled" disabled={!hasFullDetails}>
+                        Programado{!hasFullDetails ? " (completar datos)" : ""}
+                      </SelectItem>
+                      <SelectItem value="postponed">Aplazado</SelectItem>
+                    </>
+                  )}
+                  {match.status === "scheduled" && (
+                    <>
+                      <SelectItem value="scheduled">Programado</SelectItem>
+                      <SelectItem value="unscheduled">Sin Programar</SelectItem>
+                      <SelectItem value="postponed">Aplazado</SelectItem>
+                    </>
+                  )}
+                  {match.status === "postponed" && (
+                    <>
+                      <SelectItem value="postponed">Aplazado</SelectItem>
+                      <SelectItem value="scheduled">Programado</SelectItem>
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Badge
+                variant="outline"
+                className={`text-xs ${isPostponed ? "bg-amber-500/10 text-amber-700 border-amber-500/30" : ""}`}
+              >
+                {statusLabels[match.status]}
+              </Badge>
+            )}
+
+            {/* Result button */}
+            {canEdit && match.status === "scheduled" && match.homeTeamId && match.awayTeamId && (
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/tournaments/${tournament.id}/matches/${match.id}`}>
+                  Resultado
+                </Link>
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Postpone reason input (inline) */}
+        {postponingId === match.id && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/5 border-t border-amber-500/20">
+            <Input
+              type="text"
+              placeholder="Razon del aplazamiento..."
+              className="h-7 text-xs flex-1"
+              value={postponeReason}
+              onChange={(e) => setPostponeReason(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handlePostponeConfirm(match.id); }}
+              autoFocus
+            />
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              disabled={!postponeReason.trim()}
+              onClick={() => handlePostponeConfirm(match.id)}
+            >
+              Aplazar
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setPostponingId(null)}
+            >
+              Cancelar
+            </Button>
+          </div>
+        )}
+
+        {/* Postpone reason display */}
+        {isPostponed && match.postponedReason && postponingId !== match.id && (
+          <div className="px-3 py-2 bg-amber-500/5 border-t border-amber-500/20 text-xs text-amber-700">
+            Motivo: {match.postponedReason}
+          </div>
+        )}
+
+        {/* Match details row: date, time, venue */}
+        {canEditDetails && !isPostponed && match.status === "unscheduled" ? (
+          <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-t">
+            <div className="flex items-center gap-1">
+              <CalendarIcon className="h-3 w-3 text-muted-foreground shrink-0" />
+              <Input
+                type="date"
+                className="h-7 w-32 text-xs"
+                value={match.date || ""}
+                onChange={(e) => updateMatchDetails(tournament.id, match.id, { date: e.target.value || undefined })}
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <Clock className="h-3 w-3 text-muted-foreground shrink-0" />
+              <Input
+                type="time"
+                className="h-7 w-36 text-xs"
+                value={match.time || ""}
+                onChange={(e) => updateMatchDetails(tournament.id, match.id, { time: e.target.value || undefined })}
+              />
+            </div>
+            <div className="flex items-center gap-1 flex-1">
+              <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
+              <Input
+                type="text"
+                placeholder="Estadio"
+                className="h-7 text-xs"
+                list={`venues-${tournament.id}`}
+                value={match.venue || ""}
+                onChange={(e) => {
+                  const capitalized = e.target.value.replace(/\b\w/g, (c) => c.toUpperCase());
+                  updateMatchDetails(tournament.id, match.id, { venue: capitalized || undefined });
+                }}
+              />
+            </div>
+          </div>
+        ) : (match.date || match.time || match.venue) ? (
+          <div className="flex items-center gap-3 px-3 py-2 bg-muted/30 border-t text-xs text-muted-foreground/60">
+            {match.date && (
+              <span className="flex items-center gap-1">
+                <CalendarIcon className="h-3 w-3" />
+                {match.date}
+              </span>
+            )}
+            {match.time && (
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {match.time}
+              </span>
+            )}
+            {match.venue && (
+              <span className="flex items-center gap-1">
+                <MapPin className="h-3 w-3" />
+                {match.venue}
+              </span>
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      {/* Venue autocomplete datalist (shared across all match cards) */}
+      <datalist id={`venues-${tournament.id}`}>
+        {usedVenues.map((v) => (
+          <option key={v} value={v} />
+        ))}
+      </datalist>
+
+      {/* Postponed matches section (top) */}
+      {postponedMatches.length > 0 && (
+        <Card className="border-amber-500/30">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <CardTitle className="text-base">Partidos Aplazados</CardTitle>
+              <Badge className="bg-amber-500/10 text-amber-700 border-amber-500/30 text-xs">
+                {postponedMatches.length}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {postponedMatches.map((match) => {
+              const jornadaLabel = match.phase === "group"
+                ? `Recuperacion Jornada ${match.round} (${tournament.groups?.find((g) => g.id === match.groupId)?.name || ""})`
+                : match.phase === "playoff"
+                  ? `Recuperacion Playoff Ronda ${match.round}`
+                  : `Recuperacion Jornada ${match.round}`;
+              return renderMatchCard(match, jornadaLabel);
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Regular jornada sections */}
+      {allSections.map((section) => (
+        <Card key={section.label}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{section.label}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {section.matches.map((match) => renderMatchCard(match))}
+          </CardContent>
+        </Card>
+      ))}
+    </>
+  );
+}
+
+// --- Empty state for Elimination ---
+
+function EliminationEmptySchedule({ tournament }: { tournament: Tournament }) {
+  const { setTournamentMatches } = useTournaments();
+
+  const handleRandom = () => {
+    const shuffledTeams = shuffleArray(tournament.teamIds);
+    const matches = generateEliminationMatches(shuffledTeams, tournament.id);
+    setTournamentMatches(tournament.id, matches);
+    toast.success("Bracket generado aleatoriamente");
+  };
+
+  const handleManual = () => {
+    const matches = generateEmptyEliminationBracket(tournament.teamIds.length, tournament.id);
+    setTournamentMatches(tournament.id, matches);
+    toast.success("Bracket creado. Asigna los equipos en la vista de bracket.");
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center py-16 gap-6">
+      <div className="text-center space-y-2">
+        <CalendarIcon className="h-12 w-12 mx-auto text-muted-foreground/50" />
+        <h3 className="text-lg font-semibold">Bracket Vacio</h3>
+        <p className="text-sm text-muted-foreground max-w-sm">
+          Genera el bracket de eliminacion para este torneo
+        </p>
+      </div>
+      <div className="flex gap-3">
+        <Button onClick={handleRandom} className="gap-2">
+          <Shuffle className="h-4 w-4" />
+          Aleatorio
+        </Button>
+        <Button variant="outline" onClick={handleManual} className="gap-2">
+          <LayoutList className="h-4 w-4" />
+          Asignar Equipos
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// --- Empty state for Round-Robin / Group-Playoff ---
+
+function RoundRobinEmptySchedule({
+  tournament,
+  onManual,
+}: {
+  tournament: Tournament;
+  onManual: () => void;
+}) {
+  const { setTournamentMatches, updateTournamentProps } = useTournaments();
+  const [showIdaVueltaDialog, setShowIdaVueltaDialog] = useState(false);
+
+  // Compute team count for jornada display
+  const teamCount = tournament.format === "group-playoff" || (tournament.format === "round-robin" && tournament.groups && tournament.groups.length > 0)
+    ? Math.max(...(tournament.groups || []).map((g) => g.teamIds.length), 2)
+    : tournament.teamIds.length;
+
+  const jornadasIda = teamCount % 2 === 0 ? teamCount - 1 : teamCount;
+  const jornadasIdaVuelta = jornadasIda * 2;
+
+  const handleGenerate = (doubleRoundRobin: boolean) => {
+    setShowIdaVueltaDialog(false);
+    const shuffledTeams = shuffleArray(tournament.teamIds);
+    let matches: Match[];
+
+    switch (tournament.format) {
+      case "round-robin":
+        if (tournament.groups && tournament.groups.length > 0) {
+          const shuffledGroups = tournament.groups.map((g) => ({
+            ...g,
+            teamIds: shuffleArray(g.teamIds),
+          }));
+          matches = generateGroupRoundRobinMatches(shuffledGroups, tournament.id, doubleRoundRobin);
+        } else {
+          matches = generateRoundRobinMatches(shuffledTeams, tournament.id, doubleRoundRobin);
+        }
+        break;
+      case "group-playoff":
+        if (tournament.groups && tournament.playoffConfig) {
+          const shuffledGroups = tournament.groups.map((g) => ({
+            ...g,
+            teamIds: shuffleArray(g.teamIds),
+          }));
+          matches = generateGroupPlayoffMatches(shuffledGroups, tournament.playoffConfig, tournament.id, doubleRoundRobin);
+        } else {
+          matches = [];
+        }
+        break;
+      default:
+        matches = [];
+    }
+
+    // Assign dates by round
+    matches = assignDatesToMatches(matches, tournament.startDate);
+    setTournamentMatches(tournament.id, matches);
+    updateTournamentProps(tournament.id, { doubleRoundRobin });
+    toast.success("Calendario generado aleatoriamente");
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center py-16 gap-6">
+      <div className="text-center space-y-2">
+        <CalendarIcon className="h-12 w-12 mx-auto text-muted-foreground/50" />
+        <h3 className="text-lg font-semibold">Calendario Vacio</h3>
+        <p className="text-sm text-muted-foreground max-w-sm">
+          Programa los partidos jornada por jornada
+        </p>
+      </div>
+      <div className="flex gap-3">
+        <Button onClick={() => setShowIdaVueltaDialog(true)} className="gap-2">
+          <Shuffle className="h-4 w-4" />
+          Generar Aleatorio
+        </Button>
+        <Button variant="outline" onClick={onManual} className="gap-2">
+          <LayoutList className="h-4 w-4" />
+          Programar Manualmente
+        </Button>
+      </div>
+
+      <Dialog open={showIdaVueltaDialog} onOpenChange={setShowIdaVueltaDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Tipo de Calendario</DialogTitle>
+            <DialogDescription>
+              Selecciona el formato de enfrentamientos
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <Button
+              variant="outline"
+              onClick={() => handleGenerate(false)}
+              className="justify-start h-auto py-3"
+            >
+              <div className="text-left">
+                <div className="font-medium">Ida</div>
+                <div className="text-xs text-muted-foreground font-normal">
+                  Cada equipo se enfrenta una vez ({jornadasIda} jornadas)
+                </div>
+              </div>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleGenerate(true)}
+              className="justify-start h-auto py-3"
+            >
+              <div className="text-left">
+                <div className="font-medium">Ida y Vuelta</div>
+                <div className="text-xs text-muted-foreground font-normal">
+                  Cada equipo se enfrenta dos veces ({jornadasIdaVuelta} jornadas)
+                </div>
+              </div>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// --- Group jornada builder (renders one JornadaBuilder per group) ---
+
+function GroupJornadaBuilder({ tournament }: { tournament: Tournament }) {
+  const groups = tournament.groups || [];
+
+  return (
+    <div className="space-y-6">
+      {groups.map((group) => (
+        <div key={group.id} className="space-y-2">
+          <h4 className="font-medium text-sm">{group.name}</h4>
+          <JornadaBuilder
+            tournament={tournament}
+            scopeGroupId={group.id}
+            scopePhase="group"
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// --- Date assignment helper ---
+
+function assignDatesToMatches(matches: Match[], startDate: string): Match[] {
+  const roundKeys = new Set<string>();
+  for (const m of matches) {
+    roundKeys.add(`${m.phase || "regular"}-${m.round}`);
+  }
+  const phaseOrder: Record<string, number> = { group: 0, regular: 1, playoff: 2 };
+  const sorted = Array.from(roundKeys).sort((a, b) => {
+    const [phaseA, roundA] = a.split("-");
+    const [phaseB, roundB] = b.split("-");
+    const po = (phaseOrder[phaseA] ?? 1) - (phaseOrder[phaseB] ?? 1);
+    if (po !== 0) return po;
+    return parseInt(roundA) - parseInt(roundB);
+  });
+
+  const dateMap = new Map<string, string>();
+  const base = new Date(startDate + "T12:00:00");
+  sorted.forEach((key, i) => {
+    const d = new Date(base);
+    d.setDate(d.getDate() + i * 7);
+    dateMap.set(key, d.toISOString().split("T")[0]);
+  });
+
+  return matches.map((m) => ({
+    ...m,
+    date: dateMap.get(`${m.phase || "regular"}-${m.round}`) || m.date,
+  }));
+}

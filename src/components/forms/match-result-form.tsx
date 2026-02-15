@@ -1,0 +1,724 @@
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import {
+  Match,
+  MatchEvent,
+  MatchEventType,
+  Player,
+  Sport,
+  VolleyballSet,
+  getSportCategory,
+  getStatDefinition,
+} from "@/types";
+import { useTournaments } from "@/context/tournament-context";
+import { toast } from "sonner";
+import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { BaseballScoresheet } from "./baseball-scoresheet";
+
+interface EventEntry {
+  type: MatchEventType;
+  teamId: string;
+  playerName: string;
+}
+
+interface PlayerStats {
+  [statKey: string]: number;
+}
+
+interface MatchResultFormProps {
+  match: Match;
+  enabledStats?: MatchEventType[];
+  sport?: Sport;
+  bestOf?: 3 | 5;
+}
+
+export function MatchResultForm({
+  match,
+  enabledStats,
+  sport,
+  bestOf,
+}: MatchResultFormProps) {
+  const { getTeamById, updateMatch } = useTournaments();
+  const router = useRouter();
+
+  const [homeScore, setHomeScore] = useState("");
+  const [awayScore, setAwayScore] = useState("");
+  const [eventEntries, setEventEntries] = useState<EventEntry[]>([]);
+  const [error, setError] = useState("");
+  const [scoresheetStep, setScoresheetStep] = useState<1 | 2>(1);
+
+  // Scoresheet state for baseball
+  const [homeScoresheetData, setHomeScoresheetData] = useState<
+    Record<string, PlayerStats>
+  >({});
+  const [awayScoresheetData, setAwayScoresheetData] = useState<
+    Record<string, PlayerStats>
+  >({});
+
+  const homeTeam = match.homeTeamId ? getTeamById(match.homeTeamId) : null;
+  const awayTeam = match.awayTeamId ? getTeamById(match.awayTeamId) : null;
+
+  const homePlayers = homeTeam?.players || [];
+  const awayPlayers = awayTeam?.players || [];
+
+  const stats = enabledStats || [];
+  const isBaseball = sport ? getSportCategory(sport) === "baseball" : false;
+  const useScoresheet = isBaseball;
+  const isVolleyball = sport === "volleyball";
+  const setsToWin = bestOf ? Math.ceil(bestOf / 2) : 2;
+
+  // Volleyball set scores state
+  const [setScores, setSetScores] = useState<Array<{ home: string; away: string }>>(
+    Array.from({ length: bestOf || 3 }, () => ({ home: "", away: "" }))
+  );
+
+  const getPlayersForTeam = (teamId: string): Player[] => {
+    if (teamId === match.homeTeamId) return homePlayers;
+    if (teamId === match.awayTeamId) return awayPlayers;
+    return [];
+  };
+
+  const addEvent = (type: MatchEventType, teamId: string) => {
+    setEventEntries([...eventEntries, { type, teamId, playerName: "" }]);
+  };
+
+  const removeEvent = (index: number) => {
+    setEventEntries(eventEntries.filter((_, i) => i !== index));
+  };
+
+  const updateEventPlayer = (index: number, playerName: string) => {
+    const updated = [...eventEntries];
+    updated[index] = { ...updated[index], playerName };
+    setEventEntries(updated);
+  };
+
+  const handleScoresheetChange = (
+    side: "home" | "away",
+    playerName: string,
+    stat: MatchEventType,
+    count: number
+  ) => {
+    const setter =
+      side === "home" ? setHomeScoresheetData : setAwayScoresheetData;
+    setter((prev) => ({
+      ...prev,
+      [playerName]: { ...(prev[playerName] || {}), [stat]: count },
+    }));
+  };
+
+  const buildEventsFromScoresheet = (): MatchEvent[] => {
+    const events: MatchEvent[] = [];
+    let idx = 0;
+    const nonComputedStats = stats.filter(
+      (s) => !getStatDefinition(s)?.computed
+    );
+
+    const processTeam = (
+      data: Record<string, PlayerStats>,
+      teamId: string | null,
+      players: Player[]
+    ) => {
+      if (!teamId) return;
+      for (const player of players) {
+        const statValues = data[player.name] || {};
+        for (const statKey of nonComputedStats) {
+          const count = statValues[statKey] || 0;
+          for (let i = 0; i < count; i++) {
+            events.push({
+              id: `evt-${Date.now()}-${idx++}`,
+              matchId: match.id,
+              teamId,
+              playerName: player.name,
+              type: statKey,
+            });
+          }
+        }
+      }
+    };
+
+    processTeam(homeScoresheetData, match.homeTeamId, homePlayers);
+    processTeam(awayScoresheetData, match.awayTeamId, awayPlayers);
+    return events;
+  };
+
+  // Volleyball: compute sets won from setScores
+  const computedHomeSets = setScores.filter(
+    (s) => s.home !== "" && s.away !== "" && parseInt(s.home) > parseInt(s.away)
+  ).length;
+  const computedAwaySets = setScores.filter(
+    (s) => s.home !== "" && s.away !== "" && parseInt(s.away) > parseInt(s.home)
+  ).length;
+  const volleyballMatchDecided =
+    computedHomeSets >= setsToWin || computedAwaySets >= setsToWin;
+
+  const updateSetScore = (index: number, side: "home" | "away", value: string) => {
+    setSetScores((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [side]: value };
+      return updated;
+    });
+  };
+
+  const handleSave = () => {
+    setError("");
+
+    // Volleyball: validate and save set-by-set
+    if (isVolleyball) {
+      const completedSets: VolleyballSet[] = [];
+      for (let i = 0; i < setScores.length; i++) {
+        const s = setScores[i];
+        if (s.home === "" && s.away === "") continue;
+        const hp = parseInt(s.home);
+        const ap = parseInt(s.away);
+        if (isNaN(hp) || isNaN(ap)) {
+          setError(`Set ${i + 1}: ingresa marcadores validos`);
+          return;
+        }
+        if (hp < 0 || ap < 0) {
+          setError(`Set ${i + 1}: los marcadores no pueden ser negativos`);
+          return;
+        }
+        if (hp === ap) {
+          setError(`Set ${i + 1}: un set no puede terminar en empate`);
+          return;
+        }
+        completedSets.push({ setNumber: i + 1, homePoints: hp, awayPoints: ap });
+        // Stop processing after a team wins enough sets
+        const homeWon = completedSets.filter((cs) => cs.homePoints > cs.awayPoints).length;
+        const awayWon = completedSets.filter((cs) => cs.awayPoints > cs.homePoints).length;
+        if (homeWon >= setsToWin || awayWon >= setsToWin) break;
+      }
+
+      const homeSetsWon = completedSets.filter((s) => s.homePoints > s.awayPoints).length;
+      const awaySetsWon = completedSets.filter((s) => s.awayPoints > s.homePoints).length;
+
+      if (homeSetsWon < setsToWin && awaySetsWon < setsToWin) {
+        setError("El partido no esta decidido aun");
+        return;
+      }
+
+      updateMatch(match.tournamentId, match.id, homeSetsWon, awaySetsWon, [], completedSets);
+      toast.success("Resultado guardado");
+      router.push(`/tournaments/${match.tournamentId}`);
+      return;
+    }
+
+    const home = parseInt(homeScore);
+    const away = parseInt(awayScore);
+
+    if (isNaN(home) || isNaN(away)) {
+      setError("Ingresa marcadores validos");
+      return;
+    }
+
+    if (home < 0 || away < 0) {
+      setError("Los marcadores no pueden ser negativos");
+      return;
+    }
+
+    let events: MatchEvent[];
+
+    if (useScoresheet) {
+      events = buildEventsFromScoresheet();
+    } else {
+      events = eventEntries
+        .filter((entry) => entry.playerName.trim())
+        .map((entry, i) => ({
+          id: `evt-${Date.now()}-${i}`,
+          matchId: match.id,
+          teamId: entry.teamId,
+          playerName: entry.playerName.trim(),
+          type: entry.type,
+        }));
+    }
+
+    updateMatch(match.tournamentId, match.id, home, away, events);
+    toast.success("Resultado guardado");
+    router.push(`/tournaments/${match.tournamentId}`);
+  };
+
+  const PlayerSearchInput = ({
+    players,
+    value,
+    onChange,
+    placeholder,
+  }: {
+    players: Player[];
+    value: string;
+    onChange: (v: string) => void;
+    placeholder: string;
+  }) => {
+    const [query, setQuery] = useState(value);
+    const [open, setOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      setQuery(value);
+    }, [value]);
+
+    useEffect(() => {
+      const handleClickOutside = (e: MouseEvent) => {
+        if (
+          containerRef.current &&
+          !containerRef.current.contains(e.target as Node)
+        ) {
+          setOpen(false);
+        }
+      };
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const filtered = players.filter((p) =>
+      p.name.toLowerCase().includes(query.toLowerCase())
+    );
+
+    return (
+      <div ref={containerRef} className="relative">
+        <Input
+          placeholder={placeholder}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          className="h-8 text-sm"
+        />
+        {open && filtered.length > 0 && (
+          <div className="absolute z-50 top-full left-0 right-0 mt-1 max-h-40 overflow-y-auto rounded-md border bg-popover shadow-md">
+            {filtered.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent cursor-pointer"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(p.name);
+                  setQuery(p.name);
+                  setOpen(false);
+                }}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderPlayerSelect = (
+    teamId: string,
+    value: string,
+    onChange: (v: string) => void,
+    placeholder: string
+  ) => {
+    const players = getPlayersForTeam(teamId);
+    if (players.length > 0) {
+      return (
+        <PlayerSearchInput
+          players={players}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+        />
+      );
+    }
+    return (
+      <Input
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 text-sm"
+      />
+    );
+  };
+
+  // Group events by type (exclude computed stats like goals_against)
+  const eventsByType = stats
+    .filter((statKey) => !getStatDefinition(statKey)?.computed)
+    .map((statKey) => ({
+      statKey,
+      def: getStatDefinition(statKey),
+      entries: eventEntries
+        .map((e, i) => ({ ...e, originalIndex: i }))
+        .filter((e) => e.type === statKey),
+    }));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-center">Ingresar Resultado</CardTitle>
+      </CardHeader>
+      <form onSubmit={(e) => e.preventDefault()}>
+        <CardContent className="space-y-6">
+          {error && (
+            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+              {error}
+            </div>
+          )}
+
+          {/* Volleyball: set-by-set entry */}
+          {isVolleyball ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
+                <p className="text-sm font-semibold text-center truncate">
+                  {homeTeam?.name || "TBD"}
+                </p>
+                <span />
+                <p className="text-sm font-semibold text-center truncate">
+                  {awayTeam?.name || "TBD"}
+                </p>
+              </div>
+              {setScores.map((set, i) => {
+                // Hide sets after a team already won
+                const homeSoFar = setScores
+                  .slice(0, i)
+                  .filter((s) => s.home !== "" && s.away !== "" && parseInt(s.home) > parseInt(s.away)).length;
+                const awaySoFar = setScores
+                  .slice(0, i)
+                  .filter((s) => s.home !== "" && s.away !== "" && parseInt(s.away) > parseInt(s.home)).length;
+                if (homeSoFar >= setsToWin || awaySoFar >= setsToWin) return null;
+
+                return (
+                  <div key={i} className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={set.home}
+                      onChange={(e) => updateSetScore(i, "home", e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.preventDefault();
+                      }}
+                      className="text-center text-lg h-12"
+                    />
+                    <span className="text-sm text-muted-foreground font-medium w-12 text-center">
+                      Set {i + 1}
+                    </span>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={set.away}
+                      onChange={(e) => updateSetScore(i, "away", e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.preventDefault();
+                      }}
+                      className="text-center text-lg h-12"
+                    />
+                  </div>
+                );
+              })}
+              <div className="text-center">
+                <span className="text-2xl font-bold">
+                  {computedHomeSets} - {computedAwaySets}
+                </span>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {volleyballMatchDecided
+                    ? `Partido decidido`
+                    : `Gana el primero en llegar a ${setsToWin} sets`}
+                </p>
+              </div>
+            </div>
+          ) : (
+            /* Standard score inputs */
+            <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-end">
+              <div className="space-y-2">
+                <Label className="text-center block font-semibold">
+                  {homeTeam?.name || "TBD"}
+                </Label>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={homeScore}
+                  onChange={(e) => setHomeScore(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.preventDefault();
+                  }}
+                  className="text-center text-2xl h-16"
+                />
+              </div>
+              <span className="text-2xl font-bold text-muted-foreground pb-2">
+                -
+              </span>
+              <div className="space-y-2">
+                <Label className="text-center block font-semibold">
+                  {awayTeam?.name || "TBD"}
+                </Label>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={awayScore}
+                  onChange={(e) => setAwayScore(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.preventDefault();
+                  }}
+                  className="text-center text-2xl h-16"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Baseball scoresheet mode - step by step */}
+          {useScoresheet && stats.length > 0 && (
+            <>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <Label className="text-base">
+                  Estadisticas Individuales
+                </Label>
+                <span className="text-sm text-muted-foreground">
+                  Paso {scoresheetStep} de 2
+                </span>
+              </div>
+
+              <BaseballScoresheet
+                key={scoresheetStep === 1 ? "home" : "away"}
+                teamName={
+                  scoresheetStep === 1
+                    ? homeTeam?.name || "Local"
+                    : awayTeam?.name || "Visitante"
+                }
+                teamId={
+                  (scoresheetStep === 1
+                    ? match.homeTeamId
+                    : match.awayTeamId) || ""
+                }
+                players={scoresheetStep === 1 ? homePlayers : awayPlayers}
+                stats={stats}
+                values={
+                  scoresheetStep === 1
+                    ? homeScoresheetData
+                    : awayScoresheetData
+                }
+                onChange={(playerName, stat, count) =>
+                  handleScoresheetChange(
+                    scoresheetStep === 1 ? "home" : "away",
+                    playerName,
+                    stat,
+                    count
+                  )
+                }
+              />
+            </>
+          )}
+
+          {/* Original event-by-event mode (non-baseball or no players) */}
+          {!useScoresheet && stats.length > 0 && (
+            <>
+              {homePlayers.length === 0 && awayPlayers.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Los equipos no tienen jugadores registrados. Puedes escribir
+                  los nombres manualmente.
+                </p>
+              )}
+
+              {eventsByType.map(({ statKey, def, entries }) => {
+                if (!def) return null;
+
+                const homeEntries = entries.filter(
+                  (e) => e.teamId === match.homeTeamId
+                );
+                const awayEntries = entries.filter(
+                  (e) => e.teamId === match.awayTeamId
+                );
+
+                return (
+                  <div key={statKey}>
+                    <Separator />
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <Label className="text-base">{def.pluralLabel}</Label>
+                        <span className="text-xs text-muted-foreground">
+                          Opcional
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-[1fr_auto_1fr] gap-6">
+                        {/* Home team column */}
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-muted-foreground truncate">
+                            {homeTeam?.name || "Local"}
+                          </p>
+                          {homeEntries.map((entry) => (
+                            <div
+                              key={entry.originalIndex}
+                              className="flex items-center gap-1.5"
+                            >
+                              <div className="flex-1">
+                                {renderPlayerSelect(
+                                  entry.teamId,
+                                  entry.playerName,
+                                  (v) =>
+                                    updateEventPlayer(entry.originalIndex, v),
+                                  "Jugador"
+                                )}
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 shrink-0"
+                                onClick={() => removeEvent(entry.originalIndex)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ))}
+                          {match.homeTeamId && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="w-full text-xs"
+                              onClick={() =>
+                                addEvent(statKey, match.homeTeamId!)
+                              }
+                            >
+                              <Plus className="h-3.5 w-3.5 mr-1" />
+                              {def.label}
+                            </Button>
+                          )}
+                        </div>
+
+                        {/* Vertical divider */}
+                        <div className="w-px bg-border" />
+
+                        {/* Away team column */}
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-muted-foreground truncate">
+                            {awayTeam?.name || "Visitante"}
+                          </p>
+                          {awayEntries.map((entry) => (
+                            <div
+                              key={entry.originalIndex}
+                              className="flex items-center gap-1.5"
+                            >
+                              <div className="flex-1">
+                                {renderPlayerSelect(
+                                  entry.teamId,
+                                  entry.playerName,
+                                  (v) =>
+                                    updateEventPlayer(entry.originalIndex, v),
+                                  "Jugador"
+                                )}
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 shrink-0"
+                                onClick={() => removeEvent(entry.originalIndex)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ))}
+                          {match.awayTeamId && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="w-full text-xs"
+                              onClick={() =>
+                                addEvent(statKey, match.awayTeamId!)
+                              }
+                            >
+                              <Plus className="h-3.5 w-3.5 mr-1" />
+                              {def.label}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </CardContent>
+        <CardFooter className="flex gap-2 pt-6">
+          {useScoresheet && scoresheetStep === 2 ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setScoresheetStep(1)}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                {homeTeam?.name || "Equipo 1"}
+              </Button>
+              <Button type="button" className="flex-1" onClick={handleSave}>
+                Guardar Resultado
+              </Button>
+            </>
+          ) : useScoresheet && scoresheetStep === 1 ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => router.back()}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                className="flex-1"
+                onClick={() => {
+                  setError("");
+                  const home = parseInt(homeScore);
+                  const away = parseInt(awayScore);
+                  if (isNaN(home) || isNaN(away)) {
+                    setError("Ingresa marcadores validos");
+                    return;
+                  }
+                  if (home < 0 || away < 0) {
+                    setError("Los marcadores no pueden ser negativos");
+                    return;
+                  }
+                  setScoresheetStep(2);
+                }}
+              >
+                {awayTeam?.name || "Equipo 2"}
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => router.back()}
+              >
+                Cancelar
+              </Button>
+              <Button type="button" className="flex-1" onClick={handleSave}>
+                Guardar Resultado
+              </Button>
+            </>
+          )}
+        </CardFooter>
+      </form>
+    </Card>
+  );
+}

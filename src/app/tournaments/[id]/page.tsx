@@ -1,0 +1,46 @@
+"use client";
+
+import { use } from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { TournamentDetail } from "@/components/tournaments/tournament-detail";
+import { useTournaments } from "@/context/tournament-context";
+import { useAuth } from "@/context/auth-context";
+
+export default function TournamentDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
+  const { getTournamentById } = useTournaments();
+  const { user } = useAuth();
+
+  const tournament = getTournamentById(id);
+
+  if (!tournament) {
+    return (
+      <div className="container mx-auto px-4 py-20 text-center">
+        <h1 className="text-2xl font-bold">Torneo no encontrado</h1>
+        <p className="text-muted-foreground mt-2">
+          El torneo que buscas no existe
+        </p>
+        <Button asChild className="mt-4">
+          <Link href="/tournaments">Ver todos los torneos</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  const isAdmin = user?.role === "admin";
+  const canEdit =
+    (user?.id === tournament.createdBy && tournament.status !== "completed") || isAdmin;
+  const canEditSponsors =
+    canEdit || isAdmin;
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <TournamentDetail tournament={tournament} canEdit={canEdit} canEditSponsors={canEditSponsors} orgSponsors={user?.organizationProfile?.sponsors} />
+    </div>
+  );
+}
