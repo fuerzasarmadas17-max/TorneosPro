@@ -1,6 +1,4 @@
 import { Match, MatchPhase, StandingsEntry, Team, Tournament, TournamentGroup, PlayoffConfig, User } from "@/types";
-import { MOCK_TEAMS } from "./teams";
-import { MOCK_USERS } from "./users";
 
 // --- Utility ---
 
@@ -281,14 +279,6 @@ export function generateGroupRoundRobinMatches(
   }
 
   return allMatches;
-}
-
-export function getTeamById(id: string): Team | undefined {
-  return MOCK_TEAMS.find((t) => t.id === id);
-}
-
-export function getUserByEmail(email: string): User | undefined {
-  return MOCK_USERS.find((u) => u.email === email);
 }
 
 export function getRoundLabel(round: number, totalRounds: number): string {

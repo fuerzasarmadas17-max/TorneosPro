@@ -5,21 +5,29 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { User } from "@/types";
+import { OrganizationProfile } from "@/types";
 import { TournamentDetail } from "@/components/tournaments/tournament-detail";
 import { getUserBySlug } from "@/data/users";
 import { useTournaments } from "@/context/tournament-context";
 
+interface ProfileUser {
+  id: string;
+  name: string;
+  isActive: boolean;
+  organizationProfile: OrganizationProfile;
+}
+
 export default function ProfileTournamentPage() {
   const params = useParams<{ slug: string; tournamentId: string }>();
   const { getTournamentById } = useTournaments();
-  const [user, setUser] = useState<User | undefined>(undefined);
+  const [user, setUser] = useState<ProfileUser | undefined>(undefined);
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    const found = getUserBySlug(params.slug);
-    setUser(found);
-    setChecked(true);
+    getUserBySlug(params.slug).then((found) => {
+      setUser(found);
+      setChecked(true);
+    });
   }, [params.slug]);
 
   if (!checked) {

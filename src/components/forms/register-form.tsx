@@ -26,7 +26,9 @@ export function RegisterForm() {
   const { register } = useAuth();
   const router = useRouter();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
@@ -45,7 +47,10 @@ export function RegisterForm() {
       return;
     }
 
-    const result = register(name, email, password);
+    setLoading(true);
+    const result = await register(name, email, password);
+    setLoading(false);
+
     if (result.success) {
       toast.success("Cuenta creada correctamente");
       router.push("/dashboard");
@@ -108,8 +113,8 @@ export function RegisterForm() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" className="w-full">
-            Registrarse
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? "Registrando..." : "Registrarse"}
           </Button>
           <p className="text-sm text-muted-foreground">
             Ya tienes cuenta?{" "}

@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState, useCallback } from "react";
 import { AdminGuard } from "@/components/auth-guard";
 import { useAuth } from "@/context/auth-context";
+import { User } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,9 +15,35 @@ import {
 } from "@/components/ui/card";
 import { UserCheck, UserX } from "lucide-react";
 
+type SafeUser = Omit<User, "password">;
+
 function UsersContent() {
   const { getAllUsers, toggleUserActive } = useAuth();
-  const users = getAllUsers();
+  const [users, setUsers] = useState<SafeUser[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadUsers = useCallback(async () => {
+    const data = await getAllUsers();
+    setUsers(data);
+    setLoading(false);
+  }, [getAllUsers]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  const handleToggle = async (userId: string) => {
+    await toggleUserActive(userId);
+    await loadUsers();
+  };
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <p className="text-muted-foreground">Cargando usuarios...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
@@ -76,7 +104,7 @@ function UsersContent() {
                     <Button
                       variant={isActive ? "outline" : "default"}
                       size="sm"
-                      onClick={() => toggleUserActive(user.id)}
+                      onClick={() => handleToggle(user.id)}
                     >
                       {isActive ? (
                         <>

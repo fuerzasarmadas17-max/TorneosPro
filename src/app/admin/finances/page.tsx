@@ -1,21 +1,42 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { AdminGuard } from "@/components/auth-guard";
 import { useTournaments } from "@/context/tournament-context";
-import { useAuth } from "@/context/auth-context";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
   CardDescription,
 } from "@/components/ui/card";
 import { formatCOP } from "@/lib/pricing";
-import { MOCK_USERS } from "@/data/users";
+import { supabase } from "@/lib/supabase";
 
 function FinancesContent() {
   const { tournaments } = useTournaments();
+  const [ownerNames, setOwnerNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    // Fetch owner names for all unique createdBy ids
+    const userIds = [...new Set(tournaments.map((t) => t.createdBy))];
+    if (userIds.length === 0) return;
+
+    supabase
+      .from("users")
+      .select("id, name, organization_profiles(organization_name)")
+      .in("id", userIds)
+      .then(({ data }) => {
+        if (!data) return;
+        const map: Record<string, string> = {};
+        for (const row of data) {
+          const profiles = row.organization_profiles as Array<{ organization_name: string }> | null;
+          const orgName = profiles && profiles.length > 0 ? profiles[0].organization_name : null;
+          map[row.id] = orgName || row.name || "Desconocido";
+        }
+        setOwnerNames(map);
+      });
+  }, [tournaments]);
 
   const paidTournaments = tournaments.filter((t) => t.plan === "paid" && t.monthlyCost);
 
@@ -24,15 +45,13 @@ function FinancesContent() {
   const completedPaid = paidTournaments.filter((t) => t.status === "completed");
 
   const expectedMonthly = activePaid.reduce((sum, t) => sum + (t.monthlyCost || 0), 0);
-  const totalHistorical = paidTournaments.reduce((sum, t) => sum + (t.monthlyCost || 0), 0);
 
   // Simulated: assume completed tournaments have been paid, active ones are pending
   const received = completedPaid.reduce((sum, t) => sum + (t.monthlyCost || 0), 0);
   const pending = expectedMonthly;
 
   const getOwnerName = (userId: string) => {
-    const user = MOCK_USERS.find((u) => u.id === userId);
-    return user?.organizationProfile?.organizationName || user?.name || "Desconocido";
+    return ownerNames[userId] || "Cargando...";
   };
 
   return (

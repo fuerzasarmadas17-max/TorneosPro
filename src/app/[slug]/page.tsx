@@ -2,24 +2,31 @@
 
 import { useParams, notFound } from "next/navigation";
 import { useState, useEffect } from "react";
-import { User } from "@/types";
+import { OrganizationProfile } from "@/types";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { ProfileTournaments } from "@/components/profile/profile-tournaments";
 import { SponsorBanner } from "@/components/sponsors/sponsor-banner";
 import { getUserBySlug } from "@/data/users";
 import { useTournaments } from "@/context/tournament-context";
 
+interface ProfileUser {
+  id: string;
+  name: string;
+  isActive: boolean;
+  organizationProfile: OrganizationProfile;
+}
+
 export default function ProfilePage() {
   const params = useParams<{ slug: string }>();
   const { tournaments } = useTournaments();
-  const [user, setUser] = useState<User | undefined>(undefined);
+  const [user, setUser] = useState<ProfileUser | undefined>(undefined);
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    // Run after mount so localStorage is available and profiles are synced
-    const found = getUserBySlug(params.slug);
-    setUser(found);
-    setChecked(true);
+    getUserBySlug(params.slug).then((found) => {
+      setUser(found);
+      setChecked(true);
+    });
   }, [params.slug]);
 
   if (!checked) {

@@ -15,25 +15,17 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useAuth } from "@/context/auth-context";
-import { MOCK_USERS } from "@/data/users";
 import { toast } from "sonner";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
 
-  const quickLogin = (userEmail: string, userPassword: string) => {
-    const result = login(userEmail, userPassword);
-    if (result.success) {
-      toast.success("Sesion iniciada correctamente");
-      router.push("/dashboard");
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
@@ -42,7 +34,10 @@ export function LoginForm() {
       return;
     }
 
-    const result = login(email, password);
+    setLoading(true);
+    const result = await login(email, password);
+    setLoading(false);
+
     if (result.success) {
       toast.success("Sesion iniciada correctamente");
       router.push("/dashboard");
@@ -61,36 +56,6 @@ export function LoginForm() {
       </CardHeader>
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
-          {/* Quick login buttons */}
-          <div className="space-y-2">
-            <Label>Acceso rapido</Label>
-            <div className="grid gap-2">
-              {MOCK_USERS.map((u) => (
-                <Button
-                  key={u.id}
-                  type="button"
-                  variant="outline"
-                  className="w-full justify-start"
-                  onClick={() => quickLogin(u.email, u.password)}
-                >
-                  <span className="font-medium">{u.name}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {u.email}
-                  </span>
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">o ingresa manualmente</span>
-            </div>
-          </div>
-
           {error && (
             <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
               {error}
@@ -117,8 +82,8 @@ export function LoginForm() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" className="w-full">
-            Iniciar Sesion
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? "Ingresando..." : "Iniciar Sesion"}
           </Button>
           <p className="text-sm text-muted-foreground">
             No tienes cuenta?{" "}

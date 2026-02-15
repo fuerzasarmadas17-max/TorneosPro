@@ -197,69 +197,82 @@ export function CreateTournamentForm() {
     setShowCostDialog(true);
   };
 
-  const createTournament = (plan: "free" | "paid") => {
-    const count = parseInt(teamCount);
-    const hasGroups = (format === "round-robin" || format === "group-playoff") && groups.length > 0;
-    const tournamentId = `t-${Date.now()}`;
+  const [creating, setCreating] = useState(false);
 
-    // Auto-generate teams with placeholder names
-    const newTeams: Team[] = Array.from({ length: count }, (_, i) => ({
-      id: `${tournamentId}-team-${i + 1}`,
-      name: isIndividual ? `Jugador ${i + 1}` : `Equipo ${i + 1}`,
-      players: [],
-    }));
+  const createTournament = async (plan: "free" | "paid") => {
+    setCreating(true);
+    try {
+      const count = parseInt(teamCount);
+      const hasGroups = (format === "round-robin" || format === "group-playoff") && groups.length > 0;
 
-    const teamIds = newTeams.map((t) => t.id);
-
-    let tournamentGroups: TournamentGroup[] | undefined;
-    let playoffConfig: PlayoffConfig | undefined;
-
-    // Build groups: auto-distribute teams evenly
-    if (hasGroups) {
-      tournamentGroups = groups.map((g, gIdx) => ({
-        id: `${tournamentId}-group-${gIdx + 1}`,
-        name: g.name,
-        teamIds: [],
+      // Auto-generate teams with placeholder names
+      const newTeams: Team[] = Array.from({ length: count }, (_, i) => ({
+        id: `temp-${i}`,
+        name: isIndividual ? `Jugador ${i + 1}` : `Equipo ${i + 1}`,
+        players: [],
       }));
-      for (let i = 0; i < teamIds.length; i++) {
-        tournamentGroups[i % groups.length].teamIds.push(teamIds[i]);
+
+      // Insert teams into DB and get DB-generated IDs
+      const dbTeamIds = await addTeams(newTeams);
+      if (dbTeamIds.length !== count) {
+        toast.error("Error al crear los equipos");
+        setCreating(false);
+        return;
       }
-    }
 
-    if (format === "group-playoff") {
-      playoffConfig = {
-        advancePerGroup: parseInt(advanceCount),
-        totalAdvancing: parseInt(advanceCount),
+      let tournamentGroups: TournamentGroup[] | undefined;
+      let playoffConfig: PlayoffConfig | undefined;
+
+      // Build groups: auto-distribute teams evenly
+      if (hasGroups) {
+        tournamentGroups = groups.map((g, gIdx) => ({
+          id: `temp-group-${gIdx}`,
+          name: g.name,
+          teamIds: [],
+        }));
+        for (let i = 0; i < dbTeamIds.length; i++) {
+          tournamentGroups[i % groups.length].teamIds.push(dbTeamIds[i]);
+        }
+      }
+
+      if (format === "group-playoff") {
+        playoffConfig = {
+          advancePerGroup: parseInt(advanceCount),
+          totalAdvancing: parseInt(advanceCount),
+        };
+      }
+
+      const tournament: Tournament = {
+        id: "temp",
+        name: name.trim(),
+        sport: sport as Sport,
+        format: format as TournamentFormat,
+        plan,
+        status: "upcoming",
+        description: description.trim() || undefined,
+        createdBy: user!.id,
+        teamIds: dbTeamIds,
+        matches: [],
+        createdAt: new Date().toISOString().split("T")[0],
+        startDate,
+        groups: tournamentGroups,
+        playoffConfig,
+        groupStageComplete: false,
+        enabledStats: enabledStats.length > 0 ? enabledStats : undefined,
+        maxPlayersPerTeam: maxPlayers ? parseInt(maxPlayers) : undefined,
+        bestOf: sport === "volleyball" ? bestOf : undefined,
+        monthlyCost: plan === "paid" && costBreakdown ? costBreakdown.monthlyCost : undefined,
       };
+
+      await addTournament(tournament);
+      setShowCostDialog(false);
+      toast.success("Torneo creado correctamente");
+      router.push("/dashboard");
+    } catch {
+      toast.error("Error al crear el torneo");
+    } finally {
+      setCreating(false);
     }
-
-    const tournament: Tournament = {
-      id: tournamentId,
-      name: name.trim(),
-      sport: sport as Sport,
-      format: format as TournamentFormat,
-      plan,
-      status: "upcoming",
-      description: description.trim() || undefined,
-      createdBy: user!.id,
-      teamIds,
-      matches: [],
-      createdAt: new Date().toISOString().split("T")[0],
-      startDate,
-      groups: tournamentGroups,
-      playoffConfig,
-      groupStageComplete: false,
-      enabledStats: enabledStats.length > 0 ? enabledStats : undefined,
-      maxPlayersPerTeam: maxPlayers ? parseInt(maxPlayers) : undefined,
-      bestOf: sport === "volleyball" ? bestOf : undefined,
-      monthlyCost: plan === "paid" && costBreakdown ? costBreakdown.monthlyCost : undefined,
-    };
-
-    addTeams(newTeams);
-    addTournament(tournament);
-    setShowCostDialog(false);
-    toast.success("Torneo creado correctamente");
-    router.push(`/tournaments/${tournamentId}`);
   };
 
   return (
@@ -589,8 +602,8 @@ export function CreateTournamentForm() {
             </p>
           )}
 
-          <Button type="submit" className="w-full" disabled={!isFormValid}>
-            {canUseFree ? "Crear Torneo Gratis" : "Crear Torneo"}
+          <Button type="submit" className="w-full" disabled={!isFormValid || creating}>
+            {creating ? "Creando..." : canUseFree ? "Crear Torneo Gratis" : "Crear Torneo"}
           </Button>
           {!isFormValid && (
             <p className="text-xs text-muted-foreground">

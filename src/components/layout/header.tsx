@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/auth-context";
+import { UserNav } from "@/components/layout/user-nav";
 
 export function Header() {
   const { isAuthenticated } = useAuth();

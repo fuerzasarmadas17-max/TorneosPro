@@ -6,23 +6,29 @@ import {
   useState,
   useCallback,
   useMemo,
+  useEffect,
   ReactNode,
 } from "react";
 import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, VolleyballSet, Sponsor } from "@/types";
-import { MOCK_TOURNAMENTS } from "@/data/tournaments";
-import { MOCK_TEAMS } from "@/data/teams";
 import { fillPlayoffBracket } from "@/data/helpers";
+import { fetchTournaments, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, addTournamentTeams, updateTournamentSponsors } from "@/lib/db/tournaments";
+import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam, updateTeamPlayers as dbUpdateTeamPlayers } from "@/lib/db/teams";
+import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
+import { toDbMatch } from "@/lib/db/mappers";
+import { supabase } from "@/lib/supabase";
 
 interface TournamentContextType {
   tournaments: Tournament[];
   teams: Team[];
-  addTournament: (tournament: Tournament) => void;
-  addTeams: (newTeams: Team[]) => void;
-  setTournamentMatches: (tournamentId: string, matches: Match[]) => void;
-  addMatchToTournament: (tournamentId: string, match: Match) => void;
-  removeMatchFromTournament: (tournamentId: string, matchId: string) => void;
-  updateMatchDetails: (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => void;
-  updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors">>) => void;
+  isLoading: boolean;
+  error: string | null;
+  addTournament: (tournament: Tournament) => Promise<void>;
+  addTeams: (newTeams: Team[]) => Promise<string[]>;
+  setTournamentMatches: (tournamentId: string, matches: Match[]) => Promise<void>;
+  addMatchToTournament: (tournamentId: string, match: Match) => Promise<void>;
+  removeMatchFromTournament: (tournamentId: string, matchId: string) => Promise<void>;
+  updateMatchDetails: (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => Promise<void>;
+  updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors">>) => Promise<void>;
   updateMatch: (
     tournamentId: string,
     matchId: string,
@@ -30,13 +36,14 @@ interface TournamentContextType {
     awayScore: number,
     events?: MatchEvent[],
     sets?: VolleyballSet[]
-  ) => void;
-  updateTeamPlayers: (teamId: string, players: Player[]) => void;
-  updateTeam: (teamId: string, updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor">>) => void;
-  updateEventPaid: (tournamentId: string, matchId: string, eventId: string, paid: boolean) => void;
+  ) => Promise<void>;
+  updateTeamPlayers: (teamId: string, players: Player[]) => Promise<void>;
+  updateTeam: (teamId: string, updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor">>) => Promise<void>;
+  updateEventPaid: (tournamentId: string, matchId: string, eventId: string, paid: boolean) => Promise<void>;
   getTournamentById: (id: string) => Tournament | undefined;
   getTeamById: (id: string) => Team | undefined;
   getFilteredTournaments: (filters: TournamentFilters) => Tournament[];
+  refetch: () => Promise<void>;
 }
 
 const TournamentContext = createContext<TournamentContextType | undefined>(
@@ -44,39 +51,115 @@ const TournamentContext = createContext<TournamentContextType | undefined>(
 );
 
 export function TournamentProvider({ children }: { children: ReactNode }) {
-  const [tournaments, setTournaments] = useState<Tournament[]>([
-    ...MOCK_TOURNAMENTS,
-  ]);
-  const [teams, setTeams] = useState<Team[]>([...MOCK_TEAMS]);
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const addTournament = useCallback((tournament: Tournament) => {
-    setTournaments((prev) => [...prev, tournament]);
+  const loadData = useCallback(async () => {
+    try {
+      const [tournamentsData, teamsData] = await Promise.all([
+        fetchTournaments(),
+        fetchAllTeams(),
+      ]);
+      setTournaments(tournamentsData);
+      setTeams(teamsData);
+      setError(null);
+    } catch (err) {
+      setError("Error al cargar datos");
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const addTeams = useCallback((newTeams: Team[]) => {
-    setTeams((prev) => [...prev, ...newTeams]);
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const refetch = useCallback(async () => {
+    await loadData();
+  }, [loadData]);
+
+  const addTournament = useCallback(async (tournament: Tournament) => {
+    const tournamentId = await dbCreateTournament(tournament);
+    if (tournamentId) {
+      // Refetch to get the full tournament with DB-generated IDs
+      await loadData();
+    }
+  }, [loadData]);
+
+  const addTeams = useCallback(async (newTeams: Team[]): Promise<string[]> => {
+    const ids = await dbCreateTeams(newTeams);
+    if (ids.length > 0) {
+      // Reload teams
+      const teamsData = await fetchAllTeams();
+      setTeams(teamsData);
+    }
+    return ids;
   }, []);
 
-  const setTournamentMatches = useCallback((tournamentId: string, matches: Match[]) => {
-    setTournaments((prev) =>
-      prev.map((t) => (t.id === tournamentId ? { ...t, matches } : t))
-    );
-  }, []);
+  const setTournamentMatches = useCallback(async (tournamentId: string, matches: Match[]) => {
+    // Delete existing matches and insert new ones
+    await supabase.from("matches").delete().eq("tournament_id", tournamentId);
 
-  const addMatchToTournament = useCallback((tournamentId: string, match: Match) => {
-    setTournaments((prev) =>
-      prev.map((t) => (t.id === tournamentId ? { ...t, matches: [...t.matches, match] } : t))
-    );
-  }, []);
+    if (matches.length > 0) {
+      // Insert matches, need to handle nextMatchId references
+      // First insert all without nextMatchId
+      const idMapping: Record<string, string> = {};
 
-  const removeMatchFromTournament = useCallback((tournamentId: string, matchId: string) => {
+      for (const match of matches) {
+        const dbData = toDbMatch({ ...match, tournamentId });
+        dbData.next_match_id = null;
+        // Map group_id if needed
+        if (match.groupId) {
+          // groupId should already be a DB UUID if groups were created properly
+          dbData.group_id = match.groupId;
+        }
+
+        const { data } = await supabase
+          .from("matches")
+          .insert(dbData)
+          .select("id")
+          .single();
+
+        if (data) {
+          idMapping[match.id] = data.id as string;
+        }
+      }
+
+      // Update nextMatchId references
+      for (const match of matches) {
+        if (match.nextMatchId && idMapping[match.nextMatchId]) {
+          await supabase
+            .from("matches")
+            .update({ next_match_id: idMapping[match.nextMatchId] })
+            .eq("id", idMapping[match.id]);
+        }
+      }
+    }
+
+    await loadData();
+  }, [loadData]);
+
+  const addMatchToTournament = useCallback(async (tournamentId: string, match: Match) => {
+    const dbData = toDbMatch({ ...match, tournamentId });
+    await supabase.from("matches").insert(dbData);
+    await loadData();
+  }, [loadData]);
+
+  const removeMatchFromTournament = useCallback(async (tournamentId: string, matchId: string) => {
+    await dbDeleteMatch(matchId);
+    // Optimistic update
     setTournaments((prev) =>
       prev.map((t) => (t.id === tournamentId ? { ...t, matches: t.matches.filter((m) => m.id !== matchId) } : t))
     );
   }, []);
 
   const updateMatchDetails = useCallback(
-    (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => {
+    async (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => {
+      await dbUpdateMatchDetails(matchId, updates);
+      // Optimistic update
       setTournaments((prev) =>
         prev.map((t) => {
           if (t.id !== tournamentId) return t;
@@ -93,7 +176,25 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   );
 
   const updateTournamentProps = useCallback(
-    (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors">>) => {
+    async (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors">>) => {
+      // Update tournament fields in DB
+      const dbUpdates: Partial<Tournament> = {};
+      if (updates.doubleRoundRobin !== undefined) dbUpdates.doubleRoundRobin = updates.doubleRoundRobin;
+      if (updates.groupStageComplete !== undefined) dbUpdates.groupStageComplete = updates.groupStageComplete;
+
+      if (Object.keys(dbUpdates).length > 0) {
+        await dbUpdateTournament(tournamentId, dbUpdates);
+      }
+
+      // Handle sponsors separately
+      if (updates.sponsors !== undefined) {
+        await updateTournamentSponsors(
+          tournamentId,
+          updates.sponsors.map((s) => ({ imageUrl: s.imageUrl, linkUrl: s.linkUrl }))
+        );
+      }
+
+      // Optimistic update
       setTournaments((prev) =>
         prev.map((t) => (t.id === tournamentId ? { ...t, ...updates } : t))
       );
@@ -101,20 +202,24 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const updateTeamPlayers = useCallback((teamId: string, players: Player[]) => {
-    setTeams((prev) =>
-      prev.map((t) => (t.id === teamId ? { ...t, players } : t))
-    );
+  const updateTeamPlayers = useCallback(async (teamId: string, players: Player[]) => {
+    await dbUpdateTeamPlayers(teamId, players);
+    // Reload teams to get new player IDs
+    const teamsData = await fetchAllTeams();
+    setTeams(teamsData);
   }, []);
 
-  const updateTeam = useCallback((teamId: string, updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor">>) => {
+  const updateTeam = useCallback(async (teamId: string, updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor">>) => {
+    await dbUpdateTeam(teamId, updates);
     setTeams((prev) =>
       prev.map((t) => (t.id === teamId ? { ...t, ...updates } : t))
     );
   }, []);
 
   const updateEventPaid = useCallback(
-    (tournamentId: string, matchId: string, eventId: string, paid: boolean) => {
+    async (tournamentId: string, matchId: string, eventId: string, paid: boolean) => {
+      await dbUpdateEventPaid(eventId, paid);
+      // Optimistic update
       setTournaments((prev) =>
         prev.map((t) => {
           if (t.id !== tournamentId) return t;
@@ -137,7 +242,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   );
 
   const updateMatch = useCallback(
-    (
+    async (
       tournamentId: string,
       matchId: string,
       homeScore: number,
@@ -184,7 +289,6 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
               );
               if (nextMatchIdx !== -1) {
                 const nextMatch = { ...updatedMatches[nextMatchIdx] };
-                // Find which feeder slot this match fills
                 const feeders = updatedMatches.filter(
                   (m) => m.nextMatchId === nextMatch.id
                 );
@@ -197,6 +301,12 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                   nextMatch.awayTeamId = completedMatch.winnerId;
                 }
                 updatedMatches[nextMatchIdx] = nextMatch;
+
+                // Persist next match team assignment
+                dbUpdateMatchDetails(nextMatch.id, {
+                  homeTeamId: nextMatch.homeTeamId,
+                  awayTeamId: nextMatch.awayTeamId,
+                });
               }
             }
           }
@@ -210,6 +320,21 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
               groupStageComplete = true;
               const filled = fillPlayoffBracket({ ...t, matches: updatedMatches });
               updatedMatches.splice(0, updatedMatches.length, ...filled);
+
+              // Persist group stage complete
+              dbUpdateTournament(t.id, { groupStageComplete: true });
+
+              // Persist playoff bracket team assignments
+              const playoffMatches = filled.filter((m) => m.phase === "playoff");
+              for (const pm of playoffMatches) {
+                if (pm.homeTeamId || pm.awayTeamId) {
+                  dbUpdateMatchDetails(pm.id, {
+                    homeTeamId: pm.homeTeamId,
+                    awayTeamId: pm.awayTeamId,
+                    ...(pm.winnerId ? { winnerId: pm.winnerId, homeScore: pm.homeScore, awayScore: pm.awayScore, status: pm.status } : {}),
+                  });
+                }
+              }
             }
           }
 
@@ -221,20 +346,39 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
             (m) => m.status === "completed" || m.status === "scheduled" || m.status === "postponed"
           );
 
+          const newStatus = allCompleted
+            ? ("completed" as const)
+            : anyStarted
+              ? ("in-progress" as const)
+              : t.status;
+
+          // Persist status change
+          if (newStatus !== t.status) {
+            dbUpdateTournament(t.id, { status: newStatus });
+          }
+
           return {
             ...t,
             matches: updatedMatches,
             groupStageComplete,
-            status: allCompleted
-              ? ("completed" as const)
-              : anyStarted
-                ? ("in-progress" as const)
-                : t.status,
+            status: newStatus,
           };
         })
       );
+
+      // Persist the match result to DB
+      const tournament = tournaments.find((t) => t.id === tournamentId);
+      const match = tournament?.matches.find((m) => m.id === matchId);
+      const winnerId =
+        homeScore > awayScore
+          ? match?.homeTeamId ?? null
+          : awayScore > homeScore
+            ? match?.awayTeamId ?? null
+            : null;
+
+      await dbUpdateMatchResult(matchId, homeScore, awayScore, winnerId, events, sets);
     },
-    []
+    [tournaments]
   );
 
   const getTournamentById = useCallback(
@@ -268,6 +412,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     () => ({
       tournaments,
       teams,
+      isLoading,
+      error,
       addTournament,
       addTeams,
       setTournamentMatches,
@@ -282,10 +428,13 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       getTournamentById,
       getTeamById,
       getFilteredTournaments,
+      refetch,
     }),
     [
       tournaments,
       teams,
+      isLoading,
+      error,
       addTournament,
       addTeams,
       setTournamentMatches,
@@ -300,6 +449,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       getTournamentById,
       getTeamById,
       getFilteredTournaments,
+      refetch,
     ]
   );
 

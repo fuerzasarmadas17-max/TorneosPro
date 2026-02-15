@@ -5,7 +5,8 @@ import { Sponsor } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, Plus, Upload, ImageIcon } from "lucide-react";
+import { Trash2, Plus, Upload } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 interface SponsorFormProps {
   sponsors: Sponsor[];
@@ -21,21 +22,43 @@ export function SponsorForm({
   const [imageUrl, setImageUrl] = useState("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [linkUrl, setLinkUrl] = useState("");
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith("image/")) return;
 
+    // Show preview immediately
     const reader = new FileReader();
     reader.onload = () => {
-      const base64 = reader.result as string;
-      setImageUrl(base64);
-      setImagePreview(base64);
+      setImagePreview(reader.result as string);
     };
     reader.readAsDataURL(file);
+
+    // Upload to Supabase Storage
+    setUploading(true);
+    const ext = file.name.split(".").pop();
+    const path = `sponsors/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from("images")
+      .upload(path, file);
+
+    if (error) {
+      setUploading(false);
+      setImagePreview(null);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("images")
+      .getPublicUrl(path);
+
+    setImageUrl(urlData.publicUrl);
+    setUploading(false);
   };
 
   const handleAdd = () => {
@@ -118,15 +141,21 @@ export function SponsorForm({
                     className="w-full h-full object-contain p-1"
                   />
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearImage}
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-1" />
-                  Quitar
-                </Button>
+                <div className="flex items-center gap-2">
+                  {uploading && (
+                    <span className="text-xs text-muted-foreground">Subiendo...</span>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearImage}
+                    disabled={uploading}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1" />
+                    Quitar
+                  </Button>
+                </div>
               </div>
             ) : (
               <button
@@ -156,7 +185,7 @@ export function SponsorForm({
             variant="outline"
             size="sm"
             onClick={handleAdd}
-            disabled={!imageUrl.trim() || !linkUrl.trim()}
+            disabled={!imageUrl.trim() || !linkUrl.trim() || uploading}
           >
             <Plus className="h-4 w-4 mr-2" />
             Agregar Patrocinador
