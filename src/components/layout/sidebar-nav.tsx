@@ -43,7 +43,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
           className="font-bold text-xl"
           onClick={onNavigate}
         >
-          Torneos
+          Torneos Pro
         </Link>
       </div>
 
@@ -51,7 +51,9 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 
       {/* Nav links */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map((item) => {
+        {navItems
+          .filter((item) => !(user?.role === "admin" && item.href === "/dashboard/settings"))
+          .map((item) => {
           const Icon = item.icon;
           const isActive =
             pathname === item.href ||
@@ -107,7 +109,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
           </>
         )}
 
-        {profileSlug && (
+        {profileSlug && user?.role !== "admin" && (
           <>
             <Separator className="my-3" />
             <Link

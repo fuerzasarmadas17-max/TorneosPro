@@ -203,6 +203,7 @@ export function TournamentDetail({
             onChange={(sponsors) =>
               updateTournamentProps(tournament.id, { sponsors })
             }
+            maxSponsors={6}
           />
         </div>
       )}

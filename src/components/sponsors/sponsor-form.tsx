@@ -5,13 +5,114 @@ import { Sponsor } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, Plus, Upload } from "lucide-react";
+import { Trash2, Plus, Upload, ImagePlus, GripVertical } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface SponsorFormProps {
   sponsors: Sponsor[];
   onChange: (sponsors: Sponsor[]) => void;
   maxSponsors?: number;
+}
+
+function SortableSponsor({
+  sponsor,
+  index,
+  onReplace: triggerReplace,
+  onUrlChange,
+  onRemove,
+}: {
+  sponsor: Sponsor;
+  index: number;
+  onReplace: (index: number) => void;
+  onUrlChange: (index: number, url: string) => void;
+  onRemove: (index: number) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: sponsor.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 border rounded-lg p-2 bg-background"
+    >
+      {/* Drag handle */}
+      <button
+        type="button"
+        className="cursor-grab active:cursor-grabbing touch-none flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+
+      {/* Thumbnail + replace */}
+      <button
+        type="button"
+        onClick={() => triggerReplace(index)}
+        className="w-16 h-10 rounded border bg-muted/30 overflow-hidden flex-shrink-0 relative group cursor-pointer"
+        title="Reemplazar imagen"
+      >
+        <img
+          src={sponsor.imageUrl}
+          alt="Patrocinador"
+          className="w-full h-full object-contain p-1"
+        />
+        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          <ImagePlus className="h-3.5 w-3.5 text-white" />
+        </div>
+      </button>
+
+      {/* URL input */}
+      <Input
+        value={sponsor.linkUrl}
+        onChange={(e) => onUrlChange(index, e.target.value)}
+        placeholder="URL del patrocinador"
+        className="h-8 text-xs flex-1"
+      />
+
+      {/* Delete */}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 flex-shrink-0"
+        onClick={() => onRemove(index)}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
 }
 
 export function SponsorForm({
@@ -23,50 +124,88 @@ export function SponsorForm({
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [linkUrl, setLinkUrl] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [replacingIndex, setReplacingIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const activeId = String(active.id);
+      const overId = String(over.id);
+      const oldIndex = sponsors.findIndex((s) => s.id === activeId);
+      const newIndex = sponsors.findIndex((s) => s.id === overId);
+      if (oldIndex !== -1 && newIndex !== -1) {
+        onChange(arrayMove(sponsors, oldIndex, newIndex));
+      }
+    }
+  };
+
+  const uploadFile = async (file: File): Promise<string | null> => {
+    if (!file.type.startsWith("image/")) return null;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("La imagen no debe superar los 2MB");
+      return null;
+    }
+
+    const ext = file.name.split(".").pop();
+    const path = `sponsors/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+    const { error } = await supabase.storage.from("images").upload(path, file);
+    if (error) {
+      toast.error("Error al subir la imagen");
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage.from("images").getPublicUrl(path);
+    return urlData.publicUrl;
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) return;
-
-    // Show preview immediately
     const reader = new FileReader();
-    reader.onload = () => {
-      setImagePreview(reader.result as string);
-    };
+    reader.onload = () => setImagePreview(reader.result as string);
     reader.readAsDataURL(file);
 
-    // Upload to Supabase Storage
     setUploading(true);
-    const ext = file.name.split(".").pop();
-    const path = `sponsors/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-
-    const { error } = await supabase.storage
-      .from("images")
-      .upload(path, file);
-
-    if (error) {
-      setUploading(false);
+    const url = await uploadFile(file);
+    if (url) {
+      setImageUrl(url);
+    } else {
       setImagePreview(null);
-      return;
     }
-
-    const { data: urlData } = supabase.storage
-      .from("images")
-      .getPublicUrl(path);
-
-    setImageUrl(urlData.publicUrl);
     setUploading(false);
   };
 
+  const handleReplaceImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || replacingIndex === null) return;
+
+    setUploading(true);
+    const url = await uploadFile(file);
+    if (url) {
+      const updated = [...sponsors];
+      updated[replacingIndex] = { ...updated[replacingIndex], imageUrl: url };
+      onChange(updated);
+    }
+    setReplacingIndex(null);
+    setUploading(false);
+    if (replaceInputRef.current) replaceInputRef.current.value = "";
+  };
+
   const handleAdd = () => {
-    if (!imageUrl.trim() || !linkUrl.trim()) return;
+    if (!imageUrl.trim()) return;
     const newSponsor: Sponsor = {
       id: `sponsor-${Date.now()}`,
       imageUrl: imageUrl.trim(),
-      linkUrl: linkUrl.trim(),
+      linkUrl: linkUrl.trim() || "",
     };
     onChange([...sponsors, newSponsor]);
     setImageUrl("");
@@ -75,8 +214,14 @@ export function SponsorForm({
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleRemove = (id: string) => {
-    onChange(sponsors.filter((s) => s.id !== id));
+  const handleRemove = (index: number) => {
+    onChange(sponsors.filter((_, i) => i !== index));
+  };
+
+  const handleUrlChange = (index: number, url: string) => {
+    const updated = [...sponsors];
+    updated[index] = { ...updated[index], linkUrl: url };
+    onChange(updated);
   };
 
   const clearImage = () => {
@@ -87,36 +232,43 @@ export function SponsorForm({
 
   return (
     <div className="space-y-4">
+      {/* Hidden input for replacing images */}
+      <input
+        ref={replaceInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleReplaceImage}
+        className="hidden"
+      />
+
       {/* Current sponsors */}
       {sponsors.length > 0 && (
-        <div className="space-y-2">
-          {sponsors.map((sponsor) => (
-            <div
-              key={sponsor.id}
-              className="flex items-center gap-3 border rounded-lg p-2"
-            >
-              <div className="w-16 h-10 rounded border bg-muted/30 overflow-hidden flex-shrink-0">
-                <img
-                  src={sponsor.imageUrl}
-                  alt="Patrocinador"
-                  className="w-full h-full object-contain p-1"
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={sponsors.map((s) => s.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-2">
+              {sponsors.map((sponsor, index) => (
+                <SortableSponsor
+                  key={sponsor.id}
+                  sponsor={sponsor}
+                  index={index}
+                  onReplace={(i) => {
+                    setReplacingIndex(i);
+                    replaceInputRef.current?.click();
+                  }}
+                  onUrlChange={handleUrlChange}
+                  onRemove={handleRemove}
                 />
-              </div>
-              <span className="text-sm text-muted-foreground truncate flex-1">
-                {sponsor.linkUrl}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 flex-shrink-0"
-                onClick={() => handleRemove(sponsor.id)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       {/* Add new */}
@@ -125,6 +277,9 @@ export function SponsorForm({
           {/* Image upload */}
           <div className="space-y-1.5">
             <Label className="text-xs">Imagen del patrocinador</Label>
+            <p className="text-xs text-muted-foreground">
+              Tamano recomendado: 300x100px. Formato: PNG o JPG. Maximo 2MB.
+            </p>
             <input
               ref={fileInputRef}
               type="file"
@@ -171,7 +326,7 @@ export function SponsorForm({
 
           {/* Link URL */}
           <div className="space-y-1.5">
-            <Label className="text-xs">URL de destino (al hacer click)</Label>
+            <Label className="text-xs">URL de destino (opcional)</Label>
             <Input
               value={linkUrl}
               onChange={(e) => setLinkUrl(e.target.value)}
@@ -185,7 +340,7 @@ export function SponsorForm({
             variant="outline"
             size="sm"
             onClick={handleAdd}
-            disabled={!imageUrl.trim() || !linkUrl.trim() || uploading}
+            disabled={!imageUrl.trim() || uploading}
           >
             <Plus className="h-4 w-4 mr-2" />
             Agregar Patrocinador

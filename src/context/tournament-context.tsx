@@ -187,16 +187,18 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       }
 
       // Handle sponsors separately
+      let savedSponsors = updates.sponsors;
       if (updates.sponsors !== undefined) {
-        await updateTournamentSponsors(
+        const result = await updateTournamentSponsors(
           tournamentId,
           updates.sponsors.map((s) => ({ imageUrl: s.imageUrl, linkUrl: s.linkUrl }))
         );
+        if (result) savedSponsors = result;
       }
 
-      // Optimistic update
+      // Update with real DB IDs
       setTournaments((prev) =>
-        prev.map((t) => (t.id === tournamentId ? { ...t, ...updates } : t))
+        prev.map((t) => (t.id === tournamentId ? { ...t, ...updates, sponsors: savedSponsors } : t))
       );
     },
     []

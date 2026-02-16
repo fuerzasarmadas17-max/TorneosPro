@@ -55,20 +55,6 @@ export function TournamentFilters() {
         </SelectContent>
       </Select>
       <Select
-        value={currentFormat || "all"}
-        onValueChange={(v) => updateFilter("format", v)}
-      >
-        <SelectTrigger className="sm:w-[160px]">
-          <SelectValue placeholder="Formato" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Todos los formatos</SelectItem>
-          <SelectItem value="elimination">Eliminacion</SelectItem>
-          <SelectItem value="round-robin">Liga</SelectItem>
-          <SelectItem value="group-playoff">Fase de Grupos</SelectItem>
-        </SelectContent>
-      </Select>
-      <Select
         value={currentStatus || "all"}
         onValueChange={(v) => updateFilter("status", v)}
       >

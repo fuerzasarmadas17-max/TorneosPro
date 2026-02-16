@@ -140,21 +140,28 @@ export async function addTournamentTeams(
 export async function updateTournamentSponsors(
   tournamentId: string,
   sponsors: { imageUrl: string; linkUrl: string }[]
-): Promise<boolean> {
+): Promise<{ id: string; imageUrl: string; linkUrl: string }[] | null> {
   // Delete existing tournament sponsors
   await supabase
     .from("sponsors")
     .delete()
     .eq("tournament_id", tournamentId);
 
-  if (sponsors.length === 0) return true;
+  if (sponsors.length === 0) return [];
 
-  const { error } = await supabase.from("sponsors").insert(
+  const { data, error } = await supabase.from("sponsors").insert(
     sponsors.map((s) => ({
       image_url: s.imageUrl,
       link_url: s.linkUrl,
       tournament_id: tournamentId,
     }))
-  );
-  return !error;
+  ).select("id, image_url, link_url");
+
+  if (error) return null;
+
+  return (data || []).map((row) => ({
+    id: row.id as string,
+    imageUrl: row.image_url as string,
+    linkUrl: row.link_url as string,
+  }));
 }

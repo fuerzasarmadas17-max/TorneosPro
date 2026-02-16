@@ -1,6 +1,9 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { AuthGuard } from "@/components/auth-guard";
+import { useAuth } from "@/context/auth-context";
 import {
   Card,
   CardContent,
@@ -11,6 +14,17 @@ import {
 import { OrganizationProfileForm } from "@/components/profile/organization-profile-form";
 
 function SettingsContent() {
+  const { user } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (user?.role === "admin") {
+      router.replace("/dashboard");
+    }
+  }, [user, router]);
+
+  if (user?.role === "admin") return null;
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl space-y-6">
       <div>

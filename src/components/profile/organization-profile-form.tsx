@@ -85,6 +85,11 @@ export function OrganizationProfileForm() {
     const file = e.target.files?.[0];
     if (!file || !file.type.startsWith("image/")) return;
 
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("La imagen no debe superar los 2MB");
+      return;
+    }
+
     setUploadingLogo(true);
     const ext = file.name.split(".").pop();
     const path = `logos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
@@ -159,6 +164,9 @@ export function OrganizationProfileForm() {
       {/* Logo */}
       <div className="space-y-2">
         <Label>Logo de la Organizacion</Label>
+        <p className="text-sm text-muted-foreground">
+          Tamano recomendado: 512x512px. Formato: PNG o JPG. Maximo 2MB.
+        </p>
         <input
           ref={logoInputRef}
           type="file"
