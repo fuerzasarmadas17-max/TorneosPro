@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Torneos",
+  title: "Torneos Pro",
   description: "Gestiona tus torneos deportivos",
 };
 
