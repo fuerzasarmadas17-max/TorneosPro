@@ -12,7 +12,7 @@ const VIDEOS = [
   "/videos/Volley.mp4",
 ];
 
-const CLIP_DURATION = 5;
+const CLIP_DURATION = 8;
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
