@@ -2,26 +2,28 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { SPORTS } from "@/data/sports";
+import { VideoBackground } from "@/components/landing/video-background";
 
 export default function HomePage() {
   return (
     <div className="flex flex-col">
       {/* Hero */}
-      <section className="flex flex-col items-center justify-center gap-6 py-20 px-4 text-center">
-        <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
+      <section className="relative flex flex-col items-center justify-center gap-6 py-32 px-4 text-center min-h-[70vh]">
+        <VideoBackground />
+        <h1 className="relative z-10 text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl text-white drop-shadow-lg">
           Organiza tus torneos
           <br />
-          <span className="text-primary">deportivos</span>
+          <span className="underline decoration-white/40 underline-offset-8">deportivos</span>
         </h1>
-        <p className="max-w-[600px] text-lg text-muted-foreground">
+        <p className="relative z-10 max-w-[600px] text-lg text-white/80">
           Crea torneos de eliminacion directa o liga, gestiona equipos, registra
           resultados y sigue el progreso en tiempo real.
         </p>
-        <div className="flex gap-4">
+        <div className="relative z-10 flex gap-4">
           <Button size="lg" asChild>
             <Link href="/tournaments">Explorar Torneos</Link>
           </Button>
-          <Button size="lg" variant="outline" asChild>
+          <Button size="lg" variant="outline" className="bg-white/10 text-white border-white/40 hover:bg-white/20 backdrop-blur-sm" asChild>
             <Link href="/tournaments/create">Crear Torneo</Link>
           </Button>
         </div>
