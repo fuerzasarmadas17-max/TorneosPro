@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 
 const VIDEOS = [
   "/videos/Basket.mp4",
@@ -12,7 +12,7 @@ const VIDEOS = [
   "/videos/Volley.mp4",
 ];
 
-const CLIP_DURATION = 8;
+const CLIP_DURATION = 7200;
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -26,77 +26,77 @@ function shuffle<T>(arr: T[]): T[] {
 export function VideoBackground() {
   const videoARef = useRef<HTMLVideoElement>(null);
   const videoBRef = useRef<HTMLVideoElement>(null);
-  const orderRef = useRef<string[]>([]);
-  const indexRef = useRef(0);
-  const activeRef = useRef<"A" | "B">("A");
-
-  const getActiveVideo = useCallback(() => {
-    return activeRef.current === "A" ? videoARef.current : videoBRef.current;
-  }, []);
-
-  const getNextVideo = useCallback(() => {
-    return activeRef.current === "A" ? videoBRef.current : videoARef.current;
-  }, []);
 
   useEffect(() => {
-    orderRef.current = shuffle(VIDEOS);
-    indexRef.current = 0;
+    const order = shuffle(VIDEOS);
+    let index = 0;
+    let isAVisible = true;
+    let timer: ReturnType<typeof setTimeout>;
 
     const videoA = videoARef.current;
     const videoB = videoBRef.current;
     if (!videoA || !videoB) return;
 
-    // Start first video
-    videoA.src = orderRef.current[0];
+    // Step 1: Play first video on A
+    videoA.src = order[0];
     videoA.load();
     videoA.play().catch(() => {});
     videoA.style.opacity = "1";
     videoB.style.opacity = "0";
 
-    // Preload next video
-    const nextIdx = 1 % orderRef.current.length;
-    videoB.src = orderRef.current[nextIdx];
+    // Step 2: Preload second video on B
+    videoB.src = order[1 % order.length];
     videoB.load();
 
-    const timer = setInterval(() => {
-      indexRef.current = (indexRef.current + 1) % orderRef.current.length;
+    const doSwitch = () => {
+      index = (index + 1) % order.length;
 
-      const current = getActiveVideo();
-      const next = getNextVideo();
-      if (!current || !next) return;
-
-      // Switch: show preloaded video, hide current
-      next.play().catch(() => {});
-      next.style.opacity = "1";
-      current.style.opacity = "0";
-      current.pause();
-
-      // Flip active
-      activeRef.current = activeRef.current === "A" ? "B" : "A";
-
-      // Preload the next one in the now-hidden video
-      const preloadIdx = (indexRef.current + 1) % orderRef.current.length;
-      const hidden = activeRef.current === "A" ? videoBRef.current : videoARef.current;
-      if (hidden) {
-        hidden.src = orderRef.current[preloadIdx];
-        hidden.load();
+      if (isAVisible) {
+        // B already has the next video preloaded — show it
+        videoB.currentTime = 0;
+        videoB.play().catch(() => {});
+        videoB.style.opacity = "1";
+        videoA.style.opacity = "0";
+        // After fade, pause A and preload next video into A
+        setTimeout(() => {
+          videoA.pause();
+          videoA.src = order[(index + 1) % order.length];
+          videoA.load();
+        }, 1000);
+      } else {
+        // A already has the next video preloaded — show it
+        videoA.currentTime = 0;
+        videoA.play().catch(() => {});
+        videoA.style.opacity = "1";
+        videoB.style.opacity = "0";
+        // After fade, pause B and preload next video into B
+        setTimeout(() => {
+          videoB.pause();
+          videoB.src = order[(index + 1) % order.length];
+          videoB.load();
+        }, 1000);
       }
-    }, CLIP_DURATION * 1000);
 
-    return () => clearInterval(timer);
-  }, [getActiveVideo, getNextVideo]);
+      isAVisible = !isAVisible;
+      timer = setTimeout(doSwitch, CLIP_DURATION);
+    };
+
+    timer = setTimeout(doSwitch, CLIP_DURATION);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-black">
       <video
         ref={videoARef}
-        className="absolute inset-0 w-full h-full object-cover transition-opacity duration-700"
+        className="absolute inset-0 w-full h-full object-cover transition-opacity duration-1000"
         muted
         playsInline
       />
       <video
         ref={videoBRef}
-        className="absolute inset-0 w-full h-full object-cover transition-opacity duration-700"
+        className="absolute inset-0 w-full h-full object-cover transition-opacity duration-1000"
         style={{ opacity: 0 }}
         muted
         playsInline
