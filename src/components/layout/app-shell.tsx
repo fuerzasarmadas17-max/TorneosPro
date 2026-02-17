@@ -9,7 +9,7 @@ import { TopBar } from "./top-bar";
 import { Loader2 } from "lucide-react";
 
 const AUTH_PAGES = ["/login", "/register"];
-const PROTECTED_PREFIXES = ["/dashboard", "/admin", "/tournaments"];
+const PROTECTED_PREFIXES = ["/dashboard", "/admin"];
 
 function isProtectedPage(pathname: string) {
   return PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
