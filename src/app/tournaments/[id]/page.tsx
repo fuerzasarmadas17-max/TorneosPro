@@ -14,7 +14,7 @@ export default function TournamentDetailPage({
 }) {
   const { id } = use(params);
   const { getTournamentById } = useTournaments();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
   const tournament = getTournamentById(id);
 
@@ -40,7 +40,7 @@ export default function TournamentDetailPage({
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <TournamentDetail tournament={tournament} canEdit={canEdit} canEditSponsors={canEditSponsors} orgSponsors={user?.organizationProfile?.sponsors} />
+      <TournamentDetail tournament={tournament} canEdit={canEdit} canEditSponsors={canEditSponsors} orgSponsors={user?.organizationProfile?.sponsors} isAuthenticated={isAuthenticated} />
     </div>
   );
 }

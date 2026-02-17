@@ -143,6 +143,7 @@ interface TournamentDetailProps {
   canEdit: boolean;
   canEditSponsors?: boolean;
   orgSponsors?: Sponsor[];
+  isAuthenticated?: boolean;
 }
 
 export function TournamentDetail({
@@ -150,6 +151,7 @@ export function TournamentDetail({
   canEdit,
   canEditSponsors,
   orgSponsors,
+  isAuthenticated = false,
 }: TournamentDetailProps) {
   const { updateTournamentProps } = useTournaments();
   const sport = getSportInfo(tournament.sport);
@@ -215,7 +217,9 @@ export function TournamentDetail({
             <TabsTrigger value="groups">Grupos</TabsTrigger>
             <TabsTrigger value="playoffs">Playoffs</TabsTrigger>
             <TabsTrigger value="schedule">Calendario</TabsTrigger>
-            <TabsTrigger value="teams">Equipos</TabsTrigger>
+            {isAuthenticated && (
+              <TabsTrigger value="teams">Equipos</TabsTrigger>
+            )}
             {showStats && (
               <TabsTrigger value="stats">Estadisticas</TabsTrigger>
             )}
@@ -229,13 +233,15 @@ export function TournamentDetail({
           <TabsContent value="schedule" className="mt-4">
             <MatchSchedule tournament={tournament} canEdit={canEdit} />
           </TabsContent>
-          <TabsContent value="teams" className="mt-4">
-            <TeamsRosterSection
-              teamIds={tournament.teamIds}
-              canEdit={canEdit}
-              maxPlayers={tournament.maxPlayersPerTeam}
-            />
-          </TabsContent>
+          {isAuthenticated && (
+            <TabsContent value="teams" className="mt-4">
+              <TeamsRosterSection
+                teamIds={tournament.teamIds}
+                canEdit={canEdit}
+                maxPlayers={tournament.maxPlayersPerTeam}
+              />
+            </TabsContent>
+          )}
           {showStats && (
             <TabsContent value="stats" className="mt-4">
               <TournamentStats tournament={tournament} canEdit={canEdit} />
@@ -247,7 +253,9 @@ export function TournamentDetail({
           <TabsList>
             <TabsTrigger value="bracket">Bracket</TabsTrigger>
             <TabsTrigger value="matches">Partidos</TabsTrigger>
-            <TabsTrigger value="teams">Equipos</TabsTrigger>
+            {isAuthenticated && (
+              <TabsTrigger value="teams">Equipos</TabsTrigger>
+            )}
             {showStats && (
               <TabsTrigger value="stats">Estadisticas</TabsTrigger>
             )}
@@ -258,13 +266,15 @@ export function TournamentDetail({
           <TabsContent value="matches" className="mt-4">
             <MatchSchedule tournament={tournament} canEdit={canEdit} />
           </TabsContent>
-          <TabsContent value="teams" className="mt-4">
-            <TeamsRosterSection
-              teamIds={tournament.teamIds}
-              canEdit={canEdit}
-              maxPlayers={tournament.maxPlayersPerTeam}
-            />
-          </TabsContent>
+          {isAuthenticated && (
+            <TabsContent value="teams" className="mt-4">
+              <TeamsRosterSection
+                teamIds={tournament.teamIds}
+                canEdit={canEdit}
+                maxPlayers={tournament.maxPlayersPerTeam}
+              />
+            </TabsContent>
+          )}
           {showStats && (
             <TabsContent value="stats" className="mt-4">
               <TournamentStats tournament={tournament} canEdit={canEdit} />
@@ -276,7 +286,9 @@ export function TournamentDetail({
           <TabsList>
             <TabsTrigger value="groups">Grupos</TabsTrigger>
             <TabsTrigger value="schedule">Calendario</TabsTrigger>
-            <TabsTrigger value="teams">Equipos</TabsTrigger>
+            {isAuthenticated && (
+              <TabsTrigger value="teams">Equipos</TabsTrigger>
+            )}
             {showStats && (
               <TabsTrigger value="stats">Estadisticas</TabsTrigger>
             )}
@@ -287,13 +299,15 @@ export function TournamentDetail({
           <TabsContent value="schedule" className="mt-4">
             <MatchSchedule tournament={tournament} canEdit={canEdit} />
           </TabsContent>
-          <TabsContent value="teams" className="mt-4">
-            <TeamsRosterSection
-              teamIds={tournament.teamIds}
-              canEdit={canEdit}
-              maxPlayers={tournament.maxPlayersPerTeam}
-            />
-          </TabsContent>
+          {isAuthenticated && (
+            <TabsContent value="teams" className="mt-4">
+              <TeamsRosterSection
+                teamIds={tournament.teamIds}
+                canEdit={canEdit}
+                maxPlayers={tournament.maxPlayersPerTeam}
+              />
+            </TabsContent>
+          )}
           {showStats && (
             <TabsContent value="stats" className="mt-4">
               <TournamentStats tournament={tournament} canEdit={canEdit} />
@@ -305,7 +319,9 @@ export function TournamentDetail({
           <TabsList>
             <TabsTrigger value="standings">Clasificacion</TabsTrigger>
             <TabsTrigger value="schedule">Calendario</TabsTrigger>
-            <TabsTrigger value="teams">Equipos</TabsTrigger>
+            {isAuthenticated && (
+              <TabsTrigger value="teams">Equipos</TabsTrigger>
+            )}
             {showStats && (
               <TabsTrigger value="stats">Estadisticas</TabsTrigger>
             )}
@@ -324,13 +340,15 @@ export function TournamentDetail({
           <TabsContent value="schedule" className="mt-4">
             <MatchSchedule tournament={tournament} canEdit={canEdit} />
           </TabsContent>
-          <TabsContent value="teams" className="mt-4">
-            <TeamsRosterSection
-              teamIds={tournament.teamIds}
-              canEdit={canEdit}
-              maxPlayers={tournament.maxPlayersPerTeam}
-            />
-          </TabsContent>
+          {isAuthenticated && (
+            <TabsContent value="teams" className="mt-4">
+              <TeamsRosterSection
+                teamIds={tournament.teamIds}
+                canEdit={canEdit}
+                maxPlayers={tournament.maxPlayersPerTeam}
+              />
+            </TabsContent>
+          )}
           {showStats && (
             <TabsContent value="stats" className="mt-4">
               <TournamentStats tournament={tournament} canEdit={canEdit} />

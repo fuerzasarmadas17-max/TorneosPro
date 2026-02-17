@@ -40,6 +40,20 @@ interface MatchScheduleProps {
   canEdit: boolean;
 }
 
+function formatTime12h(time: string): string {
+  const [h, m] = time.split(":").map(Number);
+  const suffix = h >= 12 ? "PM" : "AM";
+  const hour12 = h % 12 || 12;
+  return `${hour12}:${m.toString().padStart(2, "0")} ${suffix}`;
+}
+
+const MONTHS_SHORT = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+function formatDateShort(dateStr: string): string {
+  const [, m, d] = dateStr.split("-").map(Number);
+  return `${d} ${MONTHS_SHORT[m - 1]}`;
+}
+
 const statusLabels: Record<MatchStatus, string> = {
   unscheduled: "Sin Programar",
   scheduled: "Programado",
@@ -240,6 +254,10 @@ function MatchDisplay({
     const canEditDetails = canEdit && !isCompleted;
     const hasFullDetails = !!(match.date && match.time && match.venue);
 
+    const groupName = match.groupId
+      ? tournament.groups?.find((g) => g.id === match.groupId)?.name || ""
+      : "";
+
     return (
       <div key={match.id} className={`rounded-lg border overflow-hidden ${isPostponed ? "border-amber-500/40" : ""}`}>
         {/* Recovery label */}
@@ -250,103 +268,194 @@ function MatchDisplay({
           </div>
         )}
 
-        {/* Teams row */}
-        <div className="flex items-center justify-between gap-2 p-3">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 truncate">
+        {/* Teams + score — stacked on mobile, inline on desktop */}
+        <div className="p-3 sm:p-3">
+          {/* Mobile: stacked layout */}
+          <div className="flex sm:hidden flex-col gap-2">
+            {/* Home team */}
+            <div className="flex items-center gap-2">
               {home && (home.primaryColor || home.secondaryColor) && (
-                <div className="w-5 h-5 rounded border border-border overflow-hidden flex shrink-0">
+                <div className="w-6 h-6 rounded border border-border overflow-hidden flex shrink-0">
                   <div className="w-1/2 h-full" style={{ backgroundColor: home.primaryColor || "#fff" }} />
                   <div className="w-1/2 h-full" style={{ backgroundColor: home.secondaryColor || "#000" }} />
                 </div>
               )}
-              <span className="font-medium truncate">{home?.name || "TBD"}</span>
+              <span className="font-semibold text-base flex-1">{home?.name || "TBD"}</span>
+              {isCompleted && (
+                <span className="font-bold text-lg tabular-nums">{match.homeScore}</span>
+              )}
             </div>
-
-            {isCompleted ? (
-              <div className="text-center">
-                <span className="font-bold tabular-nums whitespace-nowrap">
-                  {match.homeScore} - {match.awayScore}
-                </span>
-                {match.sets && match.sets.length > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    {match.sets.map((s) => `${s.homePoints}-${s.awayPoints}`).join(", ")}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <span className="text-muted-foreground text-sm">vs</span>
-            )}
-
-            <div className="flex items-center gap-1.5 truncate">
-              <span className="font-medium truncate">{away?.name || "TBD"}</span>
+            {/* Away team */}
+            <div className="flex items-center gap-2">
               {away && (away.primaryColor || away.secondaryColor) && (
-                <div className="w-5 h-5 rounded border border-border overflow-hidden flex shrink-0">
+                <div className="w-6 h-6 rounded border border-border overflow-hidden flex shrink-0">
                   <div className="w-1/2 h-full" style={{ backgroundColor: away.primaryColor || "#fff" }} />
                   <div className="w-1/2 h-full" style={{ backgroundColor: away.secondaryColor || "#000" }} />
                 </div>
               )}
+              <span className="font-semibold text-base flex-1">{away?.name || "TBD"}</span>
+              {isCompleted && (
+                <span className="font-bold text-lg tabular-nums">{match.awayScore}</span>
+              )}
+            </div>
+            {/* Sets (if any) */}
+            {isCompleted && match.sets && match.sets.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Sets: {match.sets.map((s) => `${s.homePoints}-${s.awayPoints}`).join(", ")}
+              </p>
+            )}
+            {/* Badges row */}
+            <div className="flex items-center gap-2 mt-1">
+              {groupName && (
+                <Badge variant="secondary" className="text-xs">
+                  {groupName}
+                </Badge>
+              )}
+              {canEdit && !isCompleted ? (
+                <Select
+                  value={match.status}
+                  onValueChange={(value) => handleStatusChange(match.id, value as MatchStatus)}
+                >
+                  <SelectTrigger className="h-7 w-auto text-xs gap-1 min-w-[120px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {match.status === "unscheduled" && (
+                      <>
+                        <SelectItem value="unscheduled">Sin Programar</SelectItem>
+                        <SelectItem value="scheduled" disabled={!hasFullDetails}>
+                          Programado{!hasFullDetails ? " (completar datos)" : ""}
+                        </SelectItem>
+                        <SelectItem value="postponed">Aplazado</SelectItem>
+                      </>
+                    )}
+                    {match.status === "scheduled" && (
+                      <>
+                        <SelectItem value="scheduled">Programado</SelectItem>
+                        <SelectItem value="unscheduled">Sin Programar</SelectItem>
+                        <SelectItem value="postponed">Aplazado</SelectItem>
+                      </>
+                    )}
+                    {match.status === "postponed" && (
+                      <>
+                        <SelectItem value="postponed">Aplazado</SelectItem>
+                        <SelectItem value="scheduled">Programado</SelectItem>
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className={`text-xs ${isPostponed ? "bg-amber-500/10 text-amber-700 border-amber-500/30" : ""}`}
+                >
+                  {statusLabels[match.status]}
+                </Badge>
+              )}
+              {canEdit && match.status === "scheduled" && match.homeTeamId && match.awayTeamId && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/tournaments/${tournament.id}/matches/${match.id}`}>
+                    Resultado
+                  </Link>
+                </Button>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            {match.groupId && (
-              <Badge variant="secondary" className="text-xs">
-                {tournament.groups?.find((g) => g.id === match.groupId)?.name || ""}
-              </Badge>
-            )}
+          {/* Desktop: horizontal layout */}
+          <div className="hidden sm:flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 truncate">
+                {home && (home.primaryColor || home.secondaryColor) && (
+                  <div className="w-5 h-5 rounded border border-border overflow-hidden flex shrink-0">
+                    <div className="w-1/2 h-full" style={{ backgroundColor: home.primaryColor || "#fff" }} />
+                    <div className="w-1/2 h-full" style={{ backgroundColor: home.secondaryColor || "#000" }} />
+                  </div>
+                )}
+                <span className="font-medium truncate">{home?.name || "TBD"}</span>
+              </div>
 
-            {/* Status dropdown or read-only badge */}
-            {canEdit && !isCompleted ? (
-              <Select
-                value={match.status}
-                onValueChange={(value) => handleStatusChange(match.id, value as MatchStatus)}
-              >
-                <SelectTrigger className="h-7 w-auto text-xs gap-1 min-w-[120px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {match.status === "unscheduled" && (
-                    <>
-                      <SelectItem value="unscheduled">Sin Programar</SelectItem>
-                      <SelectItem value="scheduled" disabled={!hasFullDetails}>
-                        Programado{!hasFullDetails ? " (completar datos)" : ""}
-                      </SelectItem>
-                      <SelectItem value="postponed">Aplazado</SelectItem>
-                    </>
+              {isCompleted ? (
+                <div className="text-center">
+                  <span className="font-bold tabular-nums whitespace-nowrap">
+                    {match.homeScore} - {match.awayScore}
+                  </span>
+                  {match.sets && match.sets.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {match.sets.map((s) => `${s.homePoints}-${s.awayPoints}`).join(", ")}
+                    </p>
                   )}
-                  {match.status === "scheduled" && (
-                    <>
-                      <SelectItem value="scheduled">Programado</SelectItem>
-                      <SelectItem value="unscheduled">Sin Programar</SelectItem>
-                      <SelectItem value="postponed">Aplazado</SelectItem>
-                    </>
-                  )}
-                  {match.status === "postponed" && (
-                    <>
-                      <SelectItem value="postponed">Aplazado</SelectItem>
-                      <SelectItem value="scheduled">Programado</SelectItem>
-                    </>
-                  )}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Badge
-                variant="outline"
-                className={`text-xs ${isPostponed ? "bg-amber-500/10 text-amber-700 border-amber-500/30" : ""}`}
-              >
-                {statusLabels[match.status]}
-              </Badge>
-            )}
+                </div>
+              ) : (
+                <span className="text-muted-foreground text-sm">vs</span>
+              )}
 
-            {/* Result button */}
-            {canEdit && match.status === "scheduled" && match.homeTeamId && match.awayTeamId && (
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/tournaments/${tournament.id}/matches/${match.id}`}>
-                  Resultado
-                </Link>
-              </Button>
-            )}
+              <div className="flex items-center gap-1.5 truncate">
+                <span className="font-medium truncate">{away?.name || "TBD"}</span>
+                {away && (away.primaryColor || away.secondaryColor) && (
+                  <div className="w-5 h-5 rounded border border-border overflow-hidden flex shrink-0">
+                    <div className="w-1/2 h-full" style={{ backgroundColor: away.primaryColor || "#fff" }} />
+                    <div className="w-1/2 h-full" style={{ backgroundColor: away.secondaryColor || "#000" }} />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {groupName && (
+                <Badge variant="secondary" className="text-xs">
+                  {groupName}
+                </Badge>
+              )}
+              {canEdit && !isCompleted ? (
+                <Select
+                  value={match.status}
+                  onValueChange={(value) => handleStatusChange(match.id, value as MatchStatus)}
+                >
+                  <SelectTrigger className="h-7 w-auto text-xs gap-1 min-w-[120px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {match.status === "unscheduled" && (
+                      <>
+                        <SelectItem value="unscheduled">Sin Programar</SelectItem>
+                        <SelectItem value="scheduled" disabled={!hasFullDetails}>
+                          Programado{!hasFullDetails ? " (completar datos)" : ""}
+                        </SelectItem>
+                        <SelectItem value="postponed">Aplazado</SelectItem>
+                      </>
+                    )}
+                    {match.status === "scheduled" && (
+                      <>
+                        <SelectItem value="scheduled">Programado</SelectItem>
+                        <SelectItem value="unscheduled">Sin Programar</SelectItem>
+                        <SelectItem value="postponed">Aplazado</SelectItem>
+                      </>
+                    )}
+                    {match.status === "postponed" && (
+                      <>
+                        <SelectItem value="postponed">Aplazado</SelectItem>
+                        <SelectItem value="scheduled">Programado</SelectItem>
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className={`text-xs ${isPostponed ? "bg-amber-500/10 text-amber-700 border-amber-500/30" : ""}`}
+                >
+                  {statusLabels[match.status]}
+                </Badge>
+              )}
+              {canEdit && match.status === "scheduled" && match.homeTeamId && match.awayTeamId && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/tournaments/${tournament.id}/matches/${match.id}`}>
+                    Resultado
+                  </Link>
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -390,31 +499,31 @@ function MatchDisplay({
 
         {/* Match details row: date, time, venue */}
         {canEditDetails && !isPostponed && match.status === "unscheduled" ? (
-          <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-t">
-            <div className="flex items-center gap-1">
-              <CalendarIcon className="h-3 w-3 text-muted-foreground shrink-0" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 px-3 py-2.5 bg-muted/30 border-t">
+            <div className="flex items-center gap-1.5">
+              <CalendarIcon className="h-4 w-4 sm:h-3 sm:w-3 text-muted-foreground shrink-0" />
               <Input
                 type="date"
-                className="h-7 w-32 text-xs"
+                className="h-8 sm:h-7 text-sm sm:text-xs flex-1"
                 value={match.date || ""}
                 onChange={(e) => updateMatchDetails(tournament.id, match.id, { date: e.target.value || undefined })}
               />
             </div>
-            <div className="flex items-center gap-1">
-              <Clock className="h-3 w-3 text-muted-foreground shrink-0" />
+            <div className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4 sm:h-3 sm:w-3 text-muted-foreground shrink-0" />
               <Input
                 type="time"
-                className="h-7 w-36 text-xs"
+                className="h-8 sm:h-7 text-sm sm:text-xs flex-1"
                 value={match.time || ""}
                 onChange={(e) => updateMatchDetails(tournament.id, match.id, { time: e.target.value || undefined })}
               />
             </div>
-            <div className="flex items-center gap-1 flex-1">
-              <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
+            <div className="flex items-center gap-1.5">
+              <MapPin className="h-4 w-4 sm:h-3 sm:w-3 text-muted-foreground shrink-0" />
               <Input
                 type="text"
                 placeholder="Estadio"
-                className="h-7 text-xs"
+                className="h-8 sm:h-7 text-sm sm:text-xs flex-1"
                 list={`venues-${tournament.id}`}
                 value={match.venue || ""}
                 onChange={(e) => {
@@ -425,22 +534,22 @@ function MatchDisplay({
             </div>
           </div>
         ) : (match.date || match.time || match.venue) ? (
-          <div className="flex items-center gap-3 px-3 py-2 bg-muted/30 border-t text-xs text-muted-foreground/60">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2.5 bg-muted/30 border-t text-sm sm:text-xs text-muted-foreground">
             {match.date && (
-              <span className="flex items-center gap-1">
-                <CalendarIcon className="h-3 w-3" />
-                {match.date}
+              <span className="flex items-center gap-1.5">
+                <CalendarIcon className="h-4 w-4 sm:h-3 sm:w-3" />
+                {formatDateShort(match.date)}
               </span>
             )}
             {match.time && (
-              <span className="flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                {match.time}
+              <span className="flex items-center gap-1.5">
+                <Clock className="h-4 w-4 sm:h-3 sm:w-3" />
+                {formatTime12h(match.time)}
               </span>
             )}
             {match.venue && (
-              <span className="flex items-center gap-1">
-                <MapPin className="h-3 w-3" />
+              <span className="flex items-center gap-1.5">
+                <MapPin className="h-4 w-4 sm:h-3 sm:w-3" />
                 {match.venue}
               </span>
             )}

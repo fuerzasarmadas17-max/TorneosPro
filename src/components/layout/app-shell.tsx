@@ -62,16 +62,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Logged in: sidebar layout
   return (
-    <div className="relative flex min-h-screen">
+    <div className="relative flex min-h-screen overflow-x-hidden">
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 border-r bg-background z-40">
         <SidebarNav />
       </aside>
 
       {/* Main area */}
-      <div className="flex-1 md:pl-60">
+      <div className="flex-1 min-w-0 md:pl-60">
         <TopBar />
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+        <main className="flex-1 p-4 md:p-6 overflow-x-hidden">{children}</main>
       </div>
     </div>
   );
