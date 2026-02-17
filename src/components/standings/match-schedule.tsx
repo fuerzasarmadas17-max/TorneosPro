@@ -31,7 +31,7 @@ import {
   shuffleArray,
   getPendingMatchups,
 } from "@/data/helpers";
-import { Shuffle, LayoutList, CalendarIcon, Clock, MapPin, AlertTriangle } from "lucide-react";
+import { Shuffle, LayoutList, CalendarIcon, Clock, MapPin, AlertTriangle, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { JornadaBuilder } from "./jornada-builder";
 
@@ -155,62 +155,121 @@ function MatchDisplay({
   const { updateMatchDetails } = useTournaments();
   const [postponingId, setPostponingId] = useState<string | null>(null);
   const [postponeReason, setPostponeReason] = useState("");
+  const [teamFilter, setTeamFilter] = useState<string>("all");
 
   // Collect unique venues already used across the tournament
   const usedVenues = Array.from(new Set(
     tournament.matches.map((m) => m.venue).filter(Boolean) as string[]
   ));
 
+  // Build team list for filter
+  const teamOptions = tournament.teamIds
+    .map((id) => ({ id, name: getTeamById(id)?.name || id }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   // Filter out unscheduled matches for public view
-  const visibleMatches = canEdit
+  const baseMatches = canEdit
     ? tournament.matches
     : tournament.matches.filter((m) => m.status !== "unscheduled");
 
-  // Separate postponed from active matches
+  // Apply team filter
+  const visibleMatches = teamFilter === "all"
+    ? baseMatches
+    : baseMatches.filter((m) => m.homeTeamId === teamFilter || m.awayTeamId === teamFilter);
+
+  // Today's date string for comparing postponed matches
+  const today = new Date().toISOString().split("T")[0];
+
+  // Separate postponed into "recent" (date not passed yet) vs "past" (date already passed)
+  const postponedRecent = visibleMatches.filter(
+    (m) => m.status === "postponed" && m.date && m.date >= today
+  );
+  const postponedPast = visibleMatches.filter(
+    (m) => m.status === "postponed" && (!m.date || m.date < today)
+  );
+
+  // Active = non-postponed matches
   const activeMatches = visibleMatches.filter((m) => m.status !== "postponed");
-  const postponedMatches = visibleMatches.filter((m) => m.status === "postponed");
 
-  const groupPhaseMatches = activeMatches.filter((m) => m.phase === "group");
-  const playoffMatches = activeMatches.filter((m) => m.phase === "playoff");
-  const regularMatches = activeMatches.filter((m) => !m.phase);
+  // When team filter is active, use a flat sorted view
+  const isFiltered = teamFilter !== "all";
 
+  // --- Filtered view: flat list sorted by status priority + date ---
+  const filteredSorted = (() => {
+    if (!isFiltered) return [];
+
+    const scheduled = activeMatches
+      .filter((m) => m.status === "scheduled" || m.status === "unscheduled")
+      .sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
+
+    // Recent postponed (date today or future) mixed with scheduled
+    const recentPostponed = [...postponedRecent].sort(
+      (a, b) => (a.date || "9999").localeCompare(b.date || "9999")
+    );
+
+    const upcoming = [...scheduled, ...recentPostponed].sort(
+      (a, b) => (a.date || "9999").localeCompare(b.date || "9999")
+    );
+
+    const completed = activeMatches
+      .filter((m) => m.status === "completed")
+      .sort((a, b) => (b.date || "0000").localeCompare(a.date || "0000"));
+
+    const pastPostponed = [...postponedPast].sort(
+      (a, b) => (b.date || "0000").localeCompare(a.date || "0000")
+    );
+
+    return [...upcoming, ...completed, ...pastPostponed];
+  })();
+
+  // --- Default view: grouped by jornada ---
   const allSections: { label: string; matches: Match[] }[] = [];
 
-  if (regularMatches.length > 0) {
-    const rounds = new Map<number, Match[]>();
-    for (const m of regularMatches) {
-      const arr = rounds.get(m.round) || [];
-      arr.push(m);
-      rounds.set(m.round, arr);
+  if (!isFiltered) {
+    const nonPostponed = activeMatches;
+    const groupPhaseMatches = nonPostponed.filter((m) => m.phase === "group");
+    const playoffMatches = nonPostponed.filter((m) => m.phase === "playoff");
+    const regularMatches = nonPostponed.filter((m) => !m.phase);
+
+    if (regularMatches.length > 0) {
+      const rounds = new Map<number, Match[]>();
+      for (const m of regularMatches) {
+        const arr = rounds.get(m.round) || [];
+        arr.push(m);
+        rounds.set(m.round, arr);
+      }
+      for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
+        allSections.push({ label: `Jornada ${round}`, matches });
+      }
     }
-    for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
-      allSections.push({ label: `Jornada ${round}`, matches });
+
+    if (groupPhaseMatches.length > 0) {
+      const rounds = new Map<number, Match[]>();
+      for (const m of groupPhaseMatches) {
+        const arr = rounds.get(m.round) || [];
+        arr.push(m);
+        rounds.set(m.round, arr);
+      }
+      for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
+        allSections.push({ label: `Jornada ${round} (Grupos)`, matches });
+      }
+    }
+
+    if (playoffMatches.length > 0) {
+      const rounds = new Map<number, Match[]>();
+      for (const m of playoffMatches) {
+        const arr = rounds.get(m.round) || [];
+        arr.push(m);
+        rounds.set(m.round, arr);
+      }
+      for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
+        allSections.push({ label: `Playoff - Ronda ${round}`, matches });
+      }
     }
   }
 
-  if (groupPhaseMatches.length > 0) {
-    const rounds = new Map<number, Match[]>();
-    for (const m of groupPhaseMatches) {
-      const arr = rounds.get(m.round) || [];
-      arr.push(m);
-      rounds.set(m.round, arr);
-    }
-    for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
-      allSections.push({ label: `Jornada ${round} (Grupos)`, matches });
-    }
-  }
-
-  if (playoffMatches.length > 0) {
-    const rounds = new Map<number, Match[]>();
-    for (const m of playoffMatches) {
-      const arr = rounds.get(m.round) || [];
-      arr.push(m);
-      rounds.set(m.round, arr);
-    }
-    for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
-      allSections.push({ label: `Playoff - Ronda ${round}`, matches });
-    }
-  }
+  // Postponed matches for the default (non-filtered) view
+  const postponedMatches = [...postponedRecent, ...postponedPast];
 
   const handleStatusChange = (matchId: string, newStatus: MatchStatus) => {
     if (newStatus === "postponed") {
@@ -568,42 +627,97 @@ function MatchDisplay({
         ))}
       </datalist>
 
-      {/* Postponed matches section (top) */}
-      {postponedMatches.length > 0 && (
-        <Card className="border-amber-500/30">
+      {/* Team filter */}
+      {teamOptions.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
+          <Select value={teamFilter} onValueChange={setTeamFilter}>
+            <SelectTrigger className="h-9 w-full sm:w-64">
+              <SelectValue placeholder="Filtrar por equipo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los equipos</SelectItem>
+              {teamOptions.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* No results message */}
+      {teamFilter !== "all" && visibleMatches.length === 0 && (
+        <div className="text-center py-8 text-muted-foreground text-sm">
+          No hay partidos para este equipo
+        </div>
+      )}
+
+      {/* === Filtered view: flat sorted list === */}
+      {isFiltered && filteredSorted.length > 0 && (
+        <Card>
           <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              <CardTitle className="text-base">Partidos Aplazados</CardTitle>
-              <Badge className="bg-amber-500/10 text-amber-700 border-amber-500/30 text-xs">
-                {postponedMatches.length}
-              </Badge>
-            </div>
+            <CardTitle className="text-base">
+              Partidos de {teamOptions.find((t) => t.id === teamFilter)?.name}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {postponedMatches.map((match) => {
-              const jornadaLabel = match.phase === "group"
-                ? `Recuperacion Jornada ${match.round} (${tournament.groups?.find((g) => g.id === match.groupId)?.name || ""})`
-                : match.phase === "playoff"
-                  ? `Recuperacion Playoff Ronda ${match.round}`
-                  : `Recuperacion Jornada ${match.round}`;
-              return renderMatchCard(match, jornadaLabel);
+            {filteredSorted.map((match) => {
+              const label = match.status === "postponed"
+                ? match.date && match.date < today
+                  ? `Aplazado - Jornada ${match.round}`
+                  : undefined
+                : undefined;
+              return renderMatchCard(match, label);
             })}
           </CardContent>
         </Card>
       )}
 
-      {/* Regular jornada sections */}
-      {allSections.map((section) => (
-        <Card key={section.label}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">{section.label}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {section.matches.map((match) => renderMatchCard(match))}
-          </CardContent>
-        </Card>
-      ))}
+      {/* === Default view: grouped by jornada === */}
+      {!isFiltered && (
+        <>
+          {/* Postponed matches section (top) */}
+          {postponedMatches.length > 0 && (
+            <Card className="border-amber-500/30">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  <CardTitle className="text-base">Partidos Aplazados</CardTitle>
+                  <Badge className="bg-amber-500/10 text-amber-700 border-amber-500/30 text-xs">
+                    {postponedMatches.length}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {postponedMatches.map((match) => {
+                  const jornadaLabel = match.phase === "group"
+                    ? `Recuperacion Jornada ${match.round} (${tournament.groups?.find((g) => g.id === match.groupId)?.name || ""})`
+                    : match.phase === "playoff"
+                      ? `Recuperacion Playoff Ronda ${match.round}`
+                      : `Recuperacion Jornada ${match.round}`;
+                  return renderMatchCard(match, jornadaLabel);
+                })}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Regular jornada sections */}
+          {allSections
+            .filter((section) => section.matches.length > 0)
+            .map((section) => (
+            <Card key={section.label}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">{section.label}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {section.matches.map((match) => renderMatchCard(match))}
+              </CardContent>
+            </Card>
+          ))}
+        </>
+      )}
     </>
   );
 }
