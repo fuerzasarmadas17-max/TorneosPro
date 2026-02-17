@@ -26,9 +26,10 @@ import { SPORTS } from "@/data/sports";
 import { Sport, TournamentFormat, Team, Tournament, TournamentGroup, PlayoffConfig, MatchEventType, STAT_CATALOG, getDefaultStats } from "@/types";
 import { toast } from "sonner";
 import { Trash2, Plus } from "lucide-react";
-import { calculateTournamentCost, distributeTeamsToGroups, checkFreeTier, FREE_TIER_LIMITS, formatCOP, TournamentCostBreakdown } from "@/lib/pricing";
+import { calculateTournamentCost, distributeTeamsToGroups, checkFreeTier, FREE_TIER_LIMITS, TournamentCostBreakdown } from "@/lib/pricing";
 import { TournamentCostDialog } from "./tournament-cost-dialog";
 import { Badge } from "@/components/ui/badge";
+import { supabase } from "@/lib/supabase";
 
 const INDIVIDUAL_SPORTS: Sport[] = ["tenis", "padel", "ping-pong"];
 
@@ -104,6 +105,26 @@ export function CreateTournamentForm() {
 
   const removeGroup = (index: number) => {
     setGroups(groups.filter((_, i) => i !== index));
+  };
+
+  // Build tournament data for the payment record (used by webhook recovery)
+  const buildTournamentData = (): Record<string, unknown> => {
+    const count = parseInt(teamCount);
+    return {
+      name: name.trim(),
+      sport,
+      format,
+      description: description.trim() || null,
+      startDate,
+      teamCount: count,
+      isIndividual,
+      maxPlayersPerTeam: isIndividual ? 1 : (parseInt(maxPlayers) || null),
+      enabledStats: enabledStats.length > 0 ? enabledStats : null,
+      bestOf: sport === "volleyball" ? bestOf : null,
+      groups: groups.map((g) => ({ name: g.name })),
+      advanceCount: format === "group-playoff" ? parseInt(advanceCount) : null,
+      monthlyCost: costBreakdown?.monthlyCost ?? null,
+    };
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -199,7 +220,7 @@ export function CreateTournamentForm() {
 
   const [creating, setCreating] = useState(false);
 
-  const createTournament = async (plan: "free" | "paid") => {
+  const createTournament = async (plan: "free" | "paid", couponId?: string, paymentId?: string) => {
     setCreating(true);
     try {
       const count = parseInt(teamCount);
@@ -262,9 +283,34 @@ export function CreateTournamentForm() {
         maxPlayersPerTeam: maxPlayers ? parseInt(maxPlayers) : undefined,
         bestOf: sport === "volleyball" ? bestOf : undefined,
         monthlyCost: plan === "paid" && costBreakdown ? costBreakdown.monthlyCost : undefined,
+        couponId: couponId ?? undefined,
       };
 
-      await addTournament(tournament);
+      const newTournament = await addTournament(tournament);
+
+      // Mark coupon as used
+      if (couponId && newTournament?.id) {
+        await supabase
+          .from("coupons")
+          .update({
+            used_by: user!.id,
+            used_at: new Date().toISOString(),
+            tournament_id: newTournament.id,
+          })
+          .eq("id", couponId);
+      }
+
+      // Link payment to tournament
+      if (paymentId && newTournament?.id) {
+        await supabase
+          .from("payments")
+          .update({
+            tournament_id: newTournament.id,
+            status: "approved",
+          })
+          .eq("id", paymentId);
+      }
+
       setShowCostDialog(false);
       toast.success("Torneo creado correctamente");
       router.push("/dashboard");
@@ -618,12 +664,14 @@ export function CreateTournamentForm() {
       <TournamentCostDialog
         open={showCostDialog}
         onOpenChange={setShowCostDialog}
-        onConfirm={() => createTournament("paid")}
+        onConfirm={(couponId, paymentId) => createTournament("paid", couponId, paymentId)}
         breakdown={costBreakdown}
         tournamentName={name}
         format={format as TournamentFormat}
         teamCount={parseInt(teamCount)}
         sport={sport as Sport}
+        userId={user!.id}
+        tournamentData={buildTournamentData()}
       />
     )}
     </>

@@ -131,6 +131,7 @@ export function mapTournament(row: Record<string, unknown>): Tournament {
     bestOf: (row.best_of as 3 | 5) ?? undefined,
     sponsors: sponsorsRows ? sponsorsRows.map(mapSponsor) : undefined,
     monthlyCost: (row.monthly_cost as number) ?? undefined,
+    couponId: (row.coupon_id as string) ?? undefined,
   };
 }
 
@@ -218,6 +219,7 @@ export function toDbTournament(t: Partial<Tournament>): Record<string, unknown> 
   if (t.bestOf !== undefined) db.best_of = t.bestOf;
   if (t.monthlyCost !== undefined) db.monthly_cost = t.monthlyCost;
   if (t.enabledStats !== undefined) db.enabled_stats = t.enabledStats;
+  if (t.couponId !== undefined) db.coupon_id = t.couponId;
   return db;
 }
 

@@ -230,6 +230,19 @@ export interface PlayoffConfig {
 
 export type TournamentPlan = "free" | "paid";
 
+export type CouponType = "percentage" | "free_months" | "free_tournament";
+
+export interface Coupon {
+  id: string;
+  code: string;
+  type: CouponType;
+  value: number;
+  usedBy?: string;
+  usedAt?: string;
+  tournamentId?: string;
+  createdAt: string;
+}
+
 export interface Tournament {
   id: string;
   name: string;
@@ -253,6 +266,7 @@ export interface Tournament {
   bestOf?: 3 | 5;
   sponsors?: Sponsor[];
   monthlyCost?: number;
+  couponId?: string;
 }
 
 export interface TournamentFilters {

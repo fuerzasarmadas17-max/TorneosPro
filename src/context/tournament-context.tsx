@@ -22,7 +22,7 @@ interface TournamentContextType {
   teams: Team[];
   isLoading: boolean;
   error: string | null;
-  addTournament: (tournament: Tournament) => Promise<void>;
+  addTournament: (tournament: Tournament) => Promise<{ id: string } | null>;
   addTeams: (newTeams: Team[]) => Promise<string[]>;
   setTournamentMatches: (tournamentId: string, matches: Match[]) => Promise<void>;
   addMatchToTournament: (tournamentId: string, match: Match) => Promise<void>;
@@ -81,12 +81,14 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     await loadData();
   }, [loadData]);
 
-  const addTournament = useCallback(async (tournament: Tournament) => {
+  const addTournament = useCallback(async (tournament: Tournament): Promise<{ id: string } | null> => {
     const tournamentId = await dbCreateTournament(tournament);
     if (tournamentId) {
       // Refetch to get the full tournament with DB-generated IDs
       await loadData();
+      return { id: tournamentId };
     }
+    return null;
   }, [loadData]);
 
   const addTeams = useCallback(async (newTeams: Team[]): Promise<string[]> => {

@@ -13,6 +13,7 @@ import {
   ExternalLink,
   Shield,
   DollarSign,
+  Ticket,
 } from "lucide-react";
 
 const navItems = [
@@ -105,6 +106,19 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
             >
               <DollarSign className="h-4 w-4" />
               Finanzas
+            </Link>
+            <Link
+              href="/admin/coupons"
+              onClick={onNavigate}
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                pathname === "/admin/coupons"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              )}
+            >
+              <Ticket className="h-4 w-4" />
+              Cupones
             </Link>
           </>
         )}

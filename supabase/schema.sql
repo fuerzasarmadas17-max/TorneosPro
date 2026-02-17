@@ -485,6 +485,99 @@ CREATE TRIGGER tr_org_profiles_updated
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ========================
+-- COUPONS
+-- ========================
+
+CREATE TABLE coupons (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT UNIQUE NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('percentage', 'free_months', 'free_tournament')),
+  value INT NOT NULL DEFAULT 0,
+  used_by UUID REFERENCES users(id),
+  used_at TIMESTAMPTZ,
+  tournament_id UUID REFERENCES tournaments(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE coupons ENABLE ROW LEVEL SECURITY;
+
+-- Cualquiera autenticado puede leer cupones (para validar codigos)
+CREATE POLICY "Cupones visibles para autenticados"
+  ON coupons FOR SELECT
+  USING (auth.role() = 'authenticated');
+
+-- Solo admin puede crear/editar/eliminar cupones
+CREATE POLICY "Admin gestiona cupones"
+  ON coupons FOR INSERT
+  USING (is_admin());
+
+CREATE POLICY "Admin actualiza cupones"
+  ON coupons FOR UPDATE
+  USING (is_admin());
+
+CREATE POLICY "Admin elimina cupones"
+  ON coupons FOR DELETE
+  USING (is_admin());
+
+-- Usuarios pueden marcar cupones como usados (UPDATE used_by, used_at, tournament_id)
+CREATE POLICY "Usuario usa cupon"
+  ON coupons FOR UPDATE
+  USING (used_by IS NULL AND auth.role() = 'authenticated');
+
+-- Agregar columna coupon_id a tournaments
+ALTER TABLE tournaments ADD COLUMN coupon_id UUID REFERENCES coupons(id) ON DELETE SET NULL;
+
+-- ========================
+-- PAYMENTS
+-- ========================
+
+CREATE TYPE payment_status AS ENUM ('pending', 'approved', 'declined', 'voided', 'error');
+
+CREATE TABLE payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reference TEXT NOT NULL UNIQUE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tournament_id UUID REFERENCES tournaments(id) ON DELETE SET NULL,
+  coupon_id UUID REFERENCES coupons(id) ON DELETE SET NULL,
+  amount_cop INT NOT NULL,
+  amount_in_cents INT NOT NULL,
+  status payment_status NOT NULL DEFAULT 'pending',
+  wompi_transaction_id TEXT,
+  wompi_status TEXT,
+  payment_method TEXT,
+  integrity_signature TEXT NOT NULL,
+  tournament_data JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_payments_user ON payments(user_id);
+CREATE INDEX idx_payments_reference ON payments(reference);
+CREATE INDEX idx_payments_status ON payments(status);
+CREATE INDEX idx_payments_tournament ON payments(tournament_id);
+
+ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Usuario ve sus pagos"
+  ON payments FOR SELECT
+  USING (user_id = auth.uid());
+
+CREATE POLICY "Admin ve todos los pagos"
+  ON payments FOR SELECT
+  USING (
+    EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin')
+  );
+
+CREATE POLICY "Usuario actualiza su pago"
+  ON payments FOR UPDATE
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+CREATE TRIGGER tr_payments_updated
+  BEFORE UPDATE ON payments
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ========================
 -- STORAGE BUCKET (para imagenes de sponsors/logos)
 -- ========================
 

@@ -12,10 +12,19 @@ import {
 } from "@/components/ui/card";
 import { formatCOP } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
+import { CouponType } from "@/types";
+
+interface CouponInfo {
+  id: string;
+  code: string;
+  type: CouponType;
+  value: number;
+}
 
 function FinancesContent() {
   const { tournaments } = useTournaments();
   const [ownerNames, setOwnerNames] = useState<Record<string, string>>({});
+  const [couponMap, setCouponMap] = useState<Record<string, CouponInfo>>({});
 
   useEffect(() => {
     // Fetch owner names for all unique createdBy ids
@@ -38,6 +47,32 @@ function FinancesContent() {
       });
   }, [tournaments]);
 
+  useEffect(() => {
+    // Fetch coupon info for tournaments with coupon_id
+    const couponIds = tournaments
+      .map((t) => t.couponId)
+      .filter((id): id is string => !!id);
+    if (couponIds.length === 0) return;
+
+    supabase
+      .from("coupons")
+      .select("id, code, type, value")
+      .in("id", couponIds)
+      .then(({ data }) => {
+        if (!data) return;
+        const map: Record<string, CouponInfo> = {};
+        for (const row of data) {
+          map[row.id] = {
+            id: row.id,
+            code: row.code,
+            type: row.type as CouponType,
+            value: row.value,
+          };
+        }
+        setCouponMap(map);
+      });
+  }, [tournaments]);
+
   const paidTournaments = tournaments.filter((t) => t.plan === "paid" && t.monthlyCost);
 
   // Active = not completed (upcoming or in-progress)
@@ -52,6 +87,35 @@ function FinancesContent() {
 
   const getOwnerName = (userId: string) => {
     return ownerNames[userId] || "Cargando...";
+  };
+
+  const getCouponBadge = (couponId?: string) => {
+    if (!couponId) return null;
+    const coupon = couponMap[couponId];
+    if (!coupon) return null;
+
+    if (coupon.type === "free_tournament") {
+      return (
+        <Badge className="bg-purple-500/10 text-purple-600 border-purple-500/20">
+          Cortesia
+        </Badge>
+      );
+    }
+    if (coupon.type === "percentage") {
+      return (
+        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+          {coupon.value}% OFF
+        </Badge>
+      );
+    }
+    if (coupon.type === "free_months") {
+      return (
+        <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+          {coupon.value} mes{coupon.value > 1 ? "es" : ""} gratis
+        </Badge>
+      );
+    }
+    return null;
   };
 
   return (
@@ -125,6 +189,7 @@ function FinancesContent() {
                     >
                       {t.status === "in-progress" ? "En Curso" : "Proximo"}
                     </Badge>
+                    {getCouponBadge(t.couponId)}
                   </div>
                 </div>
                 <div className="text-right">
@@ -155,6 +220,7 @@ function FinancesContent() {
                     <span>{getOwnerName(t.createdBy)}</span>
                     <span>· {t.teamIds.length} equipos</span>
                     <Badge className="bg-zinc-500/10 text-zinc-500">Completado</Badge>
+                    {getCouponBadge(t.couponId)}
                   </div>
                 </div>
                 <div className="text-right">
