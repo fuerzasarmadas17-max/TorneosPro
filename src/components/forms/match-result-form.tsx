@@ -210,7 +210,18 @@ export function MatchResultForm({
         return;
       }
 
-      updateMatch(match.tournamentId, match.id, homeSetsWon, awaySetsWon, [], completedSets);
+      // Build events from card/stat entries (yellow cards, red cards, etc.)
+      const events: MatchEvent[] = eventEntries
+        .filter((entry) => entry.playerName.trim())
+        .map((entry, i) => ({
+          id: `evt-${Date.now()}-${i}`,
+          matchId: match.id,
+          teamId: entry.teamId,
+          playerName: entry.playerName.trim(),
+          type: entry.type,
+        }));
+
+      updateMatch(match.tournamentId, match.id, homeSetsWon, awaySetsWon, events, completedSets);
       toast.success("Resultado guardado");
       router.push(`/tournaments/${match.tournamentId}`);
       return;

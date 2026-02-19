@@ -78,30 +78,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Restore session on mount
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        const userData = await loadUserData(session.user.id);
-        if (userData) {
-          setAuthState({ user: userData, isAuthenticated: true });
-        }
-      }
-      setIsLoading(false);
-    });
-
-    // Listen to auth state changes
+    // Listen to auth state changes FIRST (before getSession)
+    // so we don't miss any events during session restoration
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "SIGNED_IN" && session?.user) {
+      if (
+        (event === "SIGNED_IN" ||
+          event === "TOKEN_REFRESHED" ||
+          event === "INITIAL_SESSION") &&
+        session?.user
+      ) {
         const userData = await loadUserData(session.user.id);
         if (userData) {
           setAuthState({ user: userData, isAuthenticated: true });
+        } else {
+          // loadUserData failed (RLS, user deleted, etc.) — clean up
+          await supabase.auth.signOut();
+          setAuthState({ user: null, isAuthenticated: false });
         }
+        setIsLoading(false);
       } else if (event === "SIGNED_OUT") {
         setAuthState({ user: null, isAuthenticated: false });
+        setIsLoading(false);
+      } else if (event === "INITIAL_SESSION" && !session) {
+        // No stored session — just stop loading
+        setIsLoading(false);
       }
     });
+
+    // Kick off session restoration (triggers INITIAL_SESSION event above)
+    supabase.auth.getSession();
 
     return () => subscription.unsubscribe();
   }, []);
@@ -161,8 +168,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    await supabase.auth.signOut();
     setAuthState({ user: null, isAuthenticated: false });
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // If signOut fails (network error, corrupted session), force-clear storage
+      if (typeof window !== "undefined") {
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith("sb-")) localStorage.removeItem(key);
+        });
+      }
+    }
   }, []);
 
   const updateOrganizationProfile = useCallback(
