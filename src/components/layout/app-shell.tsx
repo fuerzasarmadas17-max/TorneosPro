@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
+import { useTournaments } from "@/context/tournament-context";
 import { Header } from "./header";
 import { Footer } from "./footer";
 import { SidebarNav } from "./sidebar-nav";
@@ -9,10 +10,10 @@ import { TopBar } from "./top-bar";
 import { Loader2 } from "lucide-react";
 
 const AUTH_PAGES = ["/login", "/register"];
-const PROTECTED_PREFIXES = ["/dashboard", "/admin"];
+const SIDEBAR_PREFIXES = ["/dashboard", "/admin"];
 
-function isProtectedPage(pathname: string) {
-  return PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+function usesSidebarLayout(pathname: string) {
+  return SIDEBAR_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
 function LoadingScreen() {
@@ -27,52 +28,49 @@ function LoadingScreen() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isLoading: dataLoading } = useTournaments();
   const pathname = usePathname();
 
-  // While checking auth, show a minimal layout to avoid flash
-  if (isLoading) {
-    return (
-      <div className="relative flex min-h-screen flex-col">
-        <div className="flex-1">{children}</div>
-      </div>
-    );
-  }
-
-  // Logged out but still on a protected page (navigating to landing) — show loading
-  if (!isAuthenticated && isProtectedPage(pathname)) {
+  // Wait for both auth and data to load — single loading screen, no cascading flashes
+  if (authLoading || dataLoading) {
     return <LoadingScreen />;
   }
 
-  // Logged out: original layout
-  if (!isAuthenticated) {
-    return (
-      <div className="relative flex min-h-screen flex-col">
-        <Header />
-        <main className="flex-1">{children}</main>
-        <Footer />
-      </div>
-    );
+  // Logged out but still on a sidebar page (e.g. just logged out) — show loading
+  if (!isAuthenticated && usesSidebarLayout(pathname)) {
+    return <LoadingScreen />;
   }
 
   // Authenticated but still on auth page (navigating to dashboard) — show loading
-  if (AUTH_PAGES.includes(pathname)) {
+  if (isAuthenticated && AUTH_PAGES.includes(pathname)) {
     return <LoadingScreen />;
   }
 
-  // Logged in: sidebar layout
-  return (
-    <div className="relative flex min-h-screen overflow-x-hidden">
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 border-r bg-background z-40">
-        <SidebarNav />
-      </aside>
+  // Sidebar layout: only for dashboard/admin pages when authenticated
+  if (isAuthenticated && usesSidebarLayout(pathname)) {
+    return (
+      <div className="relative flex min-h-screen overflow-x-hidden">
+        {/* Desktop sidebar */}
+        <aside className="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 border-r bg-background z-40">
+          <SidebarNav />
+        </aside>
 
-      {/* Main area */}
-      <div className="flex-1 min-w-0 md:pl-60">
-        <TopBar />
-        <main className="flex-1 p-4 md:p-6 overflow-x-hidden">{children}</main>
+        {/* Main area */}
+        <div className="flex-1 min-w-0 md:pl-60">
+          <TopBar />
+          <main className="flex-1 p-4 md:p-6 overflow-x-hidden">{children}</main>
+        </div>
       </div>
+    );
+  }
+
+  // Public layout: landing, tournaments, org pages, etc.
+  return (
+    <div className="relative flex min-h-screen flex-col">
+      <Header />
+      <main className="flex-1">{children}</main>
+      <Footer />
     </div>
   );
 }
