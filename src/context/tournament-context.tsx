@@ -77,6 +77,11 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     loadData();
+    // Safety: if data fetch never resolves (network hang, Supabase down), stop loading after 6s
+    const safetyTimer = setTimeout(() => {
+      setIsLoading(false);
+    }, 6000);
+    return () => clearTimeout(safetyTimer);
   }, [loadData]);
 
   const refetch = useCallback(async () => {

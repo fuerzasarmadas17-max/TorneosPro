@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useTournaments } from "@/context/tournament-context";
 import { Header } from "./header";
@@ -33,14 +33,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { isLoading: dataLoading } = useTournaments();
   const pathname = usePathname();
   const router = useRouter();
-  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
-
-  // Safety timeout: if loading hangs for 8s, stop waiting and render the page
-  useEffect(() => {
-    if (!authLoading && !dataLoading) return;
-    const timer = setTimeout(() => setLoadingTimedOut(true), 8000);
-    return () => clearTimeout(timer);
-  }, [authLoading, dataLoading]);
 
   // Redirect authenticated users from landing to dashboard
   useEffect(() => {
@@ -50,7 +42,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [authLoading, dataLoading, isAuthenticated, pathname, router]);
 
   // Wait for both auth and data to load — single loading screen, no cascading flashes
-  if ((authLoading || dataLoading) && !loadingTimedOut) {
+  // Both providers have 6s safety timeouts, so this will always resolve
+  if (authLoading || dataLoading) {
     return <LoadingScreen />;
   }
 

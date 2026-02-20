@@ -113,7 +113,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Kick off session restoration (triggers INITIAL_SESSION event above)
     supabase.auth.getSession();
 
-    return () => subscription.unsubscribe();
+    // Safety: if auth never resolves (network hang, Supabase down), stop loading after 6s
+    const safetyTimer = setTimeout(() => {
+      setIsLoading(false);
+    }, 6000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(safetyTimer);
+    };
   }, []);
 
   const login = useCallback(
