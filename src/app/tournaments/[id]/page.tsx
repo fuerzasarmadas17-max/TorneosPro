@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { TournamentDetail } from "@/components/tournaments/tournament-detail";
 import { useTournaments } from "@/context/tournament-context";
 import { useAuth } from "@/context/auth-context";
+import { Loader2 } from "lucide-react";
 
 export default function TournamentDetailPage({
   params,
@@ -13,10 +14,22 @@ export default function TournamentDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const { getTournamentById } = useTournaments();
-  const { user, isAuthenticated } = useAuth();
+  const { getTournamentById, isLoading: dataLoading } = useTournaments();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
 
   const tournament = getTournamentById(id);
+
+  // Still loading — don't show "not found" yet
+  if (!tournament && (dataLoading || authLoading)) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Cargando torneo...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!tournament) {
     return (

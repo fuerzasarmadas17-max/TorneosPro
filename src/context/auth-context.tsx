@@ -27,34 +27,22 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 async function loadUserData(userId: string): Promise<SafeUser | null> {
-  // Fetch user row
-  const { data: userRow, error: userError } = await supabase
-    .from("users")
-    .select("*")
-    .eq("id", userId)
-    .single();
+  // Run all queries in parallel instead of sequentially
+  const [userResult, profileResult, tournamentResult] = await Promise.all([
+    supabase.from("users").select("*").eq("id", userId).single(),
+    supabase.from("organization_profiles").select("*, social_links(*), sponsors(*)").eq("user_id", userId).single(),
+    supabase.from("tournaments").select("id").eq("created_by", userId),
+  ]);
 
-  if (userError || !userRow) return null;
+  if (userResult.error || !userResult.data) return null;
+  const userRow = userResult.data;
 
-  // Fetch organization profile + social_links + sponsors
-  const { data: profileRow } = await supabase
-    .from("organization_profiles")
-    .select("*, social_links(*), sponsors(*)")
-    .eq("user_id", userId)
-    .single();
-
-  // Fetch tournament ids created by this user
-  const { data: tournamentRows } = await supabase
-    .from("tournaments")
-    .select("id")
-    .eq("created_by", userId);
-
-  const orgProfile = profileRow
+  const orgProfile = profileResult.data
     ? mapOrganizationProfile({
-        ...profileRow,
-        social_links: Array.isArray(profileRow.social_links)
-          ? profileRow.social_links[0] ?? undefined
-          : profileRow.social_links,
+        ...profileResult.data,
+        social_links: Array.isArray(profileResult.data.social_links)
+          ? profileResult.data.social_links[0] ?? undefined
+          : profileResult.data.social_links,
       })
     : undefined;
 
@@ -65,7 +53,7 @@ async function loadUserData(userId: string): Promise<SafeUser | null> {
     role: userRow.role ?? undefined,
     isActive: userRow.is_active,
     avatarUrl: userRow.avatar_url ?? undefined,
-    createdTournamentIds: tournamentRows?.map((t: { id: string }) => t.id) ?? [],
+    createdTournamentIds: tournamentResult.data?.map((t: { id: string }) => t.id) ?? [],
     organizationProfile: orgProfile,
   };
 }
@@ -78,34 +66,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Listen to auth state changes FIRST (before getSession)
-    // so we don't miss any events during session restoration
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      try {
-        if (
-          (event === "SIGNED_IN" ||
-            event === "TOKEN_REFRESHED" ||
-            event === "INITIAL_SESSION") &&
-          session?.user
-        ) {
+      if (
+        (event === "SIGNED_IN" ||
+          event === "TOKEN_REFRESHED" ||
+          event === "INITIAL_SESSION") &&
+        session?.user
+      ) {
+        // Set authenticated IMMEDIATELY with basic info from the session token.
+        // This prevents the "logged out" flash on refresh and makes login instant.
+        // Full user data (profile, tournaments) loads in the background.
+        const basicUser: SafeUser = {
+          id: session.user.id,
+          name: session.user.user_metadata?.name || session.user.email || "",
+          email: session.user.email || "",
+          isActive: true,
+          createdTournamentIds: [],
+        };
+        setAuthState({ user: basicUser, isAuthenticated: true });
+        setIsLoading(false);
+
+        // Load full user data in background (profile, tournaments, etc.)
+        try {
           const userData = await loadUserData(session.user.id);
           if (userData) {
             setAuthState({ user: userData, isAuthenticated: true });
-          } else if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") {
-            // Stale/corrupt stored session — clean up
-            await supabase.auth.signOut();
-            setAuthState({ user: null, isAuthenticated: false });
           }
-        } else if (event === "SIGNED_OUT") {
-          setAuthState({ user: null, isAuthenticated: false });
+          // If loadUserData fails, user stays authenticated with basic info
+        } catch (err) {
+          console.error("Failed to load full user data:", err);
         }
-      } catch (err) {
-        console.error("Auth state change error:", err);
+      } else if (event === "SIGNED_OUT") {
         setAuthState({ user: null, isAuthenticated: false });
-      } finally {
-        // Always stop loading — isLoading only matters for the initial load
+        setIsLoading(false);
+      } else if (event === "INITIAL_SESSION" && !session) {
+        // No session exists — user is not logged in
         setIsLoading(false);
       }
     });
@@ -113,10 +110,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Kick off session restoration (triggers INITIAL_SESSION event above)
     supabase.auth.getSession();
 
-    // Safety: if auth never resolves (network hang, Supabase down), stop loading after 6s
+    // Safety: if auth never resolves (network hang, Supabase down), stop loading after 4s
     const safetyTimer = setTimeout(() => {
       setIsLoading(false);
-    }, 6000);
+    }, 4000);
 
     return () => {
       subscription.unsubscribe();
@@ -145,11 +142,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: "Tu cuenta ha sido desactivada" };
       }
 
-      const userData = await loadUserData(data.user.id);
-      if (userData) {
-        setAuthState({ user: userData, isAuthenticated: true });
-      }
-
+      // Don't call loadUserData here — onAuthStateChange (SIGNED_IN) already handles it.
+      // Calling it twice doubles the network requests and slows down login.
       return { success: true };
     },
     []

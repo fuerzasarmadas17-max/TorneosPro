@@ -34,26 +34,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  // Redirect authenticated users from landing to dashboard
+  // Redirect: authenticated user on landing or auth pages → dashboard
+  // Redirect: unauthenticated user on dashboard/admin → login
   useEffect(() => {
-    if (!authLoading && !dataLoading && isAuthenticated && pathname === "/") {
+    if (authLoading) return;
+
+    if (isAuthenticated && (pathname === "/" || AUTH_PAGES.includes(pathname))) {
       router.replace("/dashboard");
     }
-  }, [authLoading, dataLoading, isAuthenticated, pathname, router]);
 
-  // Wait for both auth and data to load — single loading screen, no cascading flashes
-  // Both providers have 6s safety timeouts, so this will always resolve
-  if (authLoading || dataLoading) {
+    if (!isAuthenticated && (pathname.startsWith("/dashboard") || pathname.startsWith("/admin"))) {
+      router.replace("/login");
+    }
+  }, [authLoading, isAuthenticated, pathname, router]);
+
+  // While auth is loading, show loading screen for routes that need auth
+  const isProtectedRoute = pathname.startsWith("/dashboard") || pathname.startsWith("/admin");
+  if (authLoading && (isProtectedRoute || AUTH_PAGES.includes(pathname))) {
     return <LoadingScreen />;
   }
 
-  // Logged out but still on admin/dashboard page (e.g. just logged out) — show loading
-  if (!isAuthenticated && (pathname.startsWith("/dashboard") || pathname.startsWith("/admin"))) {
+  // Wait for tournament data ONLY on routes that display tournament data.
+  // Settings, create, etc. don't need it and should render immediately.
+  const needsTournamentData =
+    pathname === "/dashboard" ||
+    pathname.startsWith("/admin") ||
+    (pathname.startsWith("/tournaments") && pathname !== "/tournaments/create");
+  if (!authLoading && dataLoading && needsTournamentData && isAuthenticated) {
     return <LoadingScreen />;
   }
 
-  // Authenticated but still on auth page (navigating to dashboard) — show loading
-  if (isAuthenticated && AUTH_PAGES.includes(pathname)) {
+  // Transitional states: show loading while redirect is happening
+  if (!authLoading && !isAuthenticated && isProtectedRoute) {
+    return <LoadingScreen />;
+  }
+  if (!authLoading && isAuthenticated && AUTH_PAGES.includes(pathname)) {
     return <LoadingScreen />;
   }
 
