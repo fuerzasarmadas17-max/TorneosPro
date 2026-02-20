@@ -10,6 +10,7 @@ import {
   VolleyballSet,
   TournamentGroup,
   PlayoffConfig,
+  PhaseConfig,
   Sport,
   TournamentFormat,
   TournamentPlan,
@@ -134,6 +135,7 @@ export function mapTournament(row: Record<string, unknown>): Tournament {
     price: (row.price as number) ?? undefined,
     tier: (row.tier as TournamentTier) ?? undefined,
     couponId: (row.coupon_id as string) ?? undefined,
+    phaseConfigs: (row.phase_configs as PhaseConfig[]) ?? undefined,
   };
 }
 
@@ -190,6 +192,7 @@ export function mapTournamentGroup(row: Record<string, unknown>): TournamentGrou
     id: row.id as string,
     name: row.name as string,
     teamIds: teamRows ? teamRows.map((t) => t.team_id as string) : [],
+    phase: (row.phase as number) ?? 1,
   };
 }
 
@@ -223,6 +226,7 @@ export function toDbTournament(t: Partial<Tournament>): Record<string, unknown> 
   if (t.tier !== undefined) db.tier = t.tier;
   if (t.enabledStats !== undefined) db.enabled_stats = t.enabledStats;
   if (t.couponId !== undefined) db.coupon_id = t.couponId;
+  if (t.phaseConfigs !== undefined) db.phase_configs = t.phaseConfigs;
   return db;
 }
 

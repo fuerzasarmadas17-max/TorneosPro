@@ -9,9 +9,9 @@ import {
   useEffect,
   ReactNode,
 } from "react";
-import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, VolleyballSet, Sponsor } from "@/types";
-import { fillPlayoffBracket } from "@/data/helpers";
-import { fetchTournaments, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, addTournamentTeams, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors } from "@/lib/db/tournaments";
+import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, VolleyballSet, Sponsor, PhaseConfig } from "@/types";
+import { fillPlayoffBracket, fillPhase2Groups } from "@/data/helpers";
+import { fetchTournaments, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, addTournamentTeams, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup } from "@/lib/db/tournaments";
 import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam, updateTeamPlayers as dbUpdateTeamPlayers } from "@/lib/db/teams";
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
@@ -193,7 +193,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   );
 
   const updateTournamentProps = useCallback(
-    async (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan">>) => {
+    async (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs">>) => {
       // Update tournament fields in DB
       const dbUpdates: Partial<Tournament> = {};
       if (updates.doubleRoundRobin !== undefined) dbUpdates.doubleRoundRobin = updates.doubleRoundRobin;
@@ -201,6 +201,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       if (updates.tier !== undefined) dbUpdates.tier = updates.tier;
       if (updates.price !== undefined) dbUpdates.price = updates.price;
       if (updates.plan !== undefined) dbUpdates.plan = updates.plan;
+      if (updates.phaseConfigs !== undefined) dbUpdates.phaseConfigs = updates.phaseConfigs;
 
       if (Object.keys(dbUpdates).length > 0) {
         await dbUpdateTournament(tournamentId, dbUpdates);
@@ -349,7 +350,72 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
 
           // For group-playoff: auto-fill playoff bracket when all group matches complete
           let groupStageComplete = t.groupStageComplete;
-          if (t.format === "group-playoff" && !t.groupStageComplete) {
+          let updatedPhaseConfigs = t.phaseConfigs ? [...t.phaseConfigs.map(pc => ({ ...pc }))] : undefined;
+          let updatedGroups = t.groups;
+
+          if (t.format === "group-playoff" && t.phaseConfigs?.length) {
+            // Multi-phase: detect phase completion
+            for (const pc of updatedPhaseConfigs!) {
+              if (pc.complete) continue;
+              const phaseGroups = (updatedGroups || []).filter(g => g.phase === pc.phase);
+              const phaseGroupIds = new Set(phaseGroups.map(g => g.id));
+              const phaseMatches = updatedMatches.filter(
+                m => m.phase === "group" && m.groupId && phaseGroupIds.has(m.groupId)
+              );
+              if (phaseMatches.length === 0 || !phaseMatches.every(m => m.status === "completed")) break;
+
+              pc.complete = true;
+
+              if (pc.nextGroupCount) {
+                // Intermediate phase → fill next phase groups
+                const result = fillPhase2Groups(
+                  { ...t, groups: updatedGroups, matches: updatedMatches },
+                  pc
+                );
+                updatedMatches.push(...result.phase2Matches);
+
+                // Update local groups with team assignments
+                updatedGroups = (updatedGroups || []).map(g => {
+                  if (result.groupTeamAssignments[g.id]) {
+                    return { ...g, teamIds: result.groupTeamAssignments[g.id] };
+                  }
+                  return g;
+                });
+
+                // Persist: insert phase 2 matches, assign teams to groups
+                insertMatchesForPhase(result.phase2Matches, t.id);
+                for (const [groupId, teamIds] of Object.entries(result.groupTeamAssignments)) {
+                  assignTeamsToGroup(groupId, teamIds);
+                }
+              } else {
+                // Last group phase → fill playoff bracket
+                const lastPhaseGroups = (updatedGroups || []).filter(g => g.phase === pc.phase);
+                const filled = fillPlayoffBracket(
+                  { ...t, groups: updatedGroups, matches: updatedMatches },
+                  pc.phase
+                );
+                updatedMatches.splice(0, updatedMatches.length, ...filled);
+                groupStageComplete = true;
+                dbUpdateTournament(t.id, { groupStageComplete: true });
+
+                const playoffMatches = filled.filter((m) => m.phase === "playoff");
+                for (const pm of playoffMatches) {
+                  if (pm.homeTeamId || pm.awayTeamId) {
+                    dbUpdateMatchDetails(pm.id, {
+                      homeTeamId: pm.homeTeamId,
+                      awayTeamId: pm.awayTeamId,
+                      ...(pm.winnerId ? { winnerId: pm.winnerId, homeScore: pm.homeScore, awayScore: pm.awayScore, status: pm.status } : {}),
+                    });
+                  }
+                }
+              }
+
+              // Persist phase config update
+              dbUpdateTournament(t.id, { phaseConfigs: updatedPhaseConfigs });
+              break; // Only process one phase at a time
+            }
+          } else if (t.format === "group-playoff" && !t.groupStageComplete) {
+            // Single-phase group-playoff (original behavior)
             const groupMatches = updatedMatches.filter((m) => m.phase === "group");
             const allGroupsDone = groupMatches.every((m) => m.status === "completed");
             if (allGroupsDone) {
@@ -396,7 +462,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
           return {
             ...t,
             matches: updatedMatches,
+            groups: updatedGroups,
             groupStageComplete,
+            phaseConfigs: updatedPhaseConfigs,
             status: newStatus,
           };
         })

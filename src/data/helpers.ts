@@ -1,4 +1,4 @@
-import { Match, MatchPhase, StandingsEntry, Team, Tournament, TournamentGroup, PlayoffConfig, User } from "@/types";
+import { Match, MatchPhase, StandingsEntry, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, User } from "@/types";
 
 // --- Utility ---
 
@@ -473,8 +473,11 @@ export function generateGroupPlayoffMatches(
   return allMatches;
 }
 
-export function fillPlayoffBracket(tournament: Tournament): Match[] {
-  const groups = tournament.groups!;
+export function fillPlayoffBracket(tournament: Tournament, phaseNumber?: number): Match[] {
+  const allGroups = tournament.groups!;
+  const groups = phaseNumber != null
+    ? allGroups.filter((g) => g.phase === phaseNumber)
+    : allGroups.filter((g) => !g.phase || g.phase === 1);
   const config = tournament.playoffConfig!;
 
   // Rank teams within each group
@@ -574,4 +577,138 @@ export function fillPlayoffBracket(tournament: Tournament): Match[] {
   }
 
   return updatedMatches;
+}
+
+// --- Multi-phase helpers ---
+
+export function generateMultiPhaseMatches(
+  phase1Groups: TournamentGroup[],
+  phaseConfigs: PhaseConfig[],
+  playoffConfig: PlayoffConfig,
+  tournamentId: string,
+  doubleRoundRobin?: boolean
+): Match[] {
+  const allMatches: Match[] = [];
+  let matchCounter = 1;
+
+  // Generate Phase 1 group round-robin matches
+  for (const group of phase1Groups) {
+    const { matches, nextMatchCounter } = generateRoundRobinCircle(
+      group.teamIds,
+      tournamentId,
+      { phase: "group", groupId: group.id, matchCounterStart: matchCounter, doubleRoundRobin }
+    );
+    allMatches.push(...matches);
+    matchCounter = nextMatchCounter;
+  }
+
+  // Create empty playoff bracket (filled when last group phase completes)
+  const bracketSize = nextPowerOf2(playoffConfig.totalAdvancing);
+  const numRounds = Math.log2(bracketSize);
+
+  for (let i = 0; i < bracketSize / 2; i++) {
+    allMatches.push({
+      id: `${tournamentId}-m-${matchCounter}`,
+      tournamentId,
+      round: 1,
+      matchNumber: matchCounter,
+      homeTeamId: null,
+      awayTeamId: null,
+      homeScore: null,
+      awayScore: null,
+      winnerId: null,
+      status: "unscheduled",
+      nextMatchId: null,
+      phase: "playoff",
+    });
+    matchCounter++;
+  }
+
+  const playoffStartIdx = allMatches.length - bracketSize / 2;
+  let prevRoundStart = playoffStartIdx;
+  let prevRoundSize = bracketSize / 2;
+
+  for (let round = 2; round <= numRounds; round++) {
+    const currentRoundSize = prevRoundSize / 2;
+    for (let i = 0; i < currentRoundSize; i++) {
+      const matchId = `${tournamentId}-m-${matchCounter}`;
+      allMatches.push({
+        id: matchId,
+        tournamentId,
+        round,
+        matchNumber: matchCounter,
+        homeTeamId: null,
+        awayTeamId: null,
+        homeScore: null,
+        awayScore: null,
+        winnerId: null,
+        status: "unscheduled",
+        nextMatchId: null,
+        phase: "playoff",
+      });
+      allMatches[prevRoundStart + i * 2].nextMatchId = matchId;
+      allMatches[prevRoundStart + i * 2 + 1].nextMatchId = matchId;
+      matchCounter++;
+    }
+    prevRoundStart += prevRoundSize;
+    prevRoundSize = currentRoundSize;
+  }
+
+  return allMatches;
+}
+
+export function fillPhase2Groups(
+  tournament: Tournament,
+  phaseConfig: PhaseConfig
+): { phase2Matches: Match[]; groupTeamAssignments: Record<string, string[]> } {
+  const phase1Groups = tournament.groups!.filter((g) => g.phase === phaseConfig.phase);
+  const phase2Groups = tournament.groups!.filter((g) => g.phase === (phaseConfig.phase + 1));
+
+  // Rank teams in each Phase 1 group
+  const rankedByGroup: string[][] = phase1Groups.map((group) => {
+    const groupMatches = tournament.matches.filter(
+      (m) => m.phase === "group" && m.groupId === group.id
+    );
+    return rankTeamsInGroup(group.teamIds, groupMatches);
+  });
+
+  // Collect advancing teams (interleave by seed position)
+  const advancingTeams: string[] = [];
+  for (let seed = 0; seed < phaseConfig.advancePerGroup; seed++) {
+    for (let g = 0; g < rankedByGroup.length; g++) {
+      if (rankedByGroup[g][seed]) {
+        advancingTeams.push(rankedByGroup[g][seed]);
+      }
+    }
+  }
+
+  // Distribute advancing teams to Phase 2 groups (round-robin)
+  const groupTeamAssignments: Record<string, string[]> = {};
+  for (const group of phase2Groups) {
+    groupTeamAssignments[group.id] = [];
+  }
+  for (let i = 0; i < advancingTeams.length; i++) {
+    const targetGroup = phase2Groups[i % phase2Groups.length];
+    groupTeamAssignments[targetGroup.id].push(advancingTeams[i]);
+  }
+
+  // Generate Phase 2 round-robin matches
+  const phase2Matches: Match[] = [];
+  // Find max match counter from existing matches
+  let matchCounter = Math.max(...tournament.matches.map((m) => m.matchNumber)) + 1;
+  const doubleRoundRobin = tournament.doubleRoundRobin;
+
+  for (const group of phase2Groups) {
+    const teamIds = groupTeamAssignments[group.id];
+    if (teamIds.length < 2) continue;
+    const { matches, nextMatchCounter } = generateRoundRobinCircle(
+      teamIds,
+      tournament.id,
+      { phase: "group", groupId: group.id, matchCounterStart: matchCounter, doubleRoundRobin }
+    );
+    phase2Matches.push(...matches);
+    matchCounter = nextMatchCounter;
+  }
+
+  return { phase2Matches, groupTeamAssignments };
 }

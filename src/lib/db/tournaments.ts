@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
-import { Tournament } from "@/types";
-import { mapTournament, toDbTournament } from "./mappers";
+import { Match, Tournament } from "@/types";
+import { mapTournament, toDbMatch, toDbTournament } from "./mappers";
 
 const TOURNAMENT_SELECT = `
   *,
@@ -67,6 +67,7 @@ export async function createTournament(
         .insert({
           tournament_id: tournamentId,
           name: group.name,
+          phase: group.phase ?? 1,
         })
         .select("id")
         .single();
@@ -179,4 +180,53 @@ export async function updateTournamentSponsors(
     imageUrl: row.image_url as string,
     linkUrl: row.link_url as string,
   }));
+}
+
+export async function insertMatchesForPhase(
+  matches: Match[],
+  tournamentId: string
+): Promise<Record<string, string>> {
+  const idMapping: Record<string, string> = {};
+
+  for (const match of matches) {
+    const dbData = toDbMatch({ ...match, tournamentId });
+    dbData.next_match_id = null;
+    if (match.groupId) dbData.group_id = match.groupId;
+
+    const { data } = await supabase
+      .from("matches")
+      .insert(dbData)
+      .select("id")
+      .single();
+
+    if (data) {
+      idMapping[match.id] = data.id as string;
+    }
+  }
+
+  // Update nextMatchId references
+  for (const match of matches) {
+    if (match.nextMatchId && idMapping[match.nextMatchId]) {
+      await supabase
+        .from("matches")
+        .update({ next_match_id: idMapping[match.nextMatchId] })
+        .eq("id", idMapping[match.id]);
+    }
+  }
+
+  return idMapping;
+}
+
+export async function assignTeamsToGroup(
+  groupId: string,
+  teamIds: string[]
+): Promise<boolean> {
+  if (teamIds.length === 0) return true;
+  const { error } = await supabase.from("tournament_group_teams").insert(
+    teamIds.map((teamId) => ({
+      group_id: groupId,
+      team_id: teamId,
+    }))
+  );
+  return !error;
 }

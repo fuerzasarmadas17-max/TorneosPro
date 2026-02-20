@@ -23,7 +23,7 @@ import {
 import { useAuth } from "@/context/auth-context";
 import { useTournaments } from "@/context/tournament-context";
 import { SPORTS } from "@/data/sports";
-import { Sport, TournamentFormat, Team, Tournament, TournamentGroup, PlayoffConfig, MatchEventType, STAT_CATALOG, getDefaultStats } from "@/types";
+import { Sport, TournamentFormat, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, MatchEventType, STAT_CATALOG, getDefaultStats } from "@/types";
 import { toast } from "sonner";
 import { Trash2, Plus } from "lucide-react";
 import { getTournamentPriceInfo, TournamentPriceInfo, distributeTeamsToGroups, checkFreeTier, FREE_TIER_LIMITS } from "@/lib/pricing";
@@ -55,6 +55,10 @@ export function CreateTournamentForm() {
   const [enabledStats, setEnabledStats] = useState<MatchEventType[]>([]);
   const [maxPlayers, setMaxPlayers] = useState<string>("");
   const [bestOf, setBestOf] = useState<3 | 5>(3);
+  const [hasPhase2, setHasPhase2] = useState(false);
+  const [phase1AdvancePerGroup, setPhase1AdvancePerGroup] = useState("2");
+  const [phase2GroupCount, setPhase2GroupCount] = useState("2");
+  const [phase2AdvancePerGroup, setPhase2AdvancePerGroup] = useState("2");
   const [error, setError] = useState("");
   const [showCostDialog, setShowCostDialog] = useState(false);
   const [priceInfo, setPriceInfo] = useState<TournamentPriceInfo | null>(null);
@@ -123,6 +127,10 @@ export function CreateTournamentForm() {
       bestOf: sport === "volleyball" ? bestOf : null,
       groups: groups.map((g) => ({ name: g.name })),
       advanceCount: format === "group-playoff" ? parseInt(advanceCount) : null,
+      hasPhase2,
+      phase1AdvancePerGroup: hasPhase2 ? parseInt(phase1AdvancePerGroup) : null,
+      phase2GroupCount: hasPhase2 ? parseInt(phase2GroupCount) : null,
+      phase2AdvancePerGroup: hasPhase2 ? parseInt(phase2AdvancePerGroup) : null,
       price: priceInfo?.price ?? null,
       tier: priceInfo?.tier ?? null,
     };
@@ -230,6 +238,7 @@ export function CreateTournamentForm() {
 
       let tournamentGroups: TournamentGroup[] | undefined;
       let playoffConfig: PlayoffConfig | undefined;
+      let phaseConfigs: PhaseConfig[] | undefined;
 
       // Build groups: auto-distribute teams evenly
       if (hasGroups) {
@@ -237,6 +246,7 @@ export function CreateTournamentForm() {
           id: `temp-group-${gIdx}`,
           name: g.name,
           teamIds: [],
+          phase: 1,
         }));
         for (let i = 0; i < dbTeamIds.length; i++) {
           tournamentGroups[i % groups.length].teamIds.push(dbTeamIds[i]);
@@ -244,10 +254,35 @@ export function CreateTournamentForm() {
       }
 
       if (format === "group-playoff") {
-        playoffConfig = {
-          advancePerGroup: parseInt(advanceCount),
-          totalAdvancing: parseInt(advanceCount),
-        };
+        if (hasPhase2) {
+          // Multi-phase: Phase 1 groups + Phase 2 empty groups + playoff bracket
+          const p2GroupCount = parseInt(phase2GroupCount);
+          const p2Advance = parseInt(phase2AdvancePerGroup);
+
+          // Create Phase 2 empty groups (continue letter naming)
+          const phase2Groups: TournamentGroup[] = Array.from({ length: p2GroupCount }, (_, i) => ({
+            id: `temp-phase2-group-${i}`,
+            name: `Grupo ${GROUP_LETTERS[groups.length + i] || `${groups.length + i + 1}`}`,
+            teamIds: [],
+            phase: 2,
+          }));
+          tournamentGroups = [...(tournamentGroups || []), ...phase2Groups];
+
+          phaseConfigs = [
+            { phase: 1, advancePerGroup: parseInt(phase1AdvancePerGroup), nextGroupCount: p2GroupCount },
+            { phase: 2, advancePerGroup: p2Advance },
+          ];
+
+          playoffConfig = {
+            advancePerGroup: p2Advance,
+            totalAdvancing: p2Advance * p2GroupCount,
+          };
+        } else {
+          playoffConfig = {
+            advancePerGroup: parseInt(advanceCount),
+            totalAdvancing: parseInt(advanceCount),
+          };
+        }
       }
 
       const tournament: Tournament = {
@@ -272,6 +307,7 @@ export function CreateTournamentForm() {
         price: plan === "paid" && priceInfo ? priceInfo.price : undefined,
         tier: plan === "paid" && priceInfo ? priceInfo.tier : undefined,
         couponId: couponId ?? undefined,
+        phaseConfigs,
       };
 
       const newTournament = await addTournament(tournament);
@@ -570,7 +606,7 @@ export function CreateTournamentForm() {
                 </p>
               )}
 
-              {groups.length >= 1 && format === "group-playoff" && (
+              {groups.length >= 1 && format === "group-playoff" && !hasPhase2 && (
                 <div className="space-y-2">
                   <Label>Equipos que clasifican a playoffs</Label>
                   <Input
@@ -594,6 +630,86 @@ export function CreateTournamentForm() {
                     </p>
                   )}
                 </div>
+              )}
+
+              {/* Multi-phase: Phase 2 configuration */}
+              {groups.length >= 1 && format === "group-playoff" && hasPhase2 && (
+                <div className="space-y-4 border-t pt-4">
+                  <h4 className="font-semibold text-sm">Fase 1 → Fase 2</h4>
+                  <div className="space-y-2">
+                    <Label>Clasifican por grupo (Fase 1)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={Math.floor((parseInt(teamCount) || 2) / Math.max(groups.length, 1))}
+                      value={phase1AdvancePerGroup}
+                      onChange={(e) => setPhase1AdvancePerGroup(e.target.value)}
+                    />
+                    {groups.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {parseInt(phase1AdvancePerGroup) * groups.length} {participantLabel.toLowerCase()} pasan a Fase 2
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Grupos en Fase 2</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={4}
+                      value={phase2GroupCount}
+                      onChange={(e) => setPhase2GroupCount(e.target.value)}
+                    />
+                  </div>
+                  <h4 className="font-semibold text-sm">Fase 2 → Playoffs</h4>
+                  <div className="space-y-2">
+                    <Label>Clasifican por grupo (Fase 2)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={Math.floor((parseInt(phase1AdvancePerGroup) * groups.length) / Math.max(parseInt(phase2GroupCount), 1))}
+                      value={phase2AdvancePerGroup}
+                      onChange={(e) => setPhase2AdvancePerGroup(e.target.value)}
+                    />
+                    {(() => {
+                      const total = parseInt(phase2AdvancePerGroup) * parseInt(phase2GroupCount);
+                      if (!isNaN(total) && total > 0) {
+                        let p = 1;
+                        while (p < total) p *= 2;
+                        return (
+                          <p className="text-xs text-muted-foreground">
+                            {total} {participantLabel.toLowerCase()} pasan a playoffs
+                            {p !== total ? ` (${p - total} bye${p - total > 1 ? "s" : ""})` : ""}
+                          </p>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive"
+                    onClick={() => setHasPhase2(false)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1" />
+                    Quitar Fase 2
+                  </Button>
+                </div>
+              )}
+
+              {/* Add Phase 2 button */}
+              {groups.length >= 2 && format === "group-playoff" && !hasPhase2 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setHasPhase2(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Agregar Fase de Grupos
+                </Button>
               )}
             </div>
           )}

@@ -217,7 +217,53 @@ export function TournamentDetail({
       )}
 
       {/* Content */}
-      {tournament.format === "group-playoff" ? (
+      {tournament.format === "group-playoff" && tournament.phaseConfigs?.length ? (
+        /* Multi-phase group-playoff */
+        <Tabs defaultValue="phase1">
+          <TabsList>
+            {tournament.phaseConfigs.map((pc) => (
+              <TabsTrigger key={`phase${pc.phase}`} value={`phase${pc.phase}`}>
+                Fase {pc.phase}
+              </TabsTrigger>
+            ))}
+            <TabsTrigger value="playoffs">Playoffs</TabsTrigger>
+            <TabsTrigger value="schedule">Calendario</TabsTrigger>
+            {isAuthenticated && (
+              <TabsTrigger value="teams">Equipos</TabsTrigger>
+            )}
+            {showStats && (
+              <TabsTrigger value="stats">Estadisticas</TabsTrigger>
+            )}
+          </TabsList>
+          {tournament.phaseConfigs.map((pc) => (
+            <TabsContent key={`phase${pc.phase}`} value={`phase${pc.phase}`} className="mt-4">
+              <GroupStageView tournament={tournament} phase={pc.phase} />
+            </TabsContent>
+          ))}
+          <TabsContent value="playoffs" className="mt-4">
+            <PlayoffBracketView tournament={tournament} canEdit={canEdit} />
+          </TabsContent>
+          <TabsContent value="schedule" className="mt-4">
+            <MatchSchedule tournament={tournament} canEdit={canEdit} />
+          </TabsContent>
+          {isAuthenticated && (
+            <TabsContent value="teams" className="mt-4">
+              <TeamsRosterSection
+                teamIds={tournament.teamIds}
+                canEdit={canEdit}
+                maxPlayers={tournament.maxPlayersPerTeam}
+                tournament={tournament}
+              />
+            </TabsContent>
+          )}
+          {showStats && (
+            <TabsContent value="stats" className="mt-4">
+              <TournamentStats tournament={tournament} canEdit={canEdit} />
+            </TabsContent>
+          )}
+        </Tabs>
+      ) : tournament.format === "group-playoff" ? (
+        /* Single-phase group-playoff */
         <Tabs defaultValue="groups">
           <TabsList>
             <TabsTrigger value="groups">Grupos</TabsTrigger>

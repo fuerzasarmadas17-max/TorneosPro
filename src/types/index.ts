@@ -225,6 +225,14 @@ export interface TournamentGroup {
   id: string;
   name: string;
   teamIds: string[];
+  phase?: number;
+}
+
+export interface PhaseConfig {
+  phase: number;
+  advancePerGroup: number;
+  nextGroupCount?: number;
+  complete?: boolean;
 }
 
 export interface PlayoffConfig {
@@ -274,6 +282,7 @@ export interface Tournament {
   price?: number;
   tier?: TournamentTier;
   couponId?: string;
+  phaseConfigs?: PhaseConfig[];
 }
 
 export interface TournamentFilters {

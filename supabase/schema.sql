@@ -155,6 +155,7 @@ CREATE TABLE tournaments (
   price INT, -- COP (pago unico por torneo)
   tier TEXT, -- basico, medio, pro, premium
   enabled_stats match_event_type[] DEFAULT '{}',
+  phase_configs JSONB DEFAULT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -188,7 +189,8 @@ CREATE INDEX idx_tournament_teams_team ON tournament_teams(team_id);
 CREATE TABLE tournament_groups (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id UUID NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  phase INT NOT NULL DEFAULT 1
 );
 
 CREATE INDEX idx_tournament_groups_tournament ON tournament_groups(tournament_id);

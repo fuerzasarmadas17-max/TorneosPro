@@ -27,6 +27,7 @@ import {
   generateRoundRobinMatches,
   generateGroupRoundRobinMatches,
   generateGroupPlayoffMatches,
+  generateMultiPhaseMatches,
   generateEmptyEliminationBracket,
   shuffleArray,
   getPendingMatchups,
@@ -244,14 +245,45 @@ function MatchDisplay({
     }
 
     if (groupPhaseMatches.length > 0) {
-      const rounds = new Map<number, Match[]>();
-      for (const m of groupPhaseMatches) {
-        const arr = rounds.get(m.round) || [];
-        arr.push(m);
-        rounds.set(m.round, arr);
+      // Check if multi-phase: group matches by phase
+      const groupIdToPhase = new Map<string, number>();
+      if (tournament.phaseConfigs?.length && tournament.groups) {
+        for (const g of tournament.groups) {
+          if (g.phase) groupIdToPhase.set(g.id, g.phase);
+        }
       }
-      for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
-        allSections.push({ label: `Jornada ${round} (Grupos)`, matches });
+
+      if (groupIdToPhase.size > 0) {
+        // Multi-phase: separate by phase
+        const phaseMatches = new Map<number, Match[]>();
+        for (const m of groupPhaseMatches) {
+          const phase = m.groupId ? (groupIdToPhase.get(m.groupId) || 1) : 1;
+          const arr = phaseMatches.get(phase) || [];
+          arr.push(m);
+          phaseMatches.set(phase, arr);
+        }
+        for (const [phase, pMatches] of Array.from(phaseMatches.entries()).sort(([a], [b]) => a - b)) {
+          const rounds = new Map<number, Match[]>();
+          for (const m of pMatches) {
+            const arr = rounds.get(m.round) || [];
+            arr.push(m);
+            rounds.set(m.round, arr);
+          }
+          for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
+            allSections.push({ label: `Jornada ${round} (Fase ${phase})`, matches });
+          }
+        }
+      } else {
+        // Single-phase
+        const rounds = new Map<number, Match[]>();
+        for (const m of groupPhaseMatches) {
+          const arr = rounds.get(m.round) || [];
+          arr.push(m);
+          rounds.set(m.round, arr);
+        }
+        for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
+          allSections.push({ label: `Jornada ${round} (Grupos)`, matches });
+        }
       }
     }
 
@@ -860,11 +892,27 @@ function RoundRobinEmptySchedule({
         break;
       case "group-playoff":
         if (tournament.groups && tournament.playoffConfig) {
-          const shuffledGroups = tournament.groups.map((g) => ({
-            ...g,
-            teamIds: shuffleArray(g.teamIds),
-          }));
-          matches = generateGroupPlayoffMatches(shuffledGroups, tournament.playoffConfig, tournament.id, doubleRoundRobin);
+          if (tournament.phaseConfigs?.length) {
+            // Multi-phase: only generate Phase 1 matches + empty playoff bracket
+            const phase1Groups = tournament.groups.filter((g) => g.phase === 1);
+            const shuffledPhase1 = phase1Groups.map((g) => ({
+              ...g,
+              teamIds: shuffleArray(g.teamIds),
+            }));
+            matches = generateMultiPhaseMatches(
+              shuffledPhase1,
+              tournament.phaseConfigs,
+              tournament.playoffConfig,
+              tournament.id,
+              doubleRoundRobin
+            );
+          } else {
+            const shuffledGroups = tournament.groups.map((g) => ({
+              ...g,
+              teamIds: shuffleArray(g.teamIds),
+            }));
+            matches = generateGroupPlayoffMatches(shuffledGroups, tournament.playoffConfig, tournament.id, doubleRoundRobin);
+          }
         } else {
           matches = [];
         }

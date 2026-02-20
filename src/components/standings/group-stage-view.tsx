@@ -10,26 +10,46 @@ import { VolleyballStandingsTable } from "./volleyball-standings-table";
 
 interface GroupStageViewProps {
   tournament: Tournament;
+  phase?: number;
 }
 
-export function GroupStageView({ tournament }: GroupStageViewProps) {
+export function GroupStageView({ tournament, phase }: GroupStageViewProps) {
   const sportCategory = getSportCategory(tournament.sport);
+
+  // Filter groups by phase if specified
+  const groups = phase != null
+    ? tournament.groups?.filter((g) => g.phase === phase)
+    : tournament.groups;
+
+  // Determine completion status
+  const isComplete = phase != null
+    ? tournament.phaseConfigs?.find((pc) => pc.phase === phase)?.complete
+    : tournament.groupStageComplete;
+
+  const completionLabel = phase != null
+    ? `Fase ${phase} completada`
+    : "Fase de grupos completada - Playoffs generados";
 
   return (
     <div className="space-y-6">
-      {tournament.groupStageComplete && (
+      {isComplete && (
         <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">
-          Fase de grupos completada - Playoffs generados
+          {completionLabel}
         </Badge>
       )}
 
-      {tournament.groups?.map((group) => {
+      {groups?.map((group) => {
+        const groupMatches = tournament.matches.filter(
+          (m) => m.phase === "group" && m.groupId === group.id
+        );
+
+        // Skip groups with no matches and no teams (empty Phase 2 groups)
+        if (group.teamIds.length === 0 && groupMatches.length === 0) return null;
+
         const groupTournament: Tournament = {
           ...tournament,
           teamIds: group.teamIds,
-          matches: tournament.matches.filter(
-            (m) => m.phase === "group" && m.groupId === group.id
-          ),
+          matches: groupMatches,
         };
 
         return (
@@ -38,7 +58,11 @@ export function GroupStageView({ tournament }: GroupStageViewProps) {
               <CardTitle className="text-lg">{group.name}</CardTitle>
             </CardHeader>
             <CardContent>
-              {sportCategory === "baseball" ? (
+              {group.teamIds.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Pendiente — los equipos se asignaran cuando la fase anterior se complete
+                </p>
+              ) : sportCategory === "baseball" ? (
                 <BaseballStandingsTable tournament={groupTournament} />
               ) : sportCategory === "basketball" ? (
                 <BasketballStandingsTable tournament={groupTournament} />
