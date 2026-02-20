@@ -6,6 +6,8 @@ export interface Sponsor {
 
 export type Sport =
   | "futbol"
+  | "futsal"
+  | "microfutbol"
   | "beisbol"
   | "softball"
   | "wiffleball"
@@ -75,7 +77,8 @@ export type MatchEventType =
   | "hit" | "double" | "triple" | "home_run" | "error"
   | "ace" | "double_fault" | "winner"
   | "block" | "point" | "steal" | "rebound"
-  | "goals_against" | "strikeout" | "ejection";
+  | "goals_against" | "strikeout" | "ejection"
+  | "blue_card";
 
 export interface MatchEvent {
   id: string;
@@ -116,11 +119,12 @@ export interface StatDefinition {
 }
 
 export const STAT_CATALOG: StatDefinition[] = [
-  { key: "goal", label: "Gol", pluralLabel: "Goles", sportDefaults: ["futbol"] },
-  { key: "assist", label: "Asistencia", pluralLabel: "Asistencias", sportDefaults: ["futbol", "basketball"] },
-  { key: "yellow_card", label: "Tarjeta Amarilla", pluralLabel: "Tarjetas Amarillas", sportDefaults: ["futbol", "volleyball"] },
-  { key: "red_card", label: "Tarjeta Roja", pluralLabel: "Tarjetas Rojas", sportDefaults: ["futbol", "volleyball"] },
-  { key: "goals_against", label: "Malla Menos Vencida", pluralLabel: "Malla Menos Vencida", sportDefaults: ["futbol"], computed: true },
+  { key: "goal", label: "Gol", pluralLabel: "Goles", sportDefaults: ["futbol", "futsal", "microfutbol"] },
+  { key: "assist", label: "Asistencia", pluralLabel: "Asistencias", sportDefaults: ["futbol", "futsal", "microfutbol", "basketball"] },
+  { key: "yellow_card", label: "Tarjeta Amarilla", pluralLabel: "Tarjetas Amarillas", sportDefaults: ["futbol", "futsal", "microfutbol", "volleyball"] },
+  { key: "red_card", label: "Tarjeta Roja", pluralLabel: "Tarjetas Rojas", sportDefaults: ["futbol", "futsal", "microfutbol", "volleyball"] },
+  { key: "blue_card", label: "Tarjeta Azul", pluralLabel: "Tarjetas Azules", sportDefaults: ["microfutbol"] },
+  { key: "goals_against", label: "Malla Menos Vencida", pluralLabel: "Malla Menos Vencida", sportDefaults: ["futbol", "futsal", "microfutbol"], computed: true },
   { key: "hit", label: "Hit", pluralLabel: "Hits", sportDefaults: ["beisbol", "softball", "wiffleball"] },
   { key: "double", label: "Doble", pluralLabel: "Dobles", sportDefaults: ["beisbol", "softball", "wiffleball"] },
   { key: "triple", label: "Triple", pluralLabel: "Triples", sportDefaults: ["beisbol", "softball", "wiffleball"] },

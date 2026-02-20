@@ -9,7 +9,7 @@
 CREATE TYPE user_role AS ENUM ('user', 'admin');
 
 CREATE TYPE sport AS ENUM (
-  'futbol', 'beisbol', 'softball', 'wiffleball',
+  'futbol', 'futsal', 'microfutbol', 'beisbol', 'softball', 'wiffleball',
   'volleyball', 'basketball', 'ping-pong', 'tenis', 'padel'
 );
 
@@ -28,7 +28,8 @@ CREATE TYPE match_event_type AS ENUM (
   'hit', 'double', 'triple', 'home_run', 'error',
   'ace', 'double_fault', 'winner',
   'block', 'point', 'steal', 'rebound',
-  'strikeout', 'ejection'
+  'strikeout', 'ejection',
+  'blue_card'
 );
 
 -- ========================

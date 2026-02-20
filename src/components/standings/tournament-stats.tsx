@@ -27,7 +27,8 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
   const hasCardStats =
     tournament.enabledStats?.includes("yellow_card") ||
     tournament.enabledStats?.includes("red_card") ||
-    tournament.enabledStats?.includes("ejection");
+    tournament.enabledStats?.includes("ejection") ||
+    tournament.enabledStats?.includes("blue_card");
 
   // Filter cards based on view: creator sees all, public sees only unpaid
   const visibleCards: CardEntry[] = canEdit
@@ -36,7 +37,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
 
   // Non-card leaderboards (exclude yellow_card, red_card, ejection)
   const nonCardLeaderboards = leaderboards.filter(
-    (lb) => lb.statKey !== "yellow_card" && lb.statKey !== "red_card" && lb.statKey !== "ejection"
+    (lb) => lb.statKey !== "yellow_card" && lb.statKey !== "red_card" && lb.statKey !== "ejection" && lb.statKey !== "blue_card"
   );
 
   const hasNonCardStats = nonCardLeaderboards.some(
@@ -88,12 +89,16 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                       ? "bg-yellow-400/20 text-yellow-600 border-yellow-400/30"
                       : card.type === "red_card"
                       ? "bg-red-500/20 text-red-600 border-red-500/30"
+                      : card.type === "blue_card"
+                      ? "bg-blue-400/20 text-blue-600 border-blue-400/30"
                       : "bg-red-700/20 text-red-700 border-red-700/30";
                   const badgeLabel =
                     card.type === "yellow_card"
                       ? "Amarilla"
                       : card.type === "red_card"
                       ? "Roja"
+                      : card.type === "blue_card"
+                      ? "Azul"
                       : "Expulsion";
                   return (
                     <TableRow

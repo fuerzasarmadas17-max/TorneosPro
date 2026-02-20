@@ -18,7 +18,7 @@ export interface CardEntry {
   matchId: string;
   playerName: string;
   teamId: string;
-  type: "yellow_card" | "red_card" | "ejection";
+  type: "yellow_card" | "red_card" | "ejection" | "blue_card";
   paid: boolean;
 }
 
@@ -114,7 +114,7 @@ export function useTournamentStats(tournament: Tournament) {
     for (const match of tournament.matches) {
       if (match.status !== "completed" || !match.events) continue;
       for (const event of match.events) {
-        if (event.type === "yellow_card" || event.type === "red_card" || event.type === "ejection") {
+        if (event.type === "yellow_card" || event.type === "red_card" || event.type === "ejection" || event.type === "blue_card") {
           cardEntries.push({
             eventId: event.id,
             matchId: match.id,
