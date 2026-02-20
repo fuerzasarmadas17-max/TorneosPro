@@ -1,6 +1,7 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useTournaments } from "@/context/tournament-context";
 import { Header } from "./header";
@@ -10,7 +11,7 @@ import { TopBar } from "./top-bar";
 import { Loader2 } from "lucide-react";
 
 const AUTH_PAGES = ["/login", "/register"];
-const SIDEBAR_PREFIXES = ["/dashboard", "/admin"];
+const SIDEBAR_PREFIXES = ["/dashboard", "/admin", "/tournaments"];
 
 function usesSidebarLayout(pathname: string) {
   return SIDEBAR_PREFIXES.some((prefix) => pathname.startsWith(prefix));
@@ -31,14 +32,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { isLoading: dataLoading } = useTournaments();
   const pathname = usePathname();
+  const router = useRouter();
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
+
+  // Safety timeout: if loading hangs for 8s, stop waiting and render the page
+  useEffect(() => {
+    if (!authLoading && !dataLoading) return;
+    const timer = setTimeout(() => setLoadingTimedOut(true), 8000);
+    return () => clearTimeout(timer);
+  }, [authLoading, dataLoading]);
+
+  // Redirect authenticated users from landing to dashboard
+  useEffect(() => {
+    if (!authLoading && !dataLoading && isAuthenticated && pathname === "/") {
+      router.replace("/dashboard");
+    }
+  }, [authLoading, dataLoading, isAuthenticated, pathname, router]);
 
   // Wait for both auth and data to load — single loading screen, no cascading flashes
-  if (authLoading || dataLoading) {
+  if ((authLoading || dataLoading) && !loadingTimedOut) {
     return <LoadingScreen />;
   }
 
-  // Logged out but still on a sidebar page (e.g. just logged out) — show loading
-  if (!isAuthenticated && usesSidebarLayout(pathname)) {
+  // Logged out but still on admin/dashboard page (e.g. just logged out) — show loading
+  if (!isAuthenticated && (pathname.startsWith("/dashboard") || pathname.startsWith("/admin"))) {
     return <LoadingScreen />;
   }
 

@@ -137,6 +137,21 @@ export async function addTournamentTeams(
   return !error;
 }
 
+export async function updatePlayoffConfig(
+  tournamentId: string,
+  advancePerGroup: number,
+  totalAdvancing: number
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("playoff_configs")
+    .update({
+      advance_per_group: advancePerGroup,
+      total_advancing: totalAdvancing,
+    })
+    .eq("tournament_id", tournamentId);
+  return !error;
+}
+
 export async function updateTournamentSponsors(
   tournamentId: string,
   sponsors: { imageUrl: string; linkUrl: string }[]

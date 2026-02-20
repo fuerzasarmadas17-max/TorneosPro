@@ -11,7 +11,7 @@ import {
 } from "react";
 import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, VolleyballSet, Sponsor } from "@/types";
 import { fillPlayoffBracket } from "@/data/helpers";
-import { fetchTournaments, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, addTournamentTeams, updateTournamentSponsors } from "@/lib/db/tournaments";
+import { fetchTournaments, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, addTournamentTeams, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors } from "@/lib/db/tournaments";
 import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam, updateTeamPlayers as dbUpdateTeamPlayers } from "@/lib/db/teams";
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
@@ -24,11 +24,13 @@ interface TournamentContextType {
   error: string | null;
   addTournament: (tournament: Tournament) => Promise<{ id: string } | null>;
   addTeams: (newTeams: Team[]) => Promise<string[]>;
+  addTeamsToTournament: (tournamentId: string, teamIds: string[]) => Promise<boolean>;
   setTournamentMatches: (tournamentId: string, matches: Match[]) => Promise<void>;
   addMatchToTournament: (tournamentId: string, match: Match) => Promise<void>;
   removeMatchFromTournament: (tournamentId: string, matchId: string) => Promise<void>;
   updateMatchDetails: (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => Promise<void>;
-  updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors">>) => Promise<void>;
+  updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan">>) => Promise<void>;
+  updatePlayoffConfig: (tournamentId: string, advancePerGroup: number, totalAdvancing: number) => Promise<void>;
   updateMatch: (
     tournamentId: string,
     matchId: string,
@@ -100,6 +102,14 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     }
     return ids;
   }, []);
+
+  const addTeamsToTournamentFn = useCallback(async (tournamentId: string, teamIds: string[]): Promise<boolean> => {
+    const ok = await addTournamentTeams(tournamentId, teamIds);
+    if (ok) {
+      await loadData();
+    }
+    return ok;
+  }, [loadData]);
 
   const setTournamentMatches = useCallback(async (tournamentId: string, matches: Match[]) => {
     // Delete existing matches and insert new ones
@@ -178,11 +188,14 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   );
 
   const updateTournamentProps = useCallback(
-    async (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors">>) => {
+    async (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan">>) => {
       // Update tournament fields in DB
       const dbUpdates: Partial<Tournament> = {};
       if (updates.doubleRoundRobin !== undefined) dbUpdates.doubleRoundRobin = updates.doubleRoundRobin;
       if (updates.groupStageComplete !== undefined) dbUpdates.groupStageComplete = updates.groupStageComplete;
+      if (updates.tier !== undefined) dbUpdates.tier = updates.tier;
+      if (updates.price !== undefined) dbUpdates.price = updates.price;
+      if (updates.plan !== undefined) dbUpdates.plan = updates.plan;
 
       if (Object.keys(dbUpdates).length > 0) {
         await dbUpdateTournament(tournamentId, dbUpdates);
@@ -201,6 +214,20 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       // Update with real DB IDs
       setTournaments((prev) =>
         prev.map((t) => (t.id === tournamentId ? { ...t, ...updates, sponsors: savedSponsors } : t))
+      );
+    },
+    []
+  );
+
+  const updatePlayoffConfig = useCallback(
+    async (tournamentId: string, advancePerGroup: number, totalAdvancing: number) => {
+      await dbUpdatePlayoffConfig(tournamentId, advancePerGroup, totalAdvancing);
+      setTournaments((prev) =>
+        prev.map((t) =>
+          t.id === tournamentId
+            ? { ...t, playoffConfig: { advancePerGroup, totalAdvancing } }
+            : t
+        )
       );
     },
     []
@@ -420,11 +447,13 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       error,
       addTournament,
       addTeams,
+      addTeamsToTournament: addTeamsToTournamentFn,
       setTournamentMatches,
       addMatchToTournament,
       removeMatchFromTournament,
       updateMatchDetails,
       updateTournamentProps,
+      updatePlayoffConfig,
       updateTeamPlayers,
       updateTeam,
       updateEventPaid,
@@ -441,11 +470,13 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       error,
       addTournament,
       addTeams,
+      addTeamsToTournamentFn,
       setTournamentMatches,
       addMatchToTournament,
       removeMatchFromTournament,
       updateMatchDetails,
       updateTournamentProps,
+      updatePlayoffConfig,
       updateTeamPlayers,
       updateTeam,
       updateEventPaid,

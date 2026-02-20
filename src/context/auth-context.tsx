@@ -83,27 +83,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (
-        (event === "SIGNED_IN" ||
-          event === "TOKEN_REFRESHED" ||
-          event === "INITIAL_SESSION") &&
-        session?.user
-      ) {
-        const userData = await loadUserData(session.user.id);
-        if (userData) {
-          setAuthState({ user: userData, isAuthenticated: true });
-        } else if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") {
-          // Stale/corrupt stored session — clean up
-          await supabase.auth.signOut();
+      try {
+        if (
+          (event === "SIGNED_IN" ||
+            event === "TOKEN_REFRESHED" ||
+            event === "INITIAL_SESSION") &&
+          session?.user
+        ) {
+          const userData = await loadUserData(session.user.id);
+          if (userData) {
+            setAuthState({ user: userData, isAuthenticated: true });
+          } else if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") {
+            // Stale/corrupt stored session — clean up
+            await supabase.auth.signOut();
+            setAuthState({ user: null, isAuthenticated: false });
+          }
+        } else if (event === "SIGNED_OUT") {
           setAuthState({ user: null, isAuthenticated: false });
         }
-        // For SIGNED_IN, the login() function handles its own errors
-        setIsLoading(false);
-      } else if (event === "SIGNED_OUT") {
+      } catch (err) {
+        console.error("Auth state change error:", err);
         setAuthState({ user: null, isAuthenticated: false });
-        setIsLoading(false);
-      } else if (event === "INITIAL_SESSION" && !session) {
-        // No stored session — just stop loading
+      } finally {
+        // Always stop loading — isLoading only matters for the initial load
         setIsLoading(false);
       }
     });

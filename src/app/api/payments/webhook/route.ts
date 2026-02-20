@@ -75,15 +75,84 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", payment.id);
 
-    // 5. If APPROVED and tournament not yet created, create it (recovery path)
-    if (newStatus === "approved" && !payment.tournament_id) {
-      await createTournamentFromPayment(payment);
+    // 5. If APPROVED, handle recovery paths
+    if (newStatus === "approved") {
+      const tournamentData = payment.tournament_data as Record<string, unknown> | null;
+
+      if (tournamentData?.type === "upgrade" && tournamentData.tournamentId) {
+        // Upgrade: update existing tournament tier/price
+        await handleTierUpgrade(payment, tournamentData);
+      } else if (!payment.tournament_id) {
+        // New tournament creation (recovery path)
+        await createTournamentFromPayment(payment);
+      }
     }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("Webhook error:", err);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
+async function handleTierUpgrade(
+  payment: Record<string, unknown>,
+  tournamentData: Record<string, unknown>
+) {
+  const tournamentId = tournamentData.tournamentId as string;
+
+  try {
+    // Update tournament tier and price
+    await supabaseAdmin
+      .from("tournaments")
+      .update({
+        tier: tournamentData.newTier,
+        price: tournamentData.newPrice,
+        plan: "paid",
+      })
+      .eq("id", tournamentId);
+
+    // Link payment to tournament
+    await supabaseAdmin
+      .from("payments")
+      .update({ tournament_id: tournamentId })
+      .eq("id", payment.id);
+
+    // Create and link new teams if needed (recovery path)
+    const teamsToAdd = (tournamentData.teamsToAdd as number) || 0;
+    const isIndividual = tournamentData.isIndividual as boolean;
+    const currentCount = (tournamentData.currentCount as number) || 0;
+
+    if (teamsToAdd > 0) {
+      const dbTeamIds: string[] = [];
+      for (let i = 0; i < teamsToAdd; i++) {
+        const { data: teamRow } = await supabaseAdmin
+          .from("teams")
+          .insert({
+            name: isIndividual
+              ? `Jugador ${currentCount + i + 1}`
+              : `Equipo ${currentCount + i + 1}`,
+          })
+          .select("id")
+          .single();
+        if (teamRow) dbTeamIds.push(teamRow.id);
+      }
+
+      if (dbTeamIds.length > 0) {
+        await supabaseAdmin.from("tournament_teams").insert(
+          dbTeamIds.map((teamId: string) => ({
+            tournament_id: tournamentId,
+            team_id: teamId,
+          }))
+        );
+      }
+    }
+
+    console.log(
+      `Tournament ${tournamentId} upgraded to ${tournamentData.newTier} from webhook for payment ${payment.id}`
+    );
+  } catch (err) {
+    console.error("Error upgrading tournament from webhook:", err);
   }
 }
 

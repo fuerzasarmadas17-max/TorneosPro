@@ -19,6 +19,7 @@ import { getSportInfo } from "@/data/sports";
 import { getSportCategory, Tournament, Sponsor } from "@/types";
 import { SponsorBanner } from "@/components/sponsors/sponsor-banner";
 import { SponsorForm } from "@/components/sponsors/sponsor-form";
+import { AddTeamsDialog } from "@/components/tournaments/add-teams-dialog";
 import { Download } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -55,17 +56,22 @@ function TeamsRosterSection({
   teamIds,
   canEdit,
   maxPlayers,
+  tournament,
 }: {
   teamIds: string[];
   canEdit: boolean;
   maxPlayers?: number;
+  tournament?: Tournament;
 }) {
   const { getTeamById } = useTournaments();
 
   return (
     <div className="space-y-4">
       {canEdit && (
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          {tournament && (
+            <AddTeamsDialog tournament={tournament} />
+          )}
           <Button variant="outline" size="sm" onClick={downloadPlayerTemplate}>
             <Download className="h-4 w-4 mr-2" />
             Descargar plantilla Excel
@@ -239,6 +245,7 @@ export function TournamentDetail({
                 teamIds={tournament.teamIds}
                 canEdit={canEdit}
                 maxPlayers={tournament.maxPlayersPerTeam}
+                tournament={tournament}
               />
             </TabsContent>
           )}
@@ -272,6 +279,7 @@ export function TournamentDetail({
                 teamIds={tournament.teamIds}
                 canEdit={canEdit}
                 maxPlayers={tournament.maxPlayersPerTeam}
+                tournament={tournament}
               />
             </TabsContent>
           )}
@@ -305,6 +313,7 @@ export function TournamentDetail({
                 teamIds={tournament.teamIds}
                 canEdit={canEdit}
                 maxPlayers={tournament.maxPlayersPerTeam}
+                tournament={tournament}
               />
             </TabsContent>
           )}
@@ -346,6 +355,7 @@ export function TournamentDetail({
                 teamIds={tournament.teamIds}
                 canEdit={canEdit}
                 maxPlayers={tournament.maxPlayersPerTeam}
+                tournament={tournament}
               />
             </TabsContent>
           )}
