@@ -23,6 +23,7 @@ export function BracketView({ tournament, canEdit }: BracketViewProps) {
             matches={round.matches}
             canEdit={canEdit}
             tournament={tournament}
+            isDoubleLeg={round.isDoubleLeg}
           />
         ))}
       </div>

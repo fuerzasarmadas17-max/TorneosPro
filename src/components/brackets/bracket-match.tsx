@@ -8,11 +8,12 @@ import { cn } from "@/lib/utils";
 
 interface BracketMatchProps {
   match: Match;
+  vueltaMatch?: Match;
   canEdit: boolean;
   tournament?: Tournament;
 }
 
-export function BracketMatch({ match, canEdit, tournament }: BracketMatchProps) {
+export function BracketMatch({ match, vueltaMatch, canEdit, tournament }: BracketMatchProps) {
   const { getTeamById, updateMatchDetails } = useTournaments();
 
   const homeTeam = match.homeTeamId ? getTeamById(match.homeTeamId) ?? null : null;
@@ -36,7 +37,6 @@ export function BracketMatch({ match, canEdit, tournament }: BracketMatchProps) 
   const availableTeams = tournament
     ? tournament.teamIds.filter((id) => {
         if (assignedInBracket.has(id)) return false;
-        // Allow the teams already in this specific match
         if (id === match.homeTeamId || id === match.awayTeamId) return true;
         return true;
       })
@@ -51,6 +51,77 @@ export function BracketMatch({ match, canEdit, tournament }: BracketMatchProps) 
     }
   };
 
+  // Double-leg: show both ida and vuelta scores
+  if (vueltaMatch) {
+    const idaHomeScore = match.homeScore;
+    const idaAwayScore = match.awayScore;
+    const vltHomeScore = vueltaMatch.homeScore;
+    const vltAwayScore = vueltaMatch.awayScore;
+
+    // In vuelta, home/away are swapped. So vuelta.home = match.away, vuelta.away = match.home
+    // For aggregate: homeTeam total = ida home + vuelta away, awayTeam total = ida away + vuelta home
+    const bothCompleted = match.status === "completed" && vueltaMatch.status === "completed";
+    const winner = vueltaMatch.winnerId;
+
+    // Determine which match to link to (the one that needs a result)
+    const linkMatch = match.status !== "completed" ? match : vueltaMatch;
+    const canLink = canEdit && (linkMatch.status === "scheduled" || linkMatch.status === "unscheduled") && linkMatch.homeTeamId && linkMatch.awayTeamId;
+
+    const content = (
+      <Card className={cn(
+        "w-[220px] overflow-hidden text-sm",
+        bothCompleted && "border-muted",
+        canLink && "hover:border-primary cursor-pointer"
+      )}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-3 py-1 bg-muted/50 text-[10px] text-muted-foreground font-medium">
+          <span className="truncate">Ida / Vta</span>
+          {bothCompleted && <span className="text-[10px]">Global</span>}
+        </div>
+        {/* Home team (ida perspective) */}
+        <div className={cn(
+          "flex items-center justify-between px-3 py-1.5 border-b",
+          winner && winner === match.homeTeamId && "bg-primary/5 font-semibold"
+        )}>
+          <span className="truncate mr-2 flex-1">{homeTeam?.name || "TBD"}</span>
+          <div className="flex items-center gap-1.5 tabular-nums text-xs">
+            <span>{idaHomeScore !== null ? idaHomeScore : "-"}</span>
+            <span className="text-muted-foreground">/</span>
+            <span>{vltAwayScore !== null ? vltAwayScore : "-"}</span>
+            {bothCompleted && idaHomeScore !== null && vltAwayScore !== null && (
+              <span className="ml-1 font-bold text-xs">({idaHomeScore + vltAwayScore})</span>
+            )}
+          </div>
+        </div>
+        {/* Away team (ida perspective) */}
+        <div className={cn(
+          "flex items-center justify-between px-3 py-1.5",
+          winner && winner === match.awayTeamId && "bg-primary/5 font-semibold"
+        )}>
+          <span className="truncate mr-2 flex-1">{awayTeam?.name || "TBD"}</span>
+          <div className="flex items-center gap-1.5 tabular-nums text-xs">
+            <span>{idaAwayScore !== null ? idaAwayScore : "-"}</span>
+            <span className="text-muted-foreground">/</span>
+            <span>{vltHomeScore !== null ? vltHomeScore : "-"}</span>
+            {bothCompleted && idaAwayScore !== null && vltHomeScore !== null && (
+              <span className="ml-1 font-bold text-xs">({idaAwayScore + vltHomeScore})</span>
+            )}
+          </div>
+        </div>
+      </Card>
+    );
+
+    if (canLink) {
+      return (
+        <Link href={`/tournaments/${linkMatch.tournamentId}/matches/${linkMatch.id}`}>
+          {content}
+        </Link>
+      );
+    }
+    return content;
+  }
+
+  // Single-leg rendering (original)
   const renderSlot = (
     team: { name: string; primaryColor?: string; secondaryColor?: string } | null,
     teamId: string | null,

@@ -725,19 +725,40 @@ function MatchDisplay({
 // --- Empty state for Elimination ---
 
 function EliminationEmptySchedule({ tournament }: { tournament: Tournament }) {
-  const { setTournamentMatches } = useTournaments();
+  const { setTournamentMatches, updateTournamentProps } = useTournaments();
+  const [showIdaVueltaDialog, setShowIdaVueltaDialog] = useState(false);
+  const [pendingMode, setPendingMode] = useState<"random" | "manual">("random");
 
-  const handleRandom = () => {
-    const shuffledTeams = shuffleArray(tournament.teamIds);
-    const matches = generateEliminationMatches(shuffledTeams, tournament.id);
-    setTournamentMatches(tournament.id, matches);
-    toast.success("Bracket generado aleatoriamente");
+  const isPaid = tournament.plan === "paid";
+
+  const numRounds = Math.log2(tournament.teamIds.length);
+  const jornadasIda = numRounds;
+  const jornadasIdaVuelta = numRounds * 2;
+
+  const handleGenerate = (doubleRoundRobin: boolean) => {
+    setShowIdaVueltaDialog(false);
+    if (pendingMode === "random") {
+      const shuffledTeams = shuffleArray(tournament.teamIds);
+      const matches = generateEliminationMatches(shuffledTeams, tournament.id, doubleRoundRobin);
+      setTournamentMatches(tournament.id, matches);
+      toast.success("Bracket generado aleatoriamente");
+    } else {
+      const matches = generateEmptyEliminationBracket(tournament.teamIds.length, tournament.id, doubleRoundRobin);
+      setTournamentMatches(tournament.id, matches);
+      toast.success("Bracket creado. Asigna los equipos en la vista de bracket.");
+    }
+    updateTournamentProps(tournament.id, { doubleRoundRobin });
   };
 
-  const handleManual = () => {
-    const matches = generateEmptyEliminationBracket(tournament.teamIds.length, tournament.id);
-    setTournamentMatches(tournament.id, matches);
-    toast.success("Bracket creado. Asigna los equipos en la vista de bracket.");
+  const handleClick = (mode: "random" | "manual") => {
+    if (isPaid) {
+      setPendingMode(mode);
+      setShowIdaVueltaDialog(true);
+    } else {
+      // Free: only ida, no dialog
+      setPendingMode(mode);
+      handleGenerate(false);
+    }
   };
 
   return (
@@ -750,15 +771,52 @@ function EliminationEmptySchedule({ tournament }: { tournament: Tournament }) {
         </p>
       </div>
       <div className="flex gap-3">
-        <Button onClick={handleRandom} className="gap-2">
+        <Button onClick={() => handleClick("random")} className="gap-2">
           <Shuffle className="h-4 w-4" />
           Aleatorio
         </Button>
-        <Button variant="outline" onClick={handleManual} className="gap-2">
+        <Button variant="outline" onClick={() => handleClick("manual")} className="gap-2">
           <LayoutList className="h-4 w-4" />
           Asignar Equipos
         </Button>
       </div>
+
+      <Dialog open={showIdaVueltaDialog} onOpenChange={setShowIdaVueltaDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Tipo de Bracket</DialogTitle>
+            <DialogDescription>
+              Selecciona el formato de enfrentamientos
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <Button
+              variant="outline"
+              onClick={() => handleGenerate(false)}
+              className="justify-start h-auto py-3"
+            >
+              <div className="text-left">
+                <div className="font-medium">Ida</div>
+                <div className="text-xs text-muted-foreground font-normal">
+                  Un partido por ronda ({jornadasIda} rondas)
+                </div>
+              </div>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleGenerate(true)}
+              className="justify-start h-auto py-3"
+            >
+              <div className="text-left">
+                <div className="font-medium">Ida y Vuelta</div>
+                <div className="text-xs text-muted-foreground font-normal">
+                  Dos partidos por ronda ({jornadasIdaVuelta} jornadas)
+                </div>
+              </div>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -832,7 +890,13 @@ function RoundRobinEmptySchedule({
         </p>
       </div>
       <div className="flex gap-3">
-        <Button onClick={() => setShowIdaVueltaDialog(true)} className="gap-2">
+        <Button onClick={() => {
+          if (tournament.plan === "paid") {
+            setShowIdaVueltaDialog(true);
+          } else {
+            handleGenerate(false);
+          }
+        }} className="gap-2">
           <Shuffle className="h-4 w-4" />
           Generar Aleatorio
         </Button>

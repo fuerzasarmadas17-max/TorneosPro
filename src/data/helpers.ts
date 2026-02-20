@@ -126,15 +126,16 @@ export function getPendingMatchups(
 
 export function generateEmptyEliminationBracket(
   teamCount: number,
-  tournamentId: string
+  tournamentId: string,
+  doubleRoundRobin?: boolean
 ): Match[] {
   const numRounds = Math.log2(teamCount);
-  const matches: Match[] = [];
+  const singleLeg: Match[] = [];
   let matchCounter = 1;
 
   // Round 1
   for (let i = 0; i < teamCount / 2; i++) {
-    matches.push({
+    singleLeg.push({
       id: `${tournamentId}-m-${matchCounter}`,
       tournamentId,
       round: 1,
@@ -158,7 +159,7 @@ export function generateEmptyEliminationBracket(
 
     for (let i = 0; i < currentRoundSize; i++) {
       const matchId = `${tournamentId}-m-${matchCounter}`;
-      matches.push({
+      singleLeg.push({
         id: matchId,
         tournamentId,
         round,
@@ -172,15 +173,16 @@ export function generateEmptyEliminationBracket(
         nextMatchId: null,
       });
 
-      matches[prevRoundStart + i * 2].nextMatchId = matchId;
-      matches[prevRoundStart + i * 2 + 1].nextMatchId = matchId;
+      singleLeg[prevRoundStart + i * 2].nextMatchId = matchId;
+      singleLeg[prevRoundStart + i * 2 + 1].nextMatchId = matchId;
       matchCounter++;
     }
     prevRoundStart += prevRoundSize;
     prevRoundSize = currentRoundSize;
   }
 
-  return matches;
+  if (!doubleRoundRobin) return singleLeg;
+  return toDoubleLegElimination(singleLeg, tournamentId, matchCounter);
 }
 
 // generateEmptyRoundRobinSlots and generateEmptyGroupPlayoffMatches removed
@@ -188,16 +190,17 @@ export function generateEmptyEliminationBracket(
 
 export function generateEliminationMatches(
   teamIds: string[],
-  tournamentId: string
+  tournamentId: string,
+  doubleRoundRobin?: boolean
 ): Match[] {
   const numTeams = teamIds.length;
   const numRounds = Math.log2(numTeams);
-  const matches: Match[] = [];
+  const singleLeg: Match[] = [];
   let matchCounter = 1;
 
   // Round 1: pair up all teams
   for (let i = 0; i < numTeams; i += 2) {
-    matches.push({
+    singleLeg.push({
       id: `${tournamentId}-m-${matchCounter}`,
       tournamentId,
       round: 1,
@@ -219,11 +222,10 @@ export function generateEliminationMatches(
 
   for (let round = 2; round <= numRounds; round++) {
     const currentRoundSize = prevRoundSize / 2;
-    const roundStartIdx = matches.length;
 
     for (let i = 0; i < currentRoundSize; i++) {
       const matchId = `${tournamentId}-m-${matchCounter}`;
-      matches.push({
+      singleLeg.push({
         id: matchId,
         tournamentId,
         round,
@@ -240,8 +242,8 @@ export function generateEliminationMatches(
       // Link the two feeder matches to this match
       const feederIdx1 = prevRoundStart + i * 2;
       const feederIdx2 = prevRoundStart + i * 2 + 1;
-      matches[feederIdx1].nextMatchId = matchId;
-      matches[feederIdx2].nextMatchId = matchId;
+      singleLeg[feederIdx1].nextMatchId = matchId;
+      singleLeg[feederIdx2].nextMatchId = matchId;
 
       matchCounter++;
     }
@@ -249,7 +251,49 @@ export function generateEliminationMatches(
     prevRoundSize = currentRoundSize;
   }
 
-  return matches;
+  if (!doubleRoundRobin) return singleLeg;
+  return toDoubleLegElimination(singleLeg, tournamentId, matchCounter);
+}
+
+/**
+ * Transform single-leg elimination bracket to double-leg (ida y vuelta).
+ * Ida matches go to odd rounds (1,3,5...), vuelta to even rounds (2,4,6...).
+ * Only vuelta matches carry nextMatchId to the ida of the next bracket round.
+ */
+function toDoubleLegElimination(
+  singleLeg: Match[],
+  tournamentId: string,
+  nextCounter: number
+): Match[] {
+  const result: Match[] = [];
+  let vueltaCounter = nextCounter;
+
+  for (const match of singleLeg) {
+    // Ida: same ID, remapped round (1→1, 2→3, 3→5...), no nextMatchId
+    result.push({
+      ...match,
+      round: match.round * 2 - 1,
+      nextMatchId: null,
+    });
+
+    // Vuelta: new ID, even round (1→2, 2→4, 3→6...), swapped teams, inherits nextMatchId
+    result.push({
+      id: `${tournamentId}-m-${vueltaCounter}`,
+      tournamentId,
+      round: match.round * 2,
+      matchNumber: vueltaCounter,
+      homeTeamId: match.awayTeamId,
+      awayTeamId: match.homeTeamId,
+      homeScore: null,
+      awayScore: null,
+      winnerId: null,
+      status: "unscheduled",
+      nextMatchId: match.nextMatchId,
+    });
+    vueltaCounter++;
+  }
+
+  return result;
 }
 
 export function generateRoundRobinMatches(
