@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BracketView } from "@/components/brackets/bracket-view";
@@ -14,6 +15,14 @@ import { TournamentStats } from "@/components/standings/tournament-stats";
 import { TeamRosterDialog } from "@/components/tournaments/team-roster-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useTournaments } from "@/context/tournament-context";
 import { getSportInfo } from "@/data/sports";
 import { getSportCategory, Tournament, Sponsor } from "@/types";
@@ -41,15 +50,113 @@ const formatLabels: Record<string, string> = {
   "group-playoff": "Fase de Grupos + Playoffs",
 };
 
-function downloadPlayerTemplate() {
-  const ws = XLSX.utils.aoa_to_sheet([
-    ["Nombre", "Apellido 1", "Apellido 2", "Edad"],
-    ["", "", "", ""],
-  ]);
-  ws["!cols"] = [{ wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 10 }];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Jugadores");
-  XLSX.writeFile(wb, "Plantilla_Jugadores.xlsx");
+const OPTIONAL_COLUMNS = [
+  { key: "fechaNacimiento", label: "Fecha de nacimiento", width: 18 },
+  { key: "documento", label: "Numero de documento", width: 22 },
+  { key: "residencia", label: "Lugar de residencia", width: 22 },
+  { key: "eps", label: "EPS", width: 15 },
+] as const;
+
+function TemplateDownloadDialog({ teamIds }: { teamIds: string[] }) {
+  const { getTeamById } = useTournaments();
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggle = (key: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleDownload = () => {
+    const wb = XLSX.utils.book_new();
+    const baseHeaders = ["Nombre", "Apellido 1", "Apellido 2"];
+    const extras = OPTIONAL_COLUMNS.filter((c) => selected.has(c.key));
+    const allHeaders = [...baseHeaders, ...extras.map((c) => c.label)];
+
+    for (const teamId of teamIds) {
+      const team = getTeamById(teamId);
+      if (!team) continue;
+      const sheetData: (string | undefined)[][] = [
+        ["Nombre del equipo", "Coloca aqui el nombre del equipo"],
+        allHeaders,
+        Array(allHeaders.length).fill(""),
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(sheetData);
+      ws["!cols"] = allHeaders.map((h, i) => ({
+        wch: i < 3 ? 20 : extras.find((c) => c.label === h)?.width || 15,
+      }));
+      const sheetName = team.name
+        .substring(0, 31)
+        .replace(/[\\/*?[\]:]/g, "");
+      XLSX.utils.book_append_sheet(wb, ws, sheetName || `Equipo ${teamId.slice(0, 6)}`);
+    }
+
+    XLSX.writeFile(wb, "Plantilla_Jugadores.xlsx");
+    setOpen(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Download className="h-4 w-4 mr-2" />
+          Descargar plantilla Excel
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Configurar plantilla</DialogTitle>
+          <DialogDescription>
+            Elige los campos adicionales para la plantilla de jugadores. Se
+            generara una hoja por equipo.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm font-medium mb-2">Campos incluidos siempre:</p>
+            <div className="flex flex-wrap gap-2">
+              {["Nombre", "Apellido 1", "Apellido 2"].map((f) => (
+                <Badge key={f} variant="secondary">
+                  {f}
+                </Badge>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-medium mb-2">Campos opcionales:</p>
+            <div className="flex flex-wrap gap-2">
+              {OPTIONAL_COLUMNS.map((col) => (
+                <Button
+                  key={col.key}
+                  variant={selected.has(col.key) ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => toggle(col.key)}
+                >
+                  {col.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-2 pt-2">
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={() => setOpen(false)}
+          >
+            Cancelar
+          </Button>
+          <Button className="flex-1" onClick={handleDownload}>
+            Descargar
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function TeamsRosterSection({
@@ -72,10 +179,7 @@ function TeamsRosterSection({
           {tournament && (
             <AddTeamsDialog tournament={tournament} />
           )}
-          <Button variant="outline" size="sm" onClick={downloadPlayerTemplate}>
-            <Download className="h-4 w-4 mr-2" />
-            Descargar plantilla Excel
-          </Button>
+          <TemplateDownloadDialog teamIds={teamIds} />
         </div>
       )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -64,25 +64,52 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
         const data = new Uint8Array(evt.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: "array" });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+
+        // Detect if first row is team name header ("Nombre del equipo" or single value)
+        const firstCell = sheet[XLSX.utils.encode_cell({ r: 0, c: 0 })] as { v?: unknown } | undefined;
+        const firstVal = firstCell?.v ? String(firstCell.v).trim().toLowerCase() : "";
+        const startRow = firstVal === "nombre del equipo" || firstVal === "" ? 1 : 0;
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { range: startRow });
 
         const imported: PlayerEntry[] = [];
         for (const row of rows) {
           // Try common column name variations
-          const nombre = String(row["Nombre"] || row["nombre"] || row["NOMBRE"] || "").trim();
-          const apellido1 = String(row["Apellido 1"] || row["apellido 1"] || row["Apellido1"] || row["apellido1"] || row["APELLIDO 1"] || row["APELLIDO1"] || "").trim();
-          const apellido2 = String(row["Apellido 2"] || row["apellido 2"] || row["Apellido2"] || row["apellido2"] || row["APELLIDO 2"] || row["APELLIDO2"] || "").trim();
-          const edadRaw = row["Edad"] || row["edad"] || row["EDAD"];
-          const edad = edadRaw ? String(edadRaw).trim() : "";
+          const capitalize = (s: string) =>
+            s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+
+          const nombre = capitalize(String(row["Nombre"] || row["nombre"] || row["NOMBRE"] || "").trim());
+          const apellido1 = capitalize(String(row["Apellido 1"] || row["apellido 1"] || row["Apellido1"] || row["apellido1"] || row["APELLIDO 1"] || row["APELLIDO1"] || "").trim());
+          const apellido2 = capitalize(String(row["Apellido 2"] || row["apellido 2"] || row["Apellido2"] || row["apellido2"] || row["APELLIDO 2"] || row["APELLIDO2"] || "").trim());
 
           if (!nombre) continue;
+
+          // Age: try Fecha de nacimiento first, then fallback to Edad
+          let edad = "";
+          const fechaNacRaw = row["Fecha de nacimiento"] || row["fecha de nacimiento"] || row["FECHA DE NACIMIENTO"];
+          if (fechaNacRaw) {
+            if (typeof fechaNacRaw === "number") {
+              // Excel date serial number
+              const parsed = XLSX.SSF.parse_date_code(fechaNacRaw);
+              if (parsed.y) {
+                edad = String(new Date().getFullYear() - parsed.y);
+              }
+            } else {
+              const parsed = new Date(String(fechaNacRaw));
+              if (!isNaN(parsed.getTime())) {
+                edad = String(new Date().getFullYear() - parsed.getFullYear());
+              }
+            }
+          } else {
+            const edadRaw = row["Edad"] || row["edad"] || row["EDAD"];
+            edad = edadRaw ? String(edadRaw).trim() : "";
+          }
 
           const fullName = [nombre, apellido1, apellido2].filter(Boolean).join(" ");
           imported.push({ name: fullName, age: edad });
         }
 
         if (imported.length === 0) {
-          toast.error("No se encontraron jugadores en el archivo. Verifica las columnas: Nombre, Apellido 1, Apellido 2, Edad");
+          toast.error("No se encontraron jugadores. Verifica que el archivo tenga columnas: Nombre, Apellido 1, Apellido 2");
           return;
         }
 
@@ -269,7 +296,7 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              El Excel debe tener columnas: Nombre, Apellido 1, Apellido 2, Edad (opcional)
+              El Excel debe tener columnas: Nombre, Apellido 1, Apellido 2. Opcionalmente: Fecha de nacimiento, etc.
             </p>
           </div>
         </div>
