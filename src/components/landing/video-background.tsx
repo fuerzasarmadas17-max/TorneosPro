@@ -87,7 +87,7 @@ export function VideoBackground() {
   }, []);
 
   return (
-    <div className="absolute inset-0 overflow-hidden bg-black">
+    <div className="absolute inset-0 overflow-hidden bg-black pointer-events-none">
       <video
         ref={videoARef}
         className="absolute inset-0 w-full h-full object-cover transition-opacity duration-1000"

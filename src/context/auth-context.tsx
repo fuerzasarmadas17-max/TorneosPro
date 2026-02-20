@@ -92,11 +92,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userData = await loadUserData(session.user.id);
         if (userData) {
           setAuthState({ user: userData, isAuthenticated: true });
-        } else {
-          // loadUserData failed (RLS, user deleted, etc.) — clean up
+        } else if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") {
+          // Stale/corrupt stored session — clean up
           await supabase.auth.signOut();
           setAuthState({ user: null, isAuthenticated: false });
         }
+        // For SIGNED_IN, the login() function handles its own errors
         setIsLoading(false);
       } else if (event === "SIGNED_OUT") {
         setAuthState({ user: null, isAuthenticated: false });
