@@ -22,7 +22,6 @@ import * as XLSX from "xlsx";
 
 interface TeamRosterDialogProps {
   team: Team;
-  maxPlayers?: number;
 }
 
 interface PlayerEntry {
@@ -30,7 +29,7 @@ interface PlayerEntry {
   age: string;
 }
 
-export function TeamRosterDialog({ team, maxPlayers }: TeamRosterDialogProps) {
+export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
   const { updateTeamPlayers, updateTeam } = useTournaments();
   const [open, setOpen] = useState(false);
   const [teamName, setTeamName] = useState(team.name);
@@ -42,10 +41,6 @@ export function TeamRosterDialog({ team, maxPlayers }: TeamRosterDialogProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addPlayer = () => {
-    if (maxPlayers && playerEntries.length >= maxPlayers) {
-      toast.error(`Maximo ${maxPlayers} jugadores por equipo`);
-      return;
-    }
     setPlayerEntries([...playerEntries, { name: "", age: "" }]);
   };
 
@@ -91,20 +86,8 @@ export function TeamRosterDialog({ team, maxPlayers }: TeamRosterDialogProps) {
           return;
         }
 
-        // Check max players limit
-        const total = playerEntries.length + imported.length;
-        if (maxPlayers && total > maxPlayers) {
-          const canAdd = maxPlayers - playerEntries.length;
-          if (canAdd <= 0) {
-            toast.error(`Ya tienes el maximo de ${maxPlayers} jugadores`);
-            return;
-          }
-          setPlayerEntries([...playerEntries, ...imported.slice(0, canAdd)]);
-          toast.warning(`Se importaron ${canAdd} de ${imported.length} jugadores (limite: ${maxPlayers})`);
-        } else {
-          setPlayerEntries([...playerEntries, ...imported]);
-          toast.success(`${imported.length} jugadores importados`);
-        }
+        setPlayerEntries([...playerEntries, ...imported]);
+        toast.success(`${imported.length} jugadores importados`);
       } catch {
         toast.error("Error al leer el archivo Excel");
       }
@@ -220,7 +203,7 @@ export function TeamRosterDialog({ team, maxPlayers }: TeamRosterDialogProps) {
           {/* Players */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Jugadores {maxPlayers ? `(max ${maxPlayers})` : ""}</Label>
+              <Label>Jugadores</Label>
               <span className="text-xs text-muted-foreground">
                 {playerEntries.filter((p) => p.name.trim()).length} registrados
               </span>

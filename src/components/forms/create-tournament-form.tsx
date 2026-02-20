@@ -53,7 +53,6 @@ export function CreateTournamentForm() {
   const [groups, setGroups] = useState<GroupEntry[]>([]);
   const [advanceCount, setAdvanceCount] = useState<string>("2");
   const [enabledStats, setEnabledStats] = useState<MatchEventType[]>([]);
-  const [maxPlayers, setMaxPlayers] = useState<string>("");
   const [bestOf, setBestOf] = useState<3 | 5>(3);
   const [hasPhase2, setHasPhase2] = useState(false);
   const [phase1AdvancePerGroup, setPhase1AdvancePerGroup] = useState("2");
@@ -73,15 +72,12 @@ export function CreateTournamentForm() {
   const hasGroups = groups.length > 0;
   const needsAdvance = format === "group-playoff" && hasGroups;
 
-  const maxPlayersNum = maxPlayers ? parseInt(maxPlayers) : NaN;
-
   const validations = {
     name: name.trim() !== "",
     sport: sport !== "",
     format: format !== "",
     startDate: startDate !== "",
     teamCount: !isNaN(teamCountNum) && teamCountNum >= 2,
-    maxPlayers: isIndividual || !maxPlayers || (!isNaN(maxPlayersNum) && maxPlayersNum >= 1),
     groups: !needsGroups || hasGroups,
     advance: !needsAdvance || (!isNaN(advanceNum) && advanceNum >= 2),
   };
@@ -92,7 +88,6 @@ export function CreateTournamentForm() {
   const freeTierCheck = checkFreeTier({
     format: (format || "elimination") as TournamentFormat,
     teamCount: teamCountNum || 0,
-    maxPlayersPerTeam: isIndividual ? 1 : (maxPlayersNum || 0),
     enabledStatsCount: enabledStats.length,
     groupCount: groups.length,
   });
@@ -122,7 +117,6 @@ export function CreateTournamentForm() {
       startDate,
       teamCount: count,
       isIndividual,
-      maxPlayersPerTeam: isIndividual ? 1 : (parseInt(maxPlayers) || null),
       enabledStats: enabledStats.length > 0 ? enabledStats : null,
       bestOf: sport === "volleyball" ? bestOf : null,
       groups: groups.map((g) => ({ name: g.name })),
@@ -302,7 +296,6 @@ export function CreateTournamentForm() {
         playoffConfig,
         groupStageComplete: false,
         enabledStats: enabledStats.length > 0 ? enabledStats : undefined,
-        maxPlayersPerTeam: maxPlayers ? parseInt(maxPlayers) : undefined,
         bestOf: sport === "volleyball" ? bestOf : undefined,
         price: plan === "paid" && priceInfo ? priceInfo.price : undefined,
         tier: plan === "paid" && priceInfo ? priceInfo.tier : undefined,
@@ -472,19 +465,6 @@ export function CreateTournamentForm() {
                   </p>
                 )}
               </div>
-              {!isIndividual && (
-                <div className="space-y-2">
-                  <Label htmlFor="maxPlayers">Max. jugadores por {participantSingular} (opcional)</Label>
-                  <Input
-                    id="maxPlayers"
-                    type="number"
-                    min="1"
-                    placeholder="Ej: 15"
-                    value={maxPlayers}
-                    onChange={(e) => setMaxPlayers(e.target.value)}
-                  />
-                </div>
-              )}
             </div>
           </div>
 
@@ -515,48 +495,6 @@ export function CreateTournamentForm() {
                   ? "Gana el primero en llegar a 2 sets"
                   : "Gana el primero en llegar a 3 sets"}
               </p>
-            </div>
-          )}
-
-          {/* Stats Selection */}
-          {sport && STAT_CATALOG.some((s) => s.sportDefaults.includes(sport as Sport)) && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-lg">Estadisticas del Torneo</h3>
-                <span className="text-xs text-muted-foreground">
-                  {enabledStats.length} seleccionadas
-                </span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Selecciona que eventos se pueden registrar en los partidos
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {STAT_CATALOG
-                  .filter((stat) => stat.sportDefaults.includes(sport as Sport))
-                  .map((stat) => {
-                    const isEnabled = enabledStats.includes(stat.key);
-                    return (
-                      <button
-                        key={stat.key}
-                        type="button"
-                        onClick={() =>
-                          setEnabledStats((prev) =>
-                            isEnabled
-                              ? prev.filter((s) => s !== stat.key)
-                              : [...prev, stat.key]
-                          )
-                        }
-                        className={`text-left text-sm px-3 py-2 rounded-lg border transition-colors ${
-                          isEnabled
-                            ? "bg-primary/10 border-primary text-primary font-medium"
-                            : "border-border hover:border-muted-foreground/50"
-                        }`}
-                      >
-                        {stat.label}
-                      </button>
-                    );
-                  })}
-              </div>
             </div>
           )}
 
@@ -632,72 +570,117 @@ export function CreateTournamentForm() {
                 </div>
               )}
 
-              {/* Multi-phase: Phase 2 configuration */}
-              {groups.length >= 1 && format === "group-playoff" && hasPhase2 && (
-                <div className="space-y-4 border-t pt-4">
-                  <h4 className="font-semibold text-sm">Fase 1 → Fase 2</h4>
-                  <div className="space-y-2">
-                    <Label>Clasifican por grupo (Fase 1)</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={Math.floor((parseInt(teamCount) || 2) / Math.max(groups.length, 1))}
-                      value={phase1AdvancePerGroup}
-                      onChange={(e) => setPhase1AdvancePerGroup(e.target.value)}
-                    />
-                    {groups.length > 0 && (
+              {/* Multi-phase: visual flow diagram */}
+              {groups.length >= 1 && format === "group-playoff" && hasPhase2 && (() => {
+                const label = participantLabel.toLowerCase();
+                const p1Advance = parseInt(phase1AdvancePerGroup) || 0;
+                const p1Total = p1Advance * groups.length;
+                const p2Groups = parseInt(phase2GroupCount) || 1;
+                const p2PerGroup = Math.floor(p1Total / p2Groups);
+                const p2Advance = parseInt(phase2AdvancePerGroup) || 0;
+                const playoffTotal = p2Advance * p2Groups;
+                let bracket = 1;
+                while (bracket < playoffTotal) bracket *= 2;
+                const byes = bracket - playoffTotal;
+
+                // Group name lists
+                const p1Names = groups.map((_, i) => GROUP_LETTERS[i] || `${i + 1}`).join(", ");
+                const p2Names = Array.from({ length: p2Groups }, (_, i) => GROUP_LETTERS[groups.length + i] || `${groups.length + i + 1}`).join(", ");
+
+                return (
+                  <div className="space-y-3 border rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold">Estructura del torneo</h4>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive h-7 text-xs"
+                        onClick={() => setHasPhase2(false)}
+                      >
+                        <Trash2 className="h-3 w-3 mr-1" />
+                        Quitar
+                      </Button>
+                    </div>
+
+                    {/* Fase 1 */}
+                    <div className="rounded-md bg-muted/40 p-3 space-y-2">
+                      <p className="text-sm font-medium">Fase 1 — Grupos {p1Names}</p>
                       <p className="text-xs text-muted-foreground">
-                        {parseInt(phase1AdvancePerGroup) * groups.length} {participantLabel.toLowerCase()} pasan a Fase 2
+                        Todos contra todos dentro de cada grupo.
                       </p>
-                    )}
+                      <div className="flex items-center gap-2 pt-1">
+                        <span className="text-sm">Los mejores</span>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={Math.floor((parseInt(teamCount) || 2) / Math.max(groups.length, 1))}
+                          value={phase1AdvancePerGroup}
+                          onChange={(e) => setPhase1AdvancePerGroup(e.target.value)}
+                          className="w-14 h-8 text-center text-sm"
+                        />
+                        <span className="text-sm">de cada grupo avanzan</span>
+                      </div>
+                    </div>
+
+                    {/* Connector */}
+                    <div className="flex flex-col items-center gap-0.5 text-muted-foreground">
+                      <div className="w-px h-2 bg-border" />
+                      <span className="text-xs font-medium">{p1Total} {label} pasan</span>
+                      <div className="w-px h-2 bg-border" />
+                    </div>
+
+                    {/* Fase 2 */}
+                    <div className="rounded-md bg-muted/40 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Fase 2 —</span>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={4}
+                          value={phase2GroupCount}
+                          onChange={(e) => setPhase2GroupCount(e.target.value)}
+                          className="w-14 h-8 text-center text-sm"
+                        />
+                        <span className="text-sm font-medium">
+                          {p2Groups === 1 ? "grupo" : "grupos"} nuevos ({p2Names})
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Se arman {p2Groups === 1 ? "1 grupo nuevo" : `${p2Groups} grupos nuevos`} de {p2PerGroup} {label} cada uno. Vuelven a jugar todos contra todos.
+                      </p>
+                      <div className="flex items-center gap-2 pt-1">
+                        <span className="text-sm">Los mejores</span>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={p2PerGroup || 1}
+                          value={phase2AdvancePerGroup}
+                          onChange={(e) => setPhase2AdvancePerGroup(e.target.value)}
+                          className="w-14 h-8 text-center text-sm"
+                        />
+                        <span className="text-sm">de cada grupo avanzan</span>
+                      </div>
+                    </div>
+
+                    {/* Connector */}
+                    <div className="flex flex-col items-center gap-0.5 text-muted-foreground">
+                      <div className="w-px h-2 bg-border" />
+                      <span className="text-xs font-medium">{playoffTotal} {label} pasan</span>
+                      <div className="w-px h-2 bg-border" />
+                    </div>
+
+                    {/* Playoffs */}
+                    <div className="rounded-md bg-muted/40 p-3">
+                      <p className="text-sm font-medium">Playoffs — Eliminacion directa</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {playoffTotal} {label} se enfrentan en eliminacion directa
+                        {byes > 0 ? `. ${byes} ${label} avanzan directo a la siguiente ronda (byes).` : " hasta definir al campeon."}
+                      </p>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Grupos en Fase 2</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={4}
-                      value={phase2GroupCount}
-                      onChange={(e) => setPhase2GroupCount(e.target.value)}
-                    />
-                  </div>
-                  <h4 className="font-semibold text-sm">Fase 2 → Playoffs</h4>
-                  <div className="space-y-2">
-                    <Label>Clasifican por grupo (Fase 2)</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={Math.floor((parseInt(phase1AdvancePerGroup) * groups.length) / Math.max(parseInt(phase2GroupCount), 1))}
-                      value={phase2AdvancePerGroup}
-                      onChange={(e) => setPhase2AdvancePerGroup(e.target.value)}
-                    />
-                    {(() => {
-                      const total = parseInt(phase2AdvancePerGroup) * parseInt(phase2GroupCount);
-                      if (!isNaN(total) && total > 0) {
-                        let p = 1;
-                        while (p < total) p *= 2;
-                        return (
-                          <p className="text-xs text-muted-foreground">
-                            {total} {participantLabel.toLowerCase()} pasan a playoffs
-                            {p !== total ? ` (${p - total} bye${p - total > 1 ? "s" : ""})` : ""}
-                          </p>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive"
-                    onClick={() => setHasPhase2(false)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 mr-1" />
-                    Quitar Fase 2
-                  </Button>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Add Phase 2 button */}
               {groups.length >= 2 && format === "group-playoff" && !hasPhase2 && (
@@ -708,9 +691,51 @@ export function CreateTournamentForm() {
                   onClick={() => setHasPhase2(true)}
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Agregar Fase de Grupos
+                  Agregar otra Fase de Grupos
                 </Button>
               )}
+            </div>
+          )}
+
+          {/* Stats Selection — at the end */}
+          {sport && STAT_CATALOG.some((s) => s.sportDefaults.includes(sport as Sport)) && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-lg">Estadisticas del Torneo</h3>
+                <span className="text-xs text-muted-foreground">
+                  {enabledStats.length} seleccionadas
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Selecciona que eventos se pueden registrar en los partidos
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {STAT_CATALOG
+                  .filter((stat) => stat.sportDefaults.includes(sport as Sport))
+                  .map((stat) => {
+                    const isEnabled = enabledStats.includes(stat.key);
+                    return (
+                      <button
+                        key={stat.key}
+                        type="button"
+                        onClick={() =>
+                          setEnabledStats((prev) =>
+                            isEnabled
+                              ? prev.filter((s) => s !== stat.key)
+                              : [...prev, stat.key]
+                          )
+                        }
+                        className={`text-left text-sm px-3 py-2 rounded-lg border transition-colors ${
+                          isEnabled
+                            ? "bg-primary/10 border-primary text-primary font-medium"
+                            : "border-border hover:border-muted-foreground/50"
+                        }`}
+                      >
+                        {stat.label}
+                      </button>
+                    );
+                  })}
+              </div>
             </div>
           )}
         </CardContent>

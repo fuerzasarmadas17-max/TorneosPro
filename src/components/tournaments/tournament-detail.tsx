@@ -55,12 +55,12 @@ function downloadPlayerTemplate() {
 function TeamsRosterSection({
   teamIds,
   canEdit,
-  maxPlayers,
+
   tournament,
 }: {
   teamIds: string[];
   canEdit: boolean;
-  maxPlayers?: number;
+
   tournament?: Tournament;
 }) {
   const { getTeamById } = useTournaments();
@@ -106,7 +106,7 @@ function TeamsRosterSection({
                     <CardTitle className="text-base">{team.name}</CardTitle>
                   </div>
                   {canEdit && (
-                    <TeamRosterDialog team={team} maxPlayers={maxPlayers} />
+                    <TeamRosterDialog team={team} />
                   )}
                 </div>
               </CardHeader>
@@ -251,7 +251,7 @@ export function TournamentDetail({
               <TeamsRosterSection
                 teamIds={tournament.teamIds}
                 canEdit={canEdit}
-                maxPlayers={tournament.maxPlayersPerTeam}
+
                 tournament={tournament}
               />
             </TabsContent>
@@ -290,7 +290,7 @@ export function TournamentDetail({
               <TeamsRosterSection
                 teamIds={tournament.teamIds}
                 canEdit={canEdit}
-                maxPlayers={tournament.maxPlayersPerTeam}
+
                 tournament={tournament}
               />
             </TabsContent>
@@ -324,7 +324,7 @@ export function TournamentDetail({
               <TeamsRosterSection
                 teamIds={tournament.teamIds}
                 canEdit={canEdit}
-                maxPlayers={tournament.maxPlayersPerTeam}
+
                 tournament={tournament}
               />
             </TabsContent>
@@ -358,7 +358,7 @@ export function TournamentDetail({
               <TeamsRosterSection
                 teamIds={tournament.teamIds}
                 canEdit={canEdit}
-                maxPlayers={tournament.maxPlayersPerTeam}
+
                 tournament={tournament}
               />
             </TabsContent>
@@ -400,7 +400,7 @@ export function TournamentDetail({
               <TeamsRosterSection
                 teamIds={tournament.teamIds}
                 canEdit={canEdit}
-                maxPlayers={tournament.maxPlayersPerTeam}
+
                 tournament={tournament}
               />
             </TabsContent>

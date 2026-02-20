@@ -180,7 +180,7 @@ async function createTournamentFromPayment(
         start_date: tournamentData.startDate,
         group_stage_complete: false,
         double_round_robin: false,
-        max_players_per_team: tournamentData.maxPlayersPerTeam || null,
+        max_players_per_team: null,
         best_of: tournamentData.bestOf || null,
         price: payment.amount_cop,
         tier: (tournamentData.tier as string) || null,

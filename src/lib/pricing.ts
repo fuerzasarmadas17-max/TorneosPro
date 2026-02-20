@@ -3,7 +3,6 @@ import { TournamentFormat, TournamentTier } from "@/types";
 // --- Free tier limits ---
 export const FREE_TIER_LIMITS = {
   maxTeams: 10,
-  maxPlayersPerTeam: 10,
   allowedFormats: ["elimination"] as TournamentFormat[],
   statsEnabled: false,
   maxGroups: 0,
@@ -18,7 +17,6 @@ export interface FreeTierCheck {
 export function checkFreeTier(input: {
   format: TournamentFormat;
   teamCount: number;
-  maxPlayersPerTeam: number;
   enabledStatsCount: number;
   groupCount: number;
 }): FreeTierCheck {
@@ -29,9 +27,6 @@ export function checkFreeTier(input: {
   }
   if (input.teamCount > FREE_TIER_LIMITS.maxTeams) {
     reasons.push(`Maximo ${FREE_TIER_LIMITS.maxTeams} equipos en plan gratis`);
-  }
-  if (input.maxPlayersPerTeam > FREE_TIER_LIMITS.maxPlayersPerTeam) {
-    reasons.push(`Maximo ${FREE_TIER_LIMITS.maxPlayersPerTeam} jugadores/equipo en plan gratis`);
   }
   if (input.enabledStatsCount > 0) {
     reasons.push("Estadisticas solo disponibles en plan pago");
