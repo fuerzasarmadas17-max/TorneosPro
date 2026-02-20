@@ -39,7 +39,6 @@ interface CouponRow {
 
 const TYPE_LABELS: Record<CouponType, string> = {
   percentage: "Descuento %",
-  free_months: "Meses Gratis",
   free_tournament: "Torneo Gratis",
 };
 
@@ -86,11 +85,7 @@ function CouponsContent() {
 
     const numValue = type === "free_tournament" ? 0 : parseInt(value);
     if (type !== "free_tournament" && (isNaN(numValue) || numValue < 1)) {
-      toast.error(
-        type === "percentage"
-          ? "Ingresa un porcentaje valido (1-100)"
-          : "Ingresa la cantidad de meses"
-      );
+      toast.error("Ingresa un porcentaje valido (1-100)");
       return;
     }
 
@@ -221,23 +216,20 @@ function CouponsContent() {
                   <SelectItem value="free_tournament">
                     Torneo Gratis
                   </SelectItem>
-                  <SelectItem value="free_months">Meses Gratis</SelectItem>
                   <SelectItem value="percentage">Descuento %</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            {type !== "free_tournament" && (
+            {type === "percentage" && (
               <div className="space-y-2">
-                <Label className="text-xs">
-                  {type === "percentage" ? "Porcentaje (%)" : "Meses"}
-                </Label>
+                <Label className="text-xs">Porcentaje (%)</Label>
                 <Input
                   type="number"
                   min="1"
-                  max={type === "percentage" ? 100 : 12}
+                  max={100}
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
-                  placeholder={type === "percentage" ? "50" : "2"}
+                  placeholder="50"
                   className="h-9"
                 />
               </div>
@@ -286,16 +278,12 @@ function CouponsContent() {
                     className={
                       coupon.type === "free_tournament"
                         ? "bg-green-500/10 text-green-600 border-green-500/20"
-                        : coupon.type === "free_months"
-                          ? "bg-blue-500/10 text-blue-600 border-blue-500/20"
-                          : "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                        : "bg-amber-500/10 text-amber-600 border-amber-500/20"
                     }
                   >
                     {coupon.type === "free_tournament"
                       ? "Torneo Gratis"
-                      : coupon.type === "free_months"
-                        ? `${coupon.value} mes${coupon.value > 1 ? "es" : ""} gratis`
-                        : `${coupon.value}% OFF`}
+                      : `${coupon.value}% OFF`}
                   </Badge>
                   {coupon.used_by ? (
                     <span className="text-xs text-muted-foreground truncate">

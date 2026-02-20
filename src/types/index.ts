@@ -230,7 +230,9 @@ export interface PlayoffConfig {
 
 export type TournamentPlan = "free" | "paid";
 
-export type CouponType = "percentage" | "free_months" | "free_tournament";
+export type TournamentTier = "basico" | "medio" | "pro" | "premium";
+
+export type CouponType = "percentage" | "free_tournament";
 
 export interface Coupon {
   id: string;
@@ -265,7 +267,8 @@ export interface Tournament {
   maxPlayersPerTeam?: number;
   bestOf?: 3 | 5;
   sponsors?: Sponsor[];
-  monthlyCost?: number;
+  price?: number;
+  tier?: TournamentTier;
   couponId?: string;
 }
 

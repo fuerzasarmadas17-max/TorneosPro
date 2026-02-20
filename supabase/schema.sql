@@ -151,7 +151,8 @@ CREATE TABLE tournaments (
   double_round_robin BOOLEAN NOT NULL DEFAULT false,
   max_players_per_team INT,
   best_of SMALLINT CHECK (best_of IN (3, 5)),
-  monthly_cost INT, -- COP
+  price INT, -- COP (pago unico por torneo)
+  tier TEXT, -- basico, medio, pro, premium
   enabled_stats match_event_type[] DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -491,7 +492,7 @@ CREATE TRIGGER tr_org_profiles_updated
 CREATE TABLE coupons (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code TEXT UNIQUE NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('percentage', 'free_months', 'free_tournament')),
+  type TEXT NOT NULL CHECK (type IN ('percentage', 'free_tournament')),
   value INT NOT NULL DEFAULT 0,
   used_by UUID REFERENCES users(id),
   used_at TIMESTAMPTZ,

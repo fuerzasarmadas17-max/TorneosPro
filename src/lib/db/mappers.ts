@@ -17,6 +17,7 @@ import {
   MatchStatus,
   MatchPhase,
   MatchEventType,
+  TournamentTier,
 } from "@/types";
 
 // ============================================================
@@ -130,7 +131,8 @@ export function mapTournament(row: Record<string, unknown>): Tournament {
     maxPlayersPerTeam: (row.max_players_per_team as number) ?? undefined,
     bestOf: (row.best_of as 3 | 5) ?? undefined,
     sponsors: sponsorsRows ? sponsorsRows.map(mapSponsor) : undefined,
-    monthlyCost: (row.monthly_cost as number) ?? undefined,
+    price: (row.price as number) ?? undefined,
+    tier: (row.tier as TournamentTier) ?? undefined,
     couponId: (row.coupon_id as string) ?? undefined,
   };
 }
@@ -217,7 +219,8 @@ export function toDbTournament(t: Partial<Tournament>): Record<string, unknown> 
   if (t.doubleRoundRobin !== undefined) db.double_round_robin = t.doubleRoundRobin;
   if (t.maxPlayersPerTeam !== undefined) db.max_players_per_team = t.maxPlayersPerTeam;
   if (t.bestOf !== undefined) db.best_of = t.bestOf;
-  if (t.monthlyCost !== undefined) db.monthly_cost = t.monthlyCost;
+  if (t.price !== undefined) db.price = t.price;
+  if (t.tier !== undefined) db.tier = t.tier;
   if (t.enabledStats !== undefined) db.enabled_stats = t.enabledStats;
   if (t.couponId !== undefined) db.coupon_id = t.couponId;
   return db;

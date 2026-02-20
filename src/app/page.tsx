@@ -1,8 +1,17 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { SPORTS } from "@/data/sports";
 import { VideoBackground } from "@/components/landing/video-background";
+import {
+  TIER_PRICES,
+  TIER_LABELS,
+  TIER_TEAM_RANGES,
+  FREE_TIER_LIMITS,
+  formatCOP,
+} from "@/lib/pricing";
+import { TournamentTier } from "@/types";
 
 export default function HomePage() {
   return (
@@ -95,6 +104,78 @@ export default function HomePage() {
               </p>
             </CardContent>
           </Card>
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section className="container mx-auto px-4 py-16">
+        <h2 className="text-3xl font-bold text-center mb-3">
+          Planes y Precios
+        </h2>
+        <p className="text-center text-muted-foreground mb-10">
+          Pago unico por torneo · Duracion ilimitada
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          {/* Free */}
+          <Card className="border-2">
+            <CardContent className="p-6 space-y-4">
+              <div>
+                <p className="font-semibold text-lg">Gratis</p>
+                <p className="text-2xl font-bold mt-1">$0</p>
+              </div>
+              <Badge variant="outline" className="text-xs">
+                Hasta {FREE_TIER_LIMITS.maxTeams} equipos
+              </Badge>
+              <ul className="text-sm text-muted-foreground space-y-1">
+                <li>Solo eliminacion directa</li>
+                <li>Sin estadisticas</li>
+                <li>Max 1 torneo activo</li>
+              </ul>
+            </CardContent>
+          </Card>
+
+          {/* Paid tiers */}
+          {(Object.keys(TIER_PRICES) as TournamentTier[]).map((tier) => {
+            const range = TIER_TEAM_RANGES[tier];
+            return (
+              <Card
+                key={tier}
+                className={
+                  tier === "pro"
+                    ? "border-2 border-primary"
+                    : "border-2"
+                }
+              >
+                <CardContent className="p-6 space-y-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-lg">{TIER_LABELS[tier]}</p>
+                      {tier === "pro" && (
+                        <Badge className="text-xs">Popular</Badge>
+                      )}
+                    </div>
+                    <p className="text-2xl font-bold mt-1">
+                      {formatCOP(TIER_PRICES[tier])}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-xs">
+                    {range.min}-{range.max ?? "+"} equipos
+                  </Badge>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li>Todos los formatos</li>
+                    <li>Estadisticas avanzadas</li>
+                    <li>Fase de grupos</li>
+                    <li>Duracion ilimitada</li>
+                  </ul>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+        <div className="text-center mt-8">
+          <Button variant="outline" asChild>
+            <Link href="/pricing">Ver todos los detalles</Link>
+          </Button>
         </div>
       </section>
     </div>

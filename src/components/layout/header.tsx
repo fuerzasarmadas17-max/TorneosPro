@@ -14,6 +14,9 @@ export function Header() {
         <Link href="/" className="mr-6 flex items-center space-x-2 font-bold text-xl">
           Torneos Pro
         </Link>
+        <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+          Precios
+        </Link>
         <div className="ml-auto flex items-center space-x-4">
           {isAuthenticated ? (
             <UserNav />

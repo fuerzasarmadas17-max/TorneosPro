@@ -113,7 +113,8 @@ async function createTournamentFromPayment(
         double_round_robin: false,
         max_players_per_team: tournamentData.maxPlayersPerTeam || null,
         best_of: tournamentData.bestOf || null,
-        monthly_cost: payment.amount_cop,
+        price: payment.amount_cop,
+        tier: (tournamentData.tier as string) || null,
         enabled_stats: tournamentData.enabledStats || "{}",
         coupon_id: payment.coupon_id || null,
       })

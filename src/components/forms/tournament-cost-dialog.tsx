@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TournamentCostBreakdown, formatCOP } from "@/lib/pricing";
+import { TournamentPriceInfo, formatCOP } from "@/lib/pricing";
 import { TournamentFormat, Sport, CouponType } from "@/types";
 import { getSportInfo } from "@/data/sports";
 import { supabase } from "@/lib/supabase";
@@ -36,7 +36,7 @@ interface TournamentCostDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (couponId?: string, paymentId?: string) => void;
-  breakdown: TournamentCostBreakdown;
+  priceInfo: TournamentPriceInfo;
   tournamentName: string;
   format: TournamentFormat;
   teamCount: number;
@@ -49,7 +49,7 @@ export function TournamentCostDialog({
   open,
   onOpenChange,
   onConfirm,
-  breakdown,
+  priceInfo,
   tournamentName,
   format,
   teamCount,
@@ -116,13 +116,12 @@ export function TournamentCostDialog({
     ? appliedCoupon.type === "free_tournament"
       ? 0
       : appliedCoupon.type === "percentage"
-        ? Math.round(breakdown.monthlyCost * (100 - appliedCoupon.value) / 100)
-        : breakdown.monthlyCost
-    : breakdown.monthlyCost;
+        ? Math.round(priceInfo.price * (100 - appliedCoupon.value) / 100)
+        : priceInfo.price
+    : priceInfo.price;
 
-  // Skip Wompi for free_tournament and free_months
   const skipPayment = appliedCoupon
-    ? appliedCoupon.type === "free_tournament" || appliedCoupon.type === "free_months"
+    ? appliedCoupon.type === "free_tournament"
     : false;
 
   const handleFreeConfirm = () => {
@@ -137,7 +136,6 @@ export function TournamentCostDialog({
     setProcessing(true);
 
     try {
-      // 1. Call API to create payment reference and integrity signature
       const response = await fetch("/api/payments/create-reference", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -159,7 +157,6 @@ export function TournamentCostDialog({
       const { reference, amountInCents, integrity, paymentId } =
         await response.json();
 
-      // 2. Open Wompi widget
       const publicKey = process.env.NEXT_PUBLIC_WOMPI_PUBLIC_KEY;
 
       if (!publicKey || !window.WidgetCheckout) {
@@ -227,20 +224,20 @@ export function TournamentCostDialog({
               </Badge>
               <Badge variant="outline">{FORMAT_LABELS[format]}</Badge>
               <Badge variant="outline">{teamCount} equipos</Badge>
-              <Badge variant="outline">
-                {breakdown.matchRecords} partidos
+              <Badge className="bg-primary/10 text-primary border-primary/20">
+                {priceInfo.tierLabel}
               </Badge>
             </div>
 
             {/* Price display */}
             <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-center">
-              <p className="text-sm text-muted-foreground">Costo mensual</p>
+              <p className="text-sm text-muted-foreground">Pago unico</p>
               {appliedCoupon ? (
                 <>
                   {appliedCoupon.type === "free_tournament" ? (
                     <>
                       <p className="text-sm line-through text-muted-foreground">
-                        {formatCOP(breakdown.monthlyCost)}/mes
+                        {formatCOP(priceInfo.price)}
                       </p>
                       <p className="text-2xl font-bold text-green-600">
                         Gratis
@@ -249,34 +246,25 @@ export function TournamentCostDialog({
                   ) : appliedCoupon.type === "percentage" ? (
                     <>
                       <p className="text-sm line-through text-muted-foreground">
-                        {formatCOP(breakdown.monthlyCost)}/mes
+                        {formatCOP(priceInfo.price)}
                       </p>
                       <p className="text-2xl font-bold text-primary">
                         {formatCOP(effectiveCost)}
-                        <span className="text-sm font-normal text-muted-foreground">
-                          /mes
-                        </span>
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-2xl font-bold text-primary">
-                        {appliedCoupon.value} mes{appliedCoupon.value > 1 ? "es" : ""} gratis
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Luego {formatCOP(breakdown.monthlyCost)}/mes
+                        {appliedCoupon.value}% de descuento
                       </p>
                     </>
-                  )}
+                  ) : null}
                 </>
               ) : (
                 <p className="text-2xl font-bold text-primary">
-                  {formatCOP(breakdown.monthlyCost)}
-                  <span className="text-sm font-normal text-muted-foreground">
-                    /mes
-                  </span>
+                  {formatCOP(priceInfo.price)}
                 </p>
               )}
+              <p className="text-xs text-muted-foreground mt-1">
+                Duracion ilimitada
+              </p>
             </div>
 
             {/* Coupon input */}
@@ -290,9 +278,7 @@ export function TournamentCostDialog({
                   <Badge className="bg-green-500/10 text-green-600 border-green-500/20 text-xs">
                     {appliedCoupon.type === "free_tournament"
                       ? "Torneo Gratis"
-                      : appliedCoupon.type === "percentage"
-                        ? `${appliedCoupon.value}% OFF`
-                        : `${appliedCoupon.value} mes${appliedCoupon.value > 1 ? "es" : ""} gratis`}
+                      : `${appliedCoupon.value}% OFF`}
                   </Badge>
                   <Button
                     type="button"

@@ -26,7 +26,7 @@ import { SPORTS } from "@/data/sports";
 import { Sport, TournamentFormat, Team, Tournament, TournamentGroup, PlayoffConfig, MatchEventType, STAT_CATALOG, getDefaultStats } from "@/types";
 import { toast } from "sonner";
 import { Trash2, Plus } from "lucide-react";
-import { calculateTournamentCost, distributeTeamsToGroups, checkFreeTier, FREE_TIER_LIMITS, TournamentCostBreakdown } from "@/lib/pricing";
+import { getTournamentPriceInfo, TournamentPriceInfo, distributeTeamsToGroups, checkFreeTier, FREE_TIER_LIMITS } from "@/lib/pricing";
 import { TournamentCostDialog } from "./tournament-cost-dialog";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabase";
@@ -57,7 +57,7 @@ export function CreateTournamentForm() {
   const [bestOf, setBestOf] = useState<3 | 5>(3);
   const [error, setError] = useState("");
   const [showCostDialog, setShowCostDialog] = useState(false);
-  const [costBreakdown, setCostBreakdown] = useState<TournamentCostBreakdown | null>(null);
+  const [priceInfo, setPriceInfo] = useState<TournamentPriceInfo | null>(null);
 
   const isIndividual = sport ? INDIVIDUAL_SPORTS.includes(sport as Sport) : false;
   const participantLabel = isIndividual ? "Jugadores" : "Equipos";
@@ -123,7 +123,8 @@ export function CreateTournamentForm() {
       bestOf: sport === "volleyball" ? bestOf : null,
       groups: groups.map((g) => ({ name: g.name })),
       advanceCount: format === "group-playoff" ? parseInt(advanceCount) : null,
-      monthlyCost: costBreakdown?.monthlyCost ?? null,
+      price: priceInfo?.price ?? null,
+      tier: priceInfo?.tier ?? null,
     };
   };
 
@@ -198,23 +199,9 @@ export function CreateTournamentForm() {
       return;
     }
 
-    // Paid: calculate cost and show confirmation dialog
-    const effectiveMaxPlayers = isIndividual ? 1 : (parseInt(maxPlayers) || 1);
-    const groupDistribution = groups.length > 0
-      ? distributeTeamsToGroups(count, groups.length)
-      : [];
-    const advanceForCost = format === "group-playoff" ? parseInt(advanceCount) : 0;
-
-    const breakdown = calculateTournamentCost({
-      format: format as TournamentFormat,
-      teamCount: count,
-      maxPlayersPerTeam: effectiveMaxPlayers,
-      enabledStatsCount: enabledStats.length,
-      groups: groupDistribution,
-      advanceCount: advanceForCost,
-    });
-
-    setCostBreakdown(breakdown);
+    // Paid: calculate tier price and show confirmation dialog
+    const info = getTournamentPriceInfo(count);
+    setPriceInfo(info);
     setShowCostDialog(true);
   };
 
@@ -282,7 +269,8 @@ export function CreateTournamentForm() {
         enabledStats: enabledStats.length > 0 ? enabledStats : undefined,
         maxPlayersPerTeam: maxPlayers ? parseInt(maxPlayers) : undefined,
         bestOf: sport === "volleyball" ? bestOf : undefined,
-        monthlyCost: plan === "paid" && costBreakdown ? costBreakdown.monthlyCost : undefined,
+        price: plan === "paid" && priceInfo ? priceInfo.price : undefined,
+        tier: plan === "paid" && priceInfo ? priceInfo.tier : undefined,
         couponId: couponId ?? undefined,
       };
 
@@ -660,12 +648,12 @@ export function CreateTournamentForm() {
       </form>
     </Card>
 
-    {costBreakdown && (
+    {priceInfo && (
       <TournamentCostDialog
         open={showCostDialog}
         onOpenChange={setShowCostDialog}
         onConfirm={(couponId, paymentId) => createTournament("paid", couponId, paymentId)}
-        breakdown={costBreakdown}
+        priceInfo={priceInfo}
         tournamentName={name}
         format={format as TournamentFormat}
         teamCount={parseInt(teamCount)}

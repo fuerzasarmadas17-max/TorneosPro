@@ -10,9 +10,9 @@ import {
   CardHeader,
   CardDescription,
 } from "@/components/ui/card";
-import { formatCOP } from "@/lib/pricing";
+import { formatCOP, TIER_LABELS } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
-import { CouponType } from "@/types";
+import { CouponType, TournamentTier } from "@/types";
 
 interface CouponInfo {
   id: string;
@@ -73,17 +73,15 @@ function FinancesContent() {
       });
   }, [tournaments]);
 
-  const paidTournaments = tournaments.filter((t) => t.plan === "paid" && t.monthlyCost);
+  const paidTournaments = tournaments.filter((t) => t.plan === "paid" && t.price);
 
   // Active = not completed (upcoming or in-progress)
   const activePaid = paidTournaments.filter((t) => t.status !== "completed");
   const completedPaid = paidTournaments.filter((t) => t.status === "completed");
 
-  const expectedMonthly = activePaid.reduce((sum, t) => sum + (t.monthlyCost || 0), 0);
-
-  // Simulated: assume completed tournaments have been paid, active ones are pending
-  const received = completedPaid.reduce((sum, t) => sum + (t.monthlyCost || 0), 0);
-  const pending = expectedMonthly;
+  const totalRevenue = paidTournaments.reduce((sum, t) => sum + (t.price || 0), 0);
+  const activeRevenue = activePaid.reduce((sum, t) => sum + (t.price || 0), 0);
+  const completedRevenue = completedPaid.reduce((sum, t) => sum + (t.price || 0), 0);
 
   const getOwnerName = (userId: string) => {
     return ownerNames[userId] || "Cargando...";
@@ -108,14 +106,16 @@ function FinancesContent() {
         </Badge>
       );
     }
-    if (coupon.type === "free_months") {
-      return (
-        <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20">
-          {coupon.value} mes{coupon.value > 1 ? "es" : ""} gratis
-        </Badge>
-      );
-    }
     return null;
+  };
+
+  const getTierBadge = (tier?: TournamentTier) => {
+    if (!tier) return null;
+    return (
+      <Badge variant="outline" className="text-xs">
+        {TIER_LABELS[tier] || tier}
+      </Badge>
+    );
   };
 
   return (
@@ -131,26 +131,26 @@ function FinancesContent() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Esperado este mes</CardDescription>
+            <CardDescription>Ingresos totales</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{formatCOP(expectedMonthly)}</p>
+            <p className="text-2xl font-bold">{formatCOP(totalRevenue)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Recibido (completados)</CardDescription>
+            <CardDescription>Torneos activos</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-green-500">{formatCOP(received)}</p>
+            <p className="text-2xl font-bold text-green-500">{formatCOP(activeRevenue)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Pendiente por cobrar</CardDescription>
+            <CardDescription>Torneos completados</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-amber-500">{formatCOP(pending)}</p>
+            <p className="text-2xl font-bold text-muted-foreground">{formatCOP(completedRevenue)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -163,9 +163,9 @@ function FinancesContent() {
         </Card>
       </div>
 
-      {/* Active tournaments - expected revenue */}
+      {/* Active tournaments */}
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Torneos activos (ingreso mensual)</h2>
+        <h2 className="text-xl font-semibold">Torneos activos</h2>
         {activePaid.length === 0 ? (
           <p className="text-muted-foreground text-sm">No hay torneos activos con plan pago</p>
         ) : (
@@ -189,12 +189,12 @@ function FinancesContent() {
                     >
                       {t.status === "in-progress" ? "En Curso" : "Proximo"}
                     </Badge>
+                    {getTierBadge(t.tier)}
                     {getCouponBadge(t.couponId)}
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-lg">{formatCOP(t.monthlyCost || 0)}</p>
-                  <p className="text-xs text-muted-foreground">/mes</p>
+                  <p className="font-bold text-lg">{formatCOP(t.price || 0)}</p>
                 </div>
               </div>
             ))}
@@ -220,12 +220,12 @@ function FinancesContent() {
                     <span>{getOwnerName(t.createdBy)}</span>
                     <span>· {t.teamIds.length} equipos</span>
                     <Badge className="bg-zinc-500/10 text-zinc-500">Completado</Badge>
+                    {getTierBadge(t.tier)}
                     {getCouponBadge(t.couponId)}
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-lg text-green-500">{formatCOP(t.monthlyCost || 0)}</p>
-                  <p className="text-xs text-green-600">Pagado</p>
+                  <p className="font-bold text-lg text-green-500">{formatCOP(t.price || 0)}</p>
                 </div>
               </div>
             ))}

@@ -1,8 +1,8 @@
-import { TournamentFormat } from "@/types";
+import { TournamentFormat, TournamentTier } from "@/types";
 
 // --- Free tier limits ---
 export const FREE_TIER_LIMITS = {
-  maxTeams: 6,
+  maxTeams: 10,
   maxPlayersPerTeam: 10,
   allowedFormats: ["elimination"] as TournamentFormat[],
   statsEnabled: false,
@@ -43,33 +43,58 @@ export function checkFreeTier(input: {
   return { isFree: reasons.length === 0, reasons };
 }
 
-// --- Paid tier pricing ---
-const BASE_COST = 25_000;
-const COST_PER_RECORD = 25;
-const MIN_MONTHLY_COST = 30_000;
-const MAX_MONTHLY_COST = 50_000;
-const ESTIMATED_EVENTS_PER_STAT_PER_MATCH = 2;
+// --- Tier-based pricing (one-time COP per tournament) ---
 
-export interface TournamentCostInput {
-  format: TournamentFormat;
-  teamCount: number;
-  maxPlayersPerTeam: number;
-  enabledStatsCount: number;
-  groups: { teamCount: number }[];
-  advanceCount: number;
+export const TIER_PRICES: Record<TournamentTier, number> = {
+  basico: 40_000,
+  medio: 70_000,
+  pro: 100_000,
+  premium: 130_000,
+};
+
+export const TIER_LABELS: Record<TournamentTier, string> = {
+  basico: "Basico",
+  medio: "Medio",
+  pro: "Pro",
+  premium: "Premium",
+};
+
+export const TIER_TEAM_RANGES: Record<TournamentTier, { min: number; max: number | null }> = {
+  basico: { min: 1, max: 8 },
+  medio: { min: 9, max: 16 },
+  pro: { min: 17, max: 24 },
+  premium: { min: 25, max: null },
+};
+
+export function getTier(teamCount: number): TournamentTier {
+  if (teamCount <= 8) return "basico";
+  if (teamCount <= 16) return "medio";
+  if (teamCount <= 24) return "pro";
+  return "premium";
 }
 
-export interface TournamentCostBreakdown {
-  teamRecords: number;
-  playerRecords: number;
-  matchRecords: number;
-  estimatedEventRecords: number;
-  groupRecords: number;
-  totalRecords: number;
-  baseCost: number;
-  storageCost: number;
-  monthlyCost: number;
+export function getTierPrice(teamCount: number): number {
+  return TIER_PRICES[getTier(teamCount)];
 }
+
+export interface TournamentPriceInfo {
+  tier: TournamentTier;
+  price: number;
+  tierLabel: string;
+  teamRange: { min: number; max: number | null };
+}
+
+export function getTournamentPriceInfo(teamCount: number): TournamentPriceInfo {
+  const tier = getTier(teamCount);
+  return {
+    tier,
+    price: TIER_PRICES[tier],
+    tierLabel: TIER_LABELS[tier],
+    teamRange: TIER_TEAM_RANGES[tier],
+  };
+}
+
+// --- Utilities (kept for UI display) ---
 
 function nextPowerOf2(n: number): number {
   let p = 1;
@@ -120,42 +145,6 @@ export function distributeTeamsToGroups(
   return Array.from({ length: groupCount }, (_, i) => ({
     teamCount: base + (i < remainder ? 1 : 0),
   }));
-}
-
-export function calculateTournamentCost(
-  input: TournamentCostInput
-): TournamentCostBreakdown {
-  const teamRecords = input.teamCount;
-  const playerRecords = input.teamCount * input.maxPlayersPerTeam;
-  const matchRecords = calculateMatchCount(
-    input.format,
-    input.teamCount,
-    input.groups,
-    input.advanceCount
-  );
-  const estimatedEventRecords =
-    matchRecords * input.enabledStatsCount * ESTIMATED_EVENTS_PER_STAT_PER_MATCH;
-  const groupRecords = input.groups.length;
-
-  const totalRecords =
-    1 + teamRecords + playerRecords + matchRecords + estimatedEventRecords + groupRecords;
-
-  const storageCost = totalRecords * COST_PER_RECORD;
-  const rawCost = BASE_COST + storageCost;
-  const clamped = Math.min(MAX_MONTHLY_COST, Math.max(MIN_MONTHLY_COST, rawCost));
-  const monthlyCost = Math.round(clamped / 5_000) * 5_000;
-
-  return {
-    teamRecords,
-    playerRecords,
-    matchRecords,
-    estimatedEventRecords,
-    groupRecords,
-    totalRecords,
-    baseCost: BASE_COST,
-    storageCost,
-    monthlyCost,
-  };
 }
 
 export function formatCOP(amount: number): string {
