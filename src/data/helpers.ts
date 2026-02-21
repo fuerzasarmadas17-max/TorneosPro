@@ -712,3 +712,56 @@ export function fillPhase2Groups(
 
   return { phase2Matches, groupTeamAssignments };
 }
+
+/**
+ * Generate incremental round-robin matches when new teams are added to an
+ * existing group. Produces matches between each new team and every existing
+ * team, plus matches among the new teams themselves.
+ */
+export function generateIncrementalMatchesForGroup(
+  groupId: string,
+  newTeamIds: string[],
+  existingTeamIds: string[],
+  tournamentId: string,
+  matchCounterStart: number,
+  doubleRoundRobin?: boolean
+): Match[] {
+  const matches: Match[] = [];
+  let counter = matchCounterStart;
+
+  const push = (home: string, away: string) => {
+    matches.push({
+      id: `${tournamentId}-m-${counter}`,
+      tournamentId,
+      round: 0,
+      matchNumber: counter,
+      homeTeamId: home,
+      awayTeamId: away,
+      homeScore: null,
+      awayScore: null,
+      winnerId: null,
+      status: "unscheduled",
+      phase: "group",
+      groupId,
+    });
+    counter++;
+  };
+
+  // New teams vs existing teams
+  for (const newId of newTeamIds) {
+    for (const existingId of existingTeamIds) {
+      push(newId, existingId);
+      if (doubleRoundRobin) push(existingId, newId);
+    }
+  }
+
+  // New teams vs each other
+  for (let i = 0; i < newTeamIds.length; i++) {
+    for (let j = i + 1; j < newTeamIds.length; j++) {
+      push(newTeamIds[i], newTeamIds[j]);
+      if (doubleRoundRobin) push(newTeamIds[j], newTeamIds[i]);
+    }
+  }
+
+  return matches;
+}

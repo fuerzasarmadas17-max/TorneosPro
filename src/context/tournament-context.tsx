@@ -42,6 +42,8 @@ interface TournamentContextType {
   updateTeamPlayers: (teamId: string, players: Player[]) => Promise<void>;
   updateTeam: (teamId: string, updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor">>) => Promise<void>;
   updateEventPaid: (tournamentId: string, matchId: string, eventId: string, paid: boolean) => Promise<void>;
+  assignTeamsToGroupFn: (groupId: string, teamIds: string[]) => Promise<boolean>;
+  addMatchesToTournament: (tournamentId: string, newMatches: Match[]) => Promise<void>;
   getTournamentById: (id: string) => Tournament | undefined;
   getTeamById: (id: string) => Team | undefined;
   getFilteredTournaments: (filters: TournamentFilters) => Tournament[];
@@ -115,6 +117,27 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     }
     return ok;
   }, [loadData]);
+
+  const assignTeamsToGroupFn = useCallback(async (groupId: string, teamIds: string[]): Promise<boolean> => {
+    const ok = await assignTeamsToGroup(groupId, teamIds);
+    if (ok) {
+      await loadData();
+    }
+    return ok;
+  }, [loadData]);
+
+  const addMatchesToTournament = useCallback(async (tournamentId: string, newMatches: Match[]) => {
+    if (newMatches.length === 0) return;
+    const idMapping = await insertMatchesForPhase(newMatches, tournamentId);
+    setTournaments(prev => prev.map(t => {
+      if (t.id !== tournamentId) return t;
+      const mappedMatches = newMatches.map(m => ({
+        ...m,
+        id: idMapping[m.id] || m.id,
+      }));
+      return { ...t, matches: [...t.matches, ...mappedMatches] };
+    }));
+  }, []);
 
   const setTournamentMatches = useCallback(async (tournamentId: string, matches: Match[]) => {
     // Delete existing matches and insert new ones
@@ -530,6 +553,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       updateTeamPlayers,
       updateTeam,
       updateEventPaid,
+      assignTeamsToGroupFn,
+      addMatchesToTournament,
       updateMatch,
       getTournamentById,
       getTeamById,
@@ -553,6 +578,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       updateTeamPlayers,
       updateTeam,
       updateEventPaid,
+      assignTeamsToGroupFn,
+      addMatchesToTournament,
       updateMatch,
       getTournamentById,
       getTeamById,

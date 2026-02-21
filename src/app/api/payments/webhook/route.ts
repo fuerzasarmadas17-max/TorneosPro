@@ -203,7 +203,7 @@ async function createTournamentFromPayment(
       .update({ tournament_id: tournamentId })
       .eq("id", payment.id);
 
-    // Mark coupon as used
+    // Mark coupon as used (only if not already claimed)
     if (payment.coupon_id) {
       await supabaseAdmin
         .from("coupons")
@@ -212,7 +212,8 @@ async function createTournamentFromPayment(
           used_at: new Date().toISOString(),
           tournament_id: tournamentId,
         })
-        .eq("id", payment.coupon_id);
+        .eq("id", payment.coupon_id)
+        .is("used_by", null);
     }
 
     // Create teams (they weren't created before payment)

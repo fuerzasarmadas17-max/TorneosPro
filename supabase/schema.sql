@@ -523,10 +523,14 @@ CREATE POLICY "Admin elimina cupones"
   ON coupons FOR DELETE
   USING (is_admin());
 
--- Usuarios pueden marcar cupones como usados (UPDATE used_by, used_at, tournament_id)
+-- Usuarios pueden reclamar cupones no usados O actualizar los suyos (ej: agregar tournament_id)
 CREATE POLICY "Usuario usa cupon"
   ON coupons FOR UPDATE
-  USING (used_by IS NULL AND auth.role() = 'authenticated');
+  USING (
+    (used_by IS NULL AND auth.role() = 'authenticated')
+    OR
+    (used_by = auth.uid())
+  );
 
 -- Agregar columna coupon_id a tournaments
 ALTER TABLE tournaments ADD COLUMN coupon_id UUID REFERENCES coupons(id) ON DELETE SET NULL;

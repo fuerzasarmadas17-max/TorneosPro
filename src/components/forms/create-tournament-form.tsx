@@ -212,6 +212,26 @@ export function CreateTournamentForm() {
   const createTournament = async (plan: "free" | "paid", couponId?: string, paymentId?: string) => {
     setCreating(true);
     try {
+      // Claim coupon atomically BEFORE creating anything
+      if (couponId) {
+        const { data: claimed, error: claimError } = await supabase
+          .from("coupons")
+          .update({
+            used_by: user!.id,
+            used_at: new Date().toISOString(),
+          })
+          .eq("id", couponId)
+          .is("used_by", null)
+          .select("id")
+          .single();
+
+        if (claimError || !claimed) {
+          toast.error("Este codigo promocional ya fue utilizado");
+          setCreating(false);
+          return;
+        }
+      }
+
       const count = parseInt(teamCount);
       const hasGroups = (format === "round-robin" || format === "group-playoff") && groups.length > 0;
 
@@ -305,15 +325,11 @@ export function CreateTournamentForm() {
 
       const newTournament = await addTournament(tournament);
 
-      // Mark coupon as used
+      // Link coupon to tournament (used_by/used_at already set above)
       if (couponId && newTournament?.id) {
         await supabase
           .from("coupons")
-          .update({
-            used_by: user!.id,
-            used_at: new Date().toISOString(),
-            tournament_id: newTournament.id,
-          })
+          .update({ tournament_id: newTournament.id })
           .eq("id", couponId);
       }
 
