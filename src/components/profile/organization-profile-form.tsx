@@ -83,7 +83,17 @@ export function OrganizationProfileForm() {
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith("image/")) return;
+    if (!file) return;
+
+    // Check type by MIME or file extension (some browsers send empty type)
+    const validExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "heif"];
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    const isImage = file.type.startsWith("image/") || validExts.includes(ext);
+
+    if (!isImage) {
+      toast.error("El archivo debe ser una imagen (PNG, JPG, etc.)");
+      return;
+    }
 
     if (file.size > 2 * 1024 * 1024) {
       toast.error("La imagen no debe superar los 2MB");
@@ -91,12 +101,12 @@ export function OrganizationProfileForm() {
     }
 
     setUploadingLogo(true);
-    const ext = file.name.split(".").pop();
     const path = `logos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
     const { error } = await supabase.storage.from("images").upload(path, file);
     if (error) {
-      toast.error("Error al subir el logo");
+      console.error("Storage upload error:", error);
+      toast.error("Error al subir el logo: " + error.message);
       setUploadingLogo(false);
       return;
     }

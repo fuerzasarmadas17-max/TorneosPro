@@ -147,18 +147,25 @@ export function SponsorForm({
   };
 
   const uploadFile = async (file: File): Promise<string | null> => {
-    if (!file.type.startsWith("image/")) return null;
+    const validExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "heif"];
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    const isImage = file.type.startsWith("image/") || validExts.includes(ext);
+
+    if (!isImage) {
+      toast.error("El archivo debe ser una imagen (PNG, JPG, etc.)");
+      return null;
+    }
     if (file.size > 2 * 1024 * 1024) {
       toast.error("La imagen no debe superar los 2MB");
       return null;
     }
 
-    const ext = file.name.split(".").pop();
     const path = `sponsors/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
     const { error } = await supabase.storage.from("images").upload(path, file);
     if (error) {
-      toast.error("Error al subir la imagen");
+      console.error("Storage upload error:", error);
+      toast.error("Error al subir la imagen: " + error.message);
       return null;
     }
 
