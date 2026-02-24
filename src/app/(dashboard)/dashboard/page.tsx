@@ -17,15 +17,25 @@ function DashboardContent() {
   const [dbTest, setDbTest] = useState("testing...");
 
   useEffect(() => {
-    // Direct Supabase test — bypasses all context logic
-    supabase.from("tournaments").select("id, name").limit(3)
-      .then(({ data, error }) => {
-        if (error) {
-          setDbTest(`ERROR: ${error.message} (code: ${error.code})`);
-        } else {
-          setDbTest(`OK: ${data?.length ?? 0} rows — ${data?.map(t => t.name).join(", ") || "empty"}`);
-        }
-      });
+    // Raw fetch test — completely bypasses Supabase client
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    setDbTest(`url: ${url ? url.substring(0, 30) + "..." : "MISSING"} | key: ${key ? key.substring(0, 10) + "..." : "MISSING"}`);
+
+    if (url && key) {
+      fetch(`${url}/rest/v1/tournaments?select=id,name&limit=3`, {
+        headers: {
+          "apikey": key,
+          "Authorization": `Bearer ${key}`,
+        },
+      })
+        .then(res => res.json().then(data => {
+          setDbTest(prev => prev + ` | fetch: ${res.status} ${Array.isArray(data) ? data.length + " rows" : JSON.stringify(data).substring(0, 80)}`);
+        }))
+        .catch(err => {
+          setDbTest(prev => prev + ` | fetch ERROR: ${err.message}`);
+        });
+    }
   }, []);
 
   const myTournaments = tournaments.filter(
