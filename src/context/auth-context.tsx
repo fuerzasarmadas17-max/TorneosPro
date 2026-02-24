@@ -6,6 +6,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   ReactNode,
 } from "react";
 import { User, AuthState, OrganizationProfile } from "@/types";
@@ -30,7 +31,7 @@ async function loadUserData(userId: string): Promise<SafeUser | null> {
   // Run all queries in parallel instead of sequentially
   const [userResult, profileResult, tournamentResult] = await Promise.all([
     supabase.from("users").select("*").eq("id", userId).single(),
-    supabase.from("organization_profiles").select("*, social_links(*), sponsors(*)").eq("user_id", userId).single(),
+    supabase.from("organization_profiles").select("*, social_links(*), sponsors(*)").eq("user_id", userId).maybeSingle(),
     supabase.from("tournaments").select("id").eq("created_by", userId),
   ]);
 
@@ -64,6 +65,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: false,
   });
   const [isLoading, setIsLoading] = useState(true);
+  // Track which user's full data we've already loaded to prevent overwrites
+  const loadedUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const {
@@ -75,9 +78,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           event === "INITIAL_SESSION") &&
         session?.user
       ) {
-        // Set authenticated IMMEDIATELY with basic info from the session token.
-        // This prevents the "logged out" flash on refresh and makes login instant.
-        // Full user data (profile, tournaments) loads in the background.
+        // TOKEN_REFRESHED only refreshes the JWT — user data hasn't changed.
+        // Skip entirely to avoid overwriting full user data with incomplete data.
+        if (event === "TOKEN_REFRESHED") {
+          return;
+        }
+
+        // If we already loaded full data for this user (e.g. INITIAL_SESSION
+        // fired twice), don't overwrite or re-fetch.
+        if (loadedUserIdRef.current === session.user.id) {
+          setIsLoading(false);
+          return;
+        }
+
+        // Set basic user immediately for instant UI while full data loads
         const basicUser: SafeUser = {
           id: session.user.id,
           name: session.user.user_metadata?.name || session.user.email || "",
@@ -92,13 +106,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const userData = await loadUserData(session.user.id);
           if (userData) {
+            loadedUserIdRef.current = session.user.id;
             setAuthState({ user: userData, isAuthenticated: true });
           }
-          // If loadUserData fails, user stays authenticated with basic info
         } catch (err) {
           console.error("Failed to load full user data:", err);
         }
       } else if (event === "SIGNED_OUT") {
+        loadedUserIdRef.current = null;
         setAuthState({ user: null, isAuthenticated: false });
         setIsLoading(false);
       } else if (event === "INITIAL_SESSION" && !session) {

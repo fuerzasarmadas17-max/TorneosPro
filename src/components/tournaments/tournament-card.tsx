@@ -38,20 +38,17 @@ export function TournamentCard({ tournament, href }: TournamentCardProps) {
 
   useEffect(() => {
     if (!tournament.createdBy) return;
+    // Query organization_profiles directly — the users table has RLS that
+    // blocks reading other users, causing 406 errors with .single().
     supabase
-      .from("users")
-      .select("name, organization_profiles(slug)")
-      .eq("id", tournament.createdBy)
-      .single()
+      .from("organization_profiles")
+      .select("organization_name, slug")
+      .eq("user_id", tournament.createdBy)
+      .maybeSingle()
       .then(({ data }) => {
-        if (!data) return;
-        const profile = Array.isArray(data.organization_profiles)
-          ? data.organization_profiles[0]
-          : data.organization_profiles;
-        setOrganizer({
-          name: data.name,
-          slug: profile?.slug,
-        });
+        if (data) {
+          setOrganizer({ name: data.organization_name, slug: data.slug });
+        }
       });
   }, [tournament.createdBy]);
 

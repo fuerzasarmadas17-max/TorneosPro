@@ -23,10 +23,14 @@ export default function ProfilePage() {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    getUserBySlug(params.slug).then((found) => {
-      setUser(found);
-      setChecked(true);
-    });
+    getUserBySlug(params.slug)
+      .then((found) => {
+        setUser(found);
+        setChecked(true);
+      })
+      .catch(() => {
+        setChecked(true);
+      });
   }, [params.slug]);
 
   if (!checked) {

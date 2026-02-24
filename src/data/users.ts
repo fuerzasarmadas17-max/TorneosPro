@@ -29,22 +29,17 @@ export async function getUserBySlug(
 > {
   const { data, error } = await supabase
     .from("organization_profiles")
-    .select(
-      "*, users!inner(id, name, is_active), social_links(*), sponsors(*)"
-    )
+    .select("*, social_links(*), sponsors(*)")
     .eq("slug", slug)
     .eq("is_public", true)
     .single();
 
   if (error || !data) return undefined;
 
-  const userRow = data.users as Record<string, unknown>;
-  if ((userRow.is_active as boolean) === false) return undefined;
-
   return {
-    id: userRow.id as string,
-    name: userRow.name as string,
-    isActive: userRow.is_active as boolean,
+    id: data.user_id as string,
+    name: data.organization_name as string,
+    isActive: true,
     organizationProfile: mapOrganizationProfile({
       ...data,
       social_links: Array.isArray(data.social_links)
