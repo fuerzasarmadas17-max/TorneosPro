@@ -16,6 +16,7 @@ import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/auth-context";
 
 interface TournamentContextType {
   tournaments: Tournament[];
@@ -59,6 +60,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { isLoading: authLoading } = useAuth();
 
   const loadData = useCallback(async () => {
     try {
@@ -77,14 +79,16 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Wait for auth to resolve before loading data so Supabase has a valid session.
+  // Re-runs when authLoading changes from true→false, ensuring fresh token.
   useEffect(() => {
+    if (authLoading) return;
     loadData();
-    // Safety: if data fetch never resolves (network hang, Supabase down), stop loading after 6s
     const safetyTimer = setTimeout(() => {
       setIsLoading(false);
     }, 6000);
     return () => clearTimeout(safetyTimer);
-  }, [loadData]);
+  }, [loadData, authLoading]);
 
   const refetch = useCallback(async () => {
     await loadData();

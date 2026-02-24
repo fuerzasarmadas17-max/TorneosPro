@@ -8,6 +8,17 @@ const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
 export function VersionCheck() {
   const knownBuildId = useRef<string | null>(null);
 
+  // Force full reload if browser restores page from bfcache (back/forward cache)
+  useEffect(() => {
+    function handlePageShow(e: PageTransitionEvent) {
+      if (e.persisted) {
+        window.location.reload();
+      }
+    }
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
+
   useEffect(() => {
     async function checkVersion() {
       try {
