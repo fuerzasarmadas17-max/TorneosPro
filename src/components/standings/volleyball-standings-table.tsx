@@ -20,7 +20,6 @@ import { Button } from "@/components/ui/button";
 import { Tournament } from "@/types";
 import { useVolleyballStandings } from "@/hooks/use-volleyball-standings";
 import { useTournaments } from "@/context/tournament-context";
-import { useAuth } from "@/context/auth-context";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Info } from "lucide-react";
 
@@ -120,24 +119,21 @@ export function VolleyballStandingsTable({
 }: VolleyballStandingsTableProps) {
   const standings = useVolleyballStandings(tournament);
   const { getTeamById } = useTournaments();
-  const { isAuthenticated } = useAuth();
   const bestOf = tournament.bestOf ?? 3;
 
   return (
     <div className="space-y-2">
-      {isAuthenticated && (
-        <div className="flex justify-end">
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs">
-                <Info className="h-3.5 w-3.5" />
-                Sistema de puntos
-              </Button>
-            </DialogTrigger>
-            <ScoringRulesDialog bestOf={bestOf as 3 | 5} />
-          </Dialog>
-        </div>
-      )}
+      <div className="flex justify-end">
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+              <Info className="h-3.5 w-3.5" />
+              Sistema de puntos
+            </Button>
+          </DialogTrigger>
+          <ScoringRulesDialog bestOf={bestOf as 3 | 5} />
+        </Dialog>
+      </div>
       <ScrollArea className="w-full">
         <Table>
         <TableHeader>

@@ -57,8 +57,7 @@ const OPTIONAL_COLUMNS = [
   { key: "eps", label: "EPS", width: 15 },
 ] as const;
 
-function TemplateDownloadDialog({ teamIds }: { teamIds: string[] }) {
-  const { getTeamById } = useTournaments();
+function TemplateDownloadDialog() {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -77,23 +76,19 @@ function TemplateDownloadDialog({ teamIds }: { teamIds: string[] }) {
     const extras = OPTIONAL_COLUMNS.filter((c) => selected.has(c.key));
     const allHeaders = [...baseHeaders, ...extras.map((c) => c.label)];
 
-    for (const teamId of teamIds) {
-      const team = getTeamById(teamId);
-      if (!team) continue;
-      const sheetData: (string | undefined)[][] = [
-        ["Nombre del equipo", "Coloca aqui el nombre del equipo"],
-        allHeaders,
-        Array(allHeaders.length).fill(""),
-      ];
-      const ws = XLSX.utils.aoa_to_sheet(sheetData);
-      ws["!cols"] = allHeaders.map((h, i) => ({
-        wch: i < 3 ? 20 : extras.find((c) => c.label === h)?.width || 15,
-      }));
-      const sheetName = team.name
-        .substring(0, 31)
-        .replace(/[\\/*?[\]:]/g, "");
-      XLSX.utils.book_append_sheet(wb, ws, sheetName || `Equipo ${teamId.slice(0, 6)}`);
-    }
+    const emptyRows = Array.from({ length: 20 }, () =>
+      Array(allHeaders.length).fill("")
+    );
+    const sheetData: (string | undefined)[][] = [
+      ["Nombre del equipo", ""],
+      allHeaders,
+      ...emptyRows,
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+    ws["!cols"] = allHeaders.map((h, i) => ({
+      wch: i < 3 ? 20 : extras.find((c) => c.label === h)?.width || 15,
+    }));
+    XLSX.utils.book_append_sheet(wb, ws, "Jugadores");
 
     XLSX.writeFile(wb, "Plantilla_Jugadores.xlsx");
     setOpen(false);
@@ -111,8 +106,8 @@ function TemplateDownloadDialog({ teamIds }: { teamIds: string[] }) {
         <DialogHeader>
           <DialogTitle>Configurar plantilla</DialogTitle>
           <DialogDescription>
-            Elige los campos adicionales para la plantilla de jugadores. Se
-            generara una hoja por equipo.
+            Elige los campos adicionales para la plantilla de jugadores.
+            Envia la misma plantilla a cada equipo para que la llenen.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -179,7 +174,7 @@ function TeamsRosterSection({
           {tournament && (
             <AddTeamsDialog tournament={tournament} />
           )}
-          <TemplateDownloadDialog teamIds={teamIds} />
+          <TemplateDownloadDialog />
         </div>
       )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
