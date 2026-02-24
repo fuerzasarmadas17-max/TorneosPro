@@ -16,7 +16,6 @@ import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/context/auth-context";
 
 interface TournamentContextType {
   tournaments: Tournament[];
@@ -60,7 +59,6 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { isLoading: authLoading } = useAuth();
 
   const loadData = useCallback(async () => {
     try {
@@ -79,16 +77,28 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Wait for auth to resolve before loading data so Supabase has a valid session.
-  // Re-runs when authLoading changes from true→false, ensuring fresh token.
   useEffect(() => {
-    if (authLoading) return;
+    // Load data immediately (works if session is valid or for public RLS)
     loadData();
+
+    // Re-load when Supabase confirms a valid session (after token refresh,
+    // sign-in, or session restore). This catches the case where the initial
+    // load failed because the JWT was expired.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        loadData();
+      }
+    });
+
     const safetyTimer = setTimeout(() => {
       setIsLoading(false);
     }, 6000);
-    return () => clearTimeout(safetyTimer);
-  }, [loadData, authLoading]);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(safetyTimer);
+    };
+  }, [loadData]);
 
   const refetch = useCallback(async () => {
     await loadData();
