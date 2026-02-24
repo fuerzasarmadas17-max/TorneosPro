@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
 import { ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,34 +8,10 @@ import { AuthGuard } from "@/components/auth-guard";
 import { TournamentList } from "@/components/tournaments/tournament-list";
 import { useAuth } from "@/context/auth-context";
 import { useTournaments } from "@/context/tournament-context";
-import { supabase } from "@/lib/supabase";
 
 function DashboardContent() {
-  const { user, isLoading: authLoading } = useAuth();
-  const { tournaments, isLoading: tourLoading } = useTournaments();
-  const [dbTest, setDbTest] = useState("testing...");
-
-  useEffect(() => {
-    // Raw fetch test — completely bypasses Supabase client
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    setDbTest(`url: ${url ? url.substring(0, 30) + "..." : "MISSING"} | key: ${key ? key.substring(0, 10) + "..." : "MISSING"}`);
-
-    if (url && key) {
-      fetch(`${url}/rest/v1/tournaments?select=id,name&limit=3`, {
-        headers: {
-          "apikey": key,
-          "Authorization": `Bearer ${key}`,
-        },
-      })
-        .then(res => res.json().then(data => {
-          setDbTest(prev => prev + ` | fetch: ${res.status} ${Array.isArray(data) ? data.length + " rows" : JSON.stringify(data).substring(0, 80)}`);
-        }))
-        .catch(err => {
-          setDbTest(prev => prev + ` | fetch ERROR: ${err.message}`);
-        });
-    }
-  }, []);
+  const { user } = useAuth();
+  const { tournaments } = useTournaments();
 
   const myTournaments = tournaments.filter(
     (t) => t.createdBy === user?.id
@@ -50,15 +25,6 @@ function DashboardContent() {
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
-      {/* DEBUG — remover después */}
-      <div className="rounded-lg bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-400 p-3 text-xs font-mono space-y-1">
-        <p>authLoading: {String(authLoading)} | tourLoading: {String(tourLoading)}</p>
-        <p>user.id: {user?.id ?? "NULL"} | orgProfile: {user?.organizationProfile ? "SI" : "NO"}</p>
-        <p>tournaments total: {tournaments.length} | myTournaments: {myTournaments.length}</p>
-        <p>createdBy sample: {tournaments[0]?.createdBy ?? "N/A"}</p>
-        <p>DB test: {dbTest}</p>
-      </div>
-
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Hola, {user?.name}</h1>
