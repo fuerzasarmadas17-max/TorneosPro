@@ -10,8 +10,8 @@ import { useAuth } from "@/context/auth-context";
 import { useTournaments } from "@/context/tournament-context";
 
 function DashboardContent() {
-  const { user } = useAuth();
-  const { tournaments } = useTournaments();
+  const { user, isLoading: authLoading } = useAuth();
+  const { tournaments, isLoading: tourLoading } = useTournaments();
 
   const myTournaments = tournaments.filter(
     (t) => t.createdBy === user?.id
@@ -25,6 +25,14 @@ function DashboardContent() {
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
+      {/* DEBUG — remover después */}
+      <div className="rounded-lg bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-400 p-3 text-xs font-mono space-y-1">
+        <p>authLoading: {String(authLoading)} | tourLoading: {String(tourLoading)}</p>
+        <p>user.id: {user?.id ?? "NULL"} | orgProfile: {user?.organizationProfile ? "SI" : "NO"}</p>
+        <p>tournaments total: {tournaments.length} | myTournaments: {myTournaments.length}</p>
+        <p>createdBy sample: {tournaments[0]?.createdBy ?? "N/A"}</p>
+      </div>
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Hola, {user?.name}</h1>
