@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState, useEffect } from "react";
 import { ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,10 +9,24 @@ import { AuthGuard } from "@/components/auth-guard";
 import { TournamentList } from "@/components/tournaments/tournament-list";
 import { useAuth } from "@/context/auth-context";
 import { useTournaments } from "@/context/tournament-context";
+import { supabase } from "@/lib/supabase";
 
 function DashboardContent() {
   const { user, isLoading: authLoading } = useAuth();
   const { tournaments, isLoading: tourLoading } = useTournaments();
+  const [dbTest, setDbTest] = useState("testing...");
+
+  useEffect(() => {
+    // Direct Supabase test — bypasses all context logic
+    supabase.from("tournaments").select("id, name").limit(3)
+      .then(({ data, error }) => {
+        if (error) {
+          setDbTest(`ERROR: ${error.message} (code: ${error.code})`);
+        } else {
+          setDbTest(`OK: ${data?.length ?? 0} rows — ${data?.map(t => t.name).join(", ") || "empty"}`);
+        }
+      });
+  }, []);
 
   const myTournaments = tournaments.filter(
     (t) => t.createdBy === user?.id
@@ -31,6 +46,7 @@ function DashboardContent() {
         <p>user.id: {user?.id ?? "NULL"} | orgProfile: {user?.organizationProfile ? "SI" : "NO"}</p>
         <p>tournaments total: {tournaments.length} | myTournaments: {myTournaments.length}</p>
         <p>createdBy sample: {tournaments[0]?.createdBy ?? "N/A"}</p>
+        <p>DB test: {dbTest}</p>
       </div>
 
       <div className="flex items-center justify-between">
