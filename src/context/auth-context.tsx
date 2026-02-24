@@ -78,9 +78,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           event === "INITIAL_SESSION") &&
         session?.user
       ) {
-        // TOKEN_REFRESHED only refreshes the JWT — user data hasn't changed.
-        // Skip entirely to avoid overwriting full user data with incomplete data.
+        // TOKEN_REFRESHED: the JWT was renewed. Don't overwrite with basicUser,
+        // but if full data wasn't loaded yet (e.g. INITIAL_SESSION had an expired
+        // token), retry loading now with the fresh token.
         if (event === "TOKEN_REFRESHED") {
+          if (loadedUserIdRef.current !== session.user.id) {
+            try {
+              const userData = await loadUserData(session.user.id);
+              if (userData) {
+                loadedUserIdRef.current = session.user.id;
+                setAuthState({ user: userData, isAuthenticated: true });
+              }
+            } catch (err) {
+              console.error("Failed to load user data after token refresh:", err);
+            }
+          }
           return;
         }
 
