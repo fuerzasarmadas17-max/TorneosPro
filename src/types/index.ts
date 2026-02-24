@@ -214,11 +214,13 @@ export interface VolleyballStandingsEntry {
   played: number;
   won: number;
   lost: number;
-  pct: number;
-  gb: number;
   setsFor: number;
   setsAgainst: number;
-  diff: number;
+  setDiff: number;
+  pointsFor: number;
+  pointsAgainst: number;
+  pointDiff: number;
+  points: number;
 }
 
 export interface TournamentGroup {
