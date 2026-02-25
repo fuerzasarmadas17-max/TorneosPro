@@ -681,13 +681,13 @@ function MatchDisplay({
           className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-colors ${statusTab === "upcoming" ? "bg-background shadow font-medium" : "text-muted-foreground hover:text-foreground"}`}
           onClick={() => setStatusTab("upcoming")}
         >
-          Proximos{upcomingCount > 0 ? ` (${upcomingCount})` : ""}
+          Por jugar{upcomingCount > 0 ? ` (${upcomingCount})` : ""}
         </button>
         <button
           className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-colors ${statusTab === "completed" ? "bg-background shadow font-medium" : "text-muted-foreground hover:text-foreground"}`}
           onClick={() => setStatusTab("completed")}
         >
-          Completados{completedCount > 0 ? ` (${completedCount})` : ""}
+          Jugados{completedCount > 0 ? ` (${completedCount})` : ""}
         </button>
         <button
           className={`flex-1 px-3 py-1.5 text-sm rounded-md transition-colors ${statusTab === "postponed" ? "bg-background shadow font-medium" : "text-muted-foreground hover:text-foreground"}`}

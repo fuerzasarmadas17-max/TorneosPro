@@ -52,26 +52,31 @@ export function GroupStageView({ tournament, phase }: GroupStageViewProps) {
           matches: groupMatches,
         };
 
+        const standingsContent = group.teamIds.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Pendiente — los equipos se asignaran cuando la fase anterior se complete
+          </p>
+        ) : sportCategory === "baseball" ? (
+          <BaseballStandingsTable tournament={groupTournament} />
+        ) : sportCategory === "basketball" ? (
+          <BasketballStandingsTable tournament={groupTournament} />
+        ) : sportCategory === "volleyball" ? (
+          <VolleyballStandingsTable tournament={groupTournament} />
+        ) : (
+          <StandingsTable tournament={groupTournament} />
+        );
+
+        // Single group in phase: render without Card wrapper
+        if (groups.length === 1) {
+          return <div key={group.id}>{standingsContent}</div>;
+        }
+
         return (
           <Card key={group.id}>
             <CardHeader>
               <CardTitle className="text-lg">{group.name}</CardTitle>
             </CardHeader>
-            <CardContent>
-              {group.teamIds.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Pendiente — los equipos se asignaran cuando la fase anterior se complete
-                </p>
-              ) : sportCategory === "baseball" ? (
-                <BaseballStandingsTable tournament={groupTournament} />
-              ) : sportCategory === "basketball" ? (
-                <BasketballStandingsTable tournament={groupTournament} />
-              ) : sportCategory === "volleyball" ? (
-                <VolleyballStandingsTable tournament={groupTournament} />
-              ) : (
-                <StandingsTable tournament={groupTournament} />
-              )}
-            </CardContent>
+            <CardContent>{standingsContent}</CardContent>
           </Card>
         );
       })}

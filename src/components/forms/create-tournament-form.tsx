@@ -621,9 +621,15 @@ export function CreateTournamentForm() {
 
                     {/* Fase 1 */}
                     <div className="rounded-md bg-muted/40 p-3 space-y-2">
-                      <p className="text-sm font-medium">Fase 1 — Grupos {p1Names}</p>
+                      <p className="text-sm font-medium">
+                        {groups.length === 1
+                          ? "Fase 1 — Liga (todos contra todos)"
+                          : `Fase 1 — Grupos ${p1Names}`}
+                      </p>
                       <p className="text-xs text-muted-foreground">
-                        Todos contra todos dentro de cada grupo.
+                        {groups.length === 1
+                          ? "Todos los equipos juegan entre si."
+                          : "Todos contra todos dentro de cada grupo."}
                       </p>
                       <div className="flex items-center gap-2 pt-1">
                         <span className="text-sm">Los mejores</span>
@@ -635,7 +641,9 @@ export function CreateTournamentForm() {
                           onChange={(e) => setPhase1AdvancePerGroup(e.target.value)}
                           className="w-14 h-8 text-center text-sm"
                         />
-                        <span className="text-sm">de cada grupo avanzan</span>
+                        <span className="text-sm">
+                          {groups.length === 1 ? "avanzan" : "de cada grupo avanzan"}
+                        </span>
                       </div>
                     </div>
 
@@ -659,11 +667,13 @@ export function CreateTournamentForm() {
                           className="w-14 h-8 text-center text-sm"
                         />
                         <span className="text-sm font-medium">
-                          {p2Groups === 1 ? "grupo" : "grupos"} nuevos ({p2Names})
+                          {p2Groups === 1 ? "grupo (todos contra todos)" : `grupos nuevos (${p2Names})`}
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Se arman {p2Groups === 1 ? "1 grupo nuevo" : `${p2Groups} grupos nuevos`} de {p2PerGroup} {label} cada uno. Vuelven a jugar todos contra todos.
+                        {p2Groups === 1
+                          ? `Los ${p1Total} ${label} clasificados juegan todos entre si en una sola tabla.`
+                          : `Se arman ${p2Groups} grupos nuevos de ${p2PerGroup} ${label} cada uno. Vuelven a jugar todos contra todos.`}
                       </p>
                       <div className="flex items-center gap-2 pt-1">
                         <span className="text-sm">Los mejores</span>
@@ -675,7 +685,9 @@ export function CreateTournamentForm() {
                           onChange={(e) => setPhase2AdvancePerGroup(e.target.value)}
                           className="w-14 h-8 text-center text-sm"
                         />
-                        <span className="text-sm">de cada grupo avanzan</span>
+                        <span className="text-sm">
+                          {p2Groups === 1 ? "avanzan" : "de cada grupo avanzan"}
+                        </span>
                       </div>
                     </div>
 
@@ -699,7 +711,7 @@ export function CreateTournamentForm() {
               })()}
 
               {/* Add Phase 2 button */}
-              {groups.length >= 2 && format === "group-playoff" && !hasPhase2 && (
+              {groups.length >= 1 && format === "group-playoff" && !hasPhase2 && (
                 <Button
                   type="button"
                   variant="outline"

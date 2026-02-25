@@ -320,11 +320,17 @@ export function TournamentDetail({
         /* Multi-phase group-playoff */
         <Tabs defaultValue="phase1">
           <TabsList>
-            {tournament.phaseConfigs.map((pc) => (
-              <TabsTrigger key={`phase${pc.phase}`} value={`phase${pc.phase}`}>
-                Fase {pc.phase}
-              </TabsTrigger>
-            ))}
+            {tournament.phaseConfigs.map((pc) => {
+              const groupsInPhase = tournament.groups?.filter(g => g.phase === pc.phase) || [];
+              const phaseLabel = groupsInPhase.length === 1
+                ? `Liga (Fase ${pc.phase})`
+                : `Grupos (Fase ${pc.phase})`;
+              return (
+                <TabsTrigger key={`phase${pc.phase}`} value={`phase${pc.phase}`}>
+                  {phaseLabel}
+                </TabsTrigger>
+              );
+            })}
             <TabsTrigger value="playoffs">Playoffs</TabsTrigger>
             <TabsTrigger value="schedule">Calendario</TabsTrigger>
             {isAuthenticated && (
