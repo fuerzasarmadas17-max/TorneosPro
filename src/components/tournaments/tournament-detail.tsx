@@ -264,13 +264,24 @@ export function TournamentDetail({
   const sportCategory = getSportCategory(tournament.sport);
   const showStats = (tournament.enabledStats?.length ?? 0) > 0;
 
-  // Tab visibility: null/undefined = all visible, otherwise only listed tabs
+  // Tab visibility: null/undefined = nothing extra visible, only explicitly enabled tabs
   const isTabVisible = (tab: string) =>
-    canEdit || !tournament.visibleTabs || tournament.visibleTabs.includes(tab);
+    canEdit || (tournament.visibleTabs?.includes(tab) ?? false);
 
   // Available configurable tabs depend on format
   const configurableTabs = (() => {
     const tabs: { key: string; label: string }[] = [];
+    // Multi-phase: phases 2+ are configurable
+    if (tournament.format === "group-playoff" && tournament.phaseConfigs?.length) {
+      for (const pc of tournament.phaseConfigs) {
+        if (pc.phase === 1) continue;
+        const groupsInPhase = tournament.groups?.filter(g => g.phase === pc.phase) || [];
+        const label = groupsInPhase.length === 1
+          ? `Liga (Fase ${pc.phase})`
+          : `Grupos (Fase ${pc.phase})`;
+        tabs.push({ key: `phase${pc.phase}`, label });
+      }
+    }
     if (tournament.format === "group-playoff") {
       tabs.push({ key: "playoffs", label: "Playoffs" });
     }
@@ -285,7 +296,7 @@ export function TournamentDetail({
   })();
 
   const toggleTab = (tab: string) => {
-    const current = tournament.visibleTabs || configurableTabs.map((t) => t.key);
+    const current = tournament.visibleTabs || [];
     const next = current.includes(tab)
       ? current.filter((t) => t !== tab)
       : [...current, tab];
@@ -351,6 +362,7 @@ export function TournamentDetail({
           <div className="flex items-center gap-2">
             <TabsList>
               {tournament.phaseConfigs.map((pc) => {
+                if (pc.phase > 1 && !isTabVisible(`phase${pc.phase}`)) return null;
                 const groupsInPhase = tournament.groups?.filter(g => g.phase === pc.phase) || [];
                 const phaseLabel = groupsInPhase.length === 1
                   ? `Liga (Fase ${pc.phase})`
@@ -369,11 +381,14 @@ export function TournamentDetail({
             </TabsList>
             {canEdit && <TabsSettingsButton configurableTabs={configurableTabs} visibleTabs={tournament.visibleTabs} onToggle={toggleTab} />}
           </div>
-          {tournament.phaseConfigs.map((pc) => (
-            <TabsContent key={`phase${pc.phase}`} value={`phase${pc.phase}`} className="mt-4">
-              <GroupStageView tournament={tournament} phase={pc.phase} />
-            </TabsContent>
-          ))}
+          {tournament.phaseConfigs.map((pc) => {
+            if (pc.phase > 1 && !isTabVisible(`phase${pc.phase}`)) return null;
+            return (
+              <TabsContent key={`phase${pc.phase}`} value={`phase${pc.phase}`} className="mt-4">
+                <GroupStageView tournament={tournament} phase={pc.phase} />
+              </TabsContent>
+            );
+          })}
           {isTabVisible("playoffs") && (
             <TabsContent value="playoffs" className="mt-4">
               <PlayoffBracketView tournament={tournament} canEdit={canEdit} />
@@ -576,7 +591,7 @@ function TabsSettingsButton({
   const [open, setOpen] = useState(false);
 
   const isChecked = (key: string) =>
-    !visibleTabs || visibleTabs.includes(key);
+    visibleTabs?.includes(key) ?? false;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
