@@ -29,7 +29,7 @@ interface TournamentContextType {
   addMatchToTournament: (tournamentId: string, match: Match) => Promise<void>;
   removeMatchFromTournament: (tournamentId: string, matchId: string) => Promise<void>;
   updateMatchDetails: (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => Promise<void>;
-  updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan">>) => Promise<void>;
+  updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs">>) => Promise<void>;
   updatePlayoffConfig: (tournamentId: string, advancePerGroup: number, totalAdvancing: number) => Promise<void>;
   updateMatch: (
     tournamentId: string,
