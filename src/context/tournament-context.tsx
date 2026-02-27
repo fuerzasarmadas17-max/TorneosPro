@@ -230,7 +230,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   );
 
   const updateTournamentProps = useCallback(
-    async (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs">>) => {
+    async (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs">>) => {
       // Update tournament fields in DB
       const dbUpdates: Partial<Tournament> = {};
       if (updates.doubleRoundRobin !== undefined) dbUpdates.doubleRoundRobin = updates.doubleRoundRobin;
@@ -239,6 +239,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       if (updates.price !== undefined) dbUpdates.price = updates.price;
       if (updates.plan !== undefined) dbUpdates.plan = updates.plan;
       if (updates.phaseConfigs !== undefined) dbUpdates.phaseConfigs = updates.phaseConfigs;
+      if (updates.visibleTabs !== undefined) dbUpdates.visibleTabs = updates.visibleTabs;
 
       if (Object.keys(dbUpdates).length > 0) {
         await dbUpdateTournament(tournamentId, dbUpdates);

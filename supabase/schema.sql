@@ -156,6 +156,7 @@ CREATE TABLE tournaments (
   tier TEXT, -- basico, medio, pro, premium
   enabled_stats match_event_type[] DEFAULT '{}',
   phase_configs JSONB DEFAULT NULL,
+  visible_tabs TEXT[] DEFAULT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

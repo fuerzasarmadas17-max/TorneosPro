@@ -11,6 +11,7 @@ import { BasketballStandingsTable } from "@/components/standings/basketball-stan
 import { VolleyballStandingsTable } from "@/components/standings/volleyball-standings-table";
 import { GroupStageView } from "@/components/standings/group-stage-view";
 import { MatchSchedule } from "@/components/standings/match-schedule";
+import { DateOrganizer } from "@/components/standings/date-organizer";
 import { TournamentStats } from "@/components/standings/tournament-stats";
 import { TeamRosterDialog } from "@/components/tournaments/team-roster-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,7 +30,7 @@ import { getSportCategory, Tournament, Sponsor } from "@/types";
 import { SponsorBanner } from "@/components/sponsors/sponsor-banner";
 import { SponsorForm } from "@/components/sponsors/sponsor-form";
 import { AddTeamsDialog } from "@/components/tournaments/add-teams-dialog";
-import { Download } from "lucide-react";
+import { Download, Settings } from "lucide-react";
 import * as XLSX from "xlsx";
 
 const statusLabels: Record<string, string> = {
@@ -263,6 +264,34 @@ export function TournamentDetail({
   const sportCategory = getSportCategory(tournament.sport);
   const showStats = (tournament.enabledStats?.length ?? 0) > 0;
 
+  // Tab visibility: null/undefined = all visible, otherwise only listed tabs
+  const isTabVisible = (tab: string) =>
+    canEdit || !tournament.visibleTabs || tournament.visibleTabs.includes(tab);
+
+  // Available configurable tabs depend on format
+  const configurableTabs = (() => {
+    const tabs: { key: string; label: string }[] = [];
+    if (tournament.format === "group-playoff") {
+      tabs.push({ key: "playoffs", label: "Playoffs" });
+    }
+    tabs.push({ key: "schedule", label: "Calendario" });
+    if (isAuthenticated) {
+      tabs.push({ key: "teams", label: "Equipos" });
+    }
+    if (showStats) {
+      tabs.push({ key: "stats", label: "Estadisticas" });
+    }
+    return tabs;
+  })();
+
+  const toggleTab = (tab: string) => {
+    const current = tournament.visibleTabs || configurableTabs.map((t) => t.key);
+    const next = current.includes(tab)
+      ? current.filter((t) => t !== tab)
+      : [...current, tab];
+    updateTournamentProps(tournament.id, { visibleTabs: next });
+  };
+
   // Combine org sponsors + tournament sponsors (no duplicates by id)
   const allSponsors = (() => {
     const combined = [...(orgSponsors || []), ...(tournament.sponsors || [])];
@@ -319,49 +348,53 @@ export function TournamentDetail({
       {tournament.format === "group-playoff" && tournament.phaseConfigs?.length ? (
         /* Multi-phase group-playoff */
         <Tabs defaultValue="phase1">
-          <TabsList>
-            {tournament.phaseConfigs.map((pc) => {
-              const groupsInPhase = tournament.groups?.filter(g => g.phase === pc.phase) || [];
-              const phaseLabel = groupsInPhase.length === 1
-                ? `Liga (Fase ${pc.phase})`
-                : `Grupos (Fase ${pc.phase})`;
-              return (
-                <TabsTrigger key={`phase${pc.phase}`} value={`phase${pc.phase}`}>
-                  {phaseLabel}
-                </TabsTrigger>
-              );
-            })}
-            <TabsTrigger value="playoffs">Playoffs</TabsTrigger>
-            <TabsTrigger value="schedule">Calendario</TabsTrigger>
-            {isAuthenticated && (
-              <TabsTrigger value="teams">Equipos</TabsTrigger>
-            )}
-            {showStats && (
-              <TabsTrigger value="stats">Estadisticas</TabsTrigger>
-            )}
-          </TabsList>
+          <div className="flex items-center gap-2">
+            <TabsList>
+              {tournament.phaseConfigs.map((pc) => {
+                const groupsInPhase = tournament.groups?.filter(g => g.phase === pc.phase) || [];
+                const phaseLabel = groupsInPhase.length === 1
+                  ? `Liga (Fase ${pc.phase})`
+                  : `Grupos (Fase ${pc.phase})`;
+                return (
+                  <TabsTrigger key={`phase${pc.phase}`} value={`phase${pc.phase}`}>
+                    {phaseLabel}
+                  </TabsTrigger>
+                );
+              })}
+              {isTabVisible("playoffs") && <TabsTrigger value="playoffs">Playoffs</TabsTrigger>}
+              {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
+              {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
+              {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+              {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+            </TabsList>
+            {canEdit && <TabsSettingsButton configurableTabs={configurableTabs} visibleTabs={tournament.visibleTabs} onToggle={toggleTab} />}
+          </div>
           {tournament.phaseConfigs.map((pc) => (
             <TabsContent key={`phase${pc.phase}`} value={`phase${pc.phase}`} className="mt-4">
               <GroupStageView tournament={tournament} phase={pc.phase} />
             </TabsContent>
           ))}
-          <TabsContent value="playoffs" className="mt-4">
-            <PlayoffBracketView tournament={tournament} canEdit={canEdit} />
-          </TabsContent>
-          <TabsContent value="schedule" className="mt-4">
-            <MatchSchedule tournament={tournament} canEdit={canEdit} />
-          </TabsContent>
-          {isAuthenticated && (
-            <TabsContent value="teams" className="mt-4">
-              <TeamsRosterSection
-                teamIds={tournament.teamIds}
-                canEdit={canEdit}
-
-                tournament={tournament}
-              />
+          {isTabVisible("playoffs") && (
+            <TabsContent value="playoffs" className="mt-4">
+              <PlayoffBracketView tournament={tournament} canEdit={canEdit} />
             </TabsContent>
           )}
-          {showStats && (
+          {isTabVisible("schedule") && (
+            <TabsContent value="schedule" className="mt-4">
+              <MatchSchedule tournament={tournament} canEdit={canEdit} />
+            </TabsContent>
+          )}
+          {canEdit && (
+            <TabsContent value="dates" className="mt-4">
+              <DateOrganizer tournament={tournament} />
+            </TabsContent>
+          )}
+          {isTabVisible("teams") && isAuthenticated && (
+            <TabsContent value="teams" className="mt-4">
+              <TeamsRosterSection teamIds={tournament.teamIds} canEdit={canEdit} tournament={tournament} />
+            </TabsContent>
+          )}
+          {isTabVisible("stats") && showStats && (
             <TabsContent value="stats" className="mt-4">
               <TournamentStats tournament={tournament} canEdit={canEdit} />
             </TabsContent>
@@ -370,37 +403,41 @@ export function TournamentDetail({
       ) : tournament.format === "group-playoff" ? (
         /* Single-phase group-playoff */
         <Tabs defaultValue="groups">
-          <TabsList>
-            <TabsTrigger value="groups">Grupos</TabsTrigger>
-            <TabsTrigger value="playoffs">Playoffs</TabsTrigger>
-            <TabsTrigger value="schedule">Calendario</TabsTrigger>
-            {isAuthenticated && (
-              <TabsTrigger value="teams">Equipos</TabsTrigger>
-            )}
-            {showStats && (
-              <TabsTrigger value="stats">Estadisticas</TabsTrigger>
-            )}
-          </TabsList>
+          <div className="flex items-center gap-2">
+            <TabsList>
+              <TabsTrigger value="groups">Grupos</TabsTrigger>
+              {isTabVisible("playoffs") && <TabsTrigger value="playoffs">Playoffs</TabsTrigger>}
+              {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
+              {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
+              {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+              {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+            </TabsList>
+            {canEdit && <TabsSettingsButton configurableTabs={configurableTabs} visibleTabs={tournament.visibleTabs} onToggle={toggleTab} />}
+          </div>
           <TabsContent value="groups" className="mt-4">
             <GroupStageView tournament={tournament} />
           </TabsContent>
-          <TabsContent value="playoffs" className="mt-4">
-            <PlayoffBracketView tournament={tournament} canEdit={canEdit} />
-          </TabsContent>
-          <TabsContent value="schedule" className="mt-4">
-            <MatchSchedule tournament={tournament} canEdit={canEdit} />
-          </TabsContent>
-          {isAuthenticated && (
-            <TabsContent value="teams" className="mt-4">
-              <TeamsRosterSection
-                teamIds={tournament.teamIds}
-                canEdit={canEdit}
-
-                tournament={tournament}
-              />
+          {isTabVisible("playoffs") && (
+            <TabsContent value="playoffs" className="mt-4">
+              <PlayoffBracketView tournament={tournament} canEdit={canEdit} />
             </TabsContent>
           )}
-          {showStats && (
+          {isTabVisible("schedule") && (
+            <TabsContent value="schedule" className="mt-4">
+              <MatchSchedule tournament={tournament} canEdit={canEdit} />
+            </TabsContent>
+          )}
+          {canEdit && (
+            <TabsContent value="dates" className="mt-4">
+              <DateOrganizer tournament={tournament} />
+            </TabsContent>
+          )}
+          {isTabVisible("teams") && isAuthenticated && (
+            <TabsContent value="teams" className="mt-4">
+              <TeamsRosterSection teamIds={tournament.teamIds} canEdit={canEdit} tournament={tournament} />
+            </TabsContent>
+          )}
+          {isTabVisible("stats") && showStats && (
             <TabsContent value="stats" className="mt-4">
               <TournamentStats tournament={tournament} canEdit={canEdit} />
             </TabsContent>
@@ -408,33 +445,35 @@ export function TournamentDetail({
         </Tabs>
       ) : tournament.format === "elimination" ? (
         <Tabs defaultValue="bracket">
-          <TabsList>
-            <TabsTrigger value="bracket">Bracket</TabsTrigger>
-            <TabsTrigger value="matches">Partidos</TabsTrigger>
-            {isAuthenticated && (
-              <TabsTrigger value="teams">Equipos</TabsTrigger>
-            )}
-            {showStats && (
-              <TabsTrigger value="stats">Estadisticas</TabsTrigger>
-            )}
-          </TabsList>
+          <div className="flex items-center gap-2">
+            <TabsList>
+              <TabsTrigger value="bracket">Bracket</TabsTrigger>
+              {isTabVisible("schedule") && <TabsTrigger value="matches">Partidos</TabsTrigger>}
+              {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
+              {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+              {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+            </TabsList>
+            {canEdit && <TabsSettingsButton configurableTabs={configurableTabs} visibleTabs={tournament.visibleTabs} onToggle={toggleTab} />}
+          </div>
           <TabsContent value="bracket" className="mt-4">
             <BracketView tournament={tournament} canEdit={canEdit} />
           </TabsContent>
-          <TabsContent value="matches" className="mt-4">
-            <MatchSchedule tournament={tournament} canEdit={canEdit} />
-          </TabsContent>
-          {isAuthenticated && (
-            <TabsContent value="teams" className="mt-4">
-              <TeamsRosterSection
-                teamIds={tournament.teamIds}
-                canEdit={canEdit}
-
-                tournament={tournament}
-              />
+          {isTabVisible("schedule") && (
+            <TabsContent value="matches" className="mt-4">
+              <MatchSchedule tournament={tournament} canEdit={canEdit} />
             </TabsContent>
           )}
-          {showStats && (
+          {canEdit && (
+            <TabsContent value="dates" className="mt-4">
+              <DateOrganizer tournament={tournament} />
+            </TabsContent>
+          )}
+          {isTabVisible("teams") && isAuthenticated && (
+            <TabsContent value="teams" className="mt-4">
+              <TeamsRosterSection teamIds={tournament.teamIds} canEdit={canEdit} tournament={tournament} />
+            </TabsContent>
+          )}
+          {isTabVisible("stats") && showStats && (
             <TabsContent value="stats" className="mt-4">
               <TournamentStats tournament={tournament} canEdit={canEdit} />
             </TabsContent>
@@ -442,33 +481,35 @@ export function TournamentDetail({
         </Tabs>
       ) : tournament.groups && tournament.groups.length > 0 ? (
         <Tabs defaultValue="groups">
-          <TabsList>
-            <TabsTrigger value="groups">Grupos</TabsTrigger>
-            <TabsTrigger value="schedule">Calendario</TabsTrigger>
-            {isAuthenticated && (
-              <TabsTrigger value="teams">Equipos</TabsTrigger>
-            )}
-            {showStats && (
-              <TabsTrigger value="stats">Estadisticas</TabsTrigger>
-            )}
-          </TabsList>
+          <div className="flex items-center gap-2">
+            <TabsList>
+              <TabsTrigger value="groups">Grupos</TabsTrigger>
+              {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
+              {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
+              {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+              {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+            </TabsList>
+            {canEdit && <TabsSettingsButton configurableTabs={configurableTabs} visibleTabs={tournament.visibleTabs} onToggle={toggleTab} />}
+          </div>
           <TabsContent value="groups" className="mt-4">
             <GroupStageView tournament={tournament} />
           </TabsContent>
-          <TabsContent value="schedule" className="mt-4">
-            <MatchSchedule tournament={tournament} canEdit={canEdit} />
-          </TabsContent>
-          {isAuthenticated && (
-            <TabsContent value="teams" className="mt-4">
-              <TeamsRosterSection
-                teamIds={tournament.teamIds}
-                canEdit={canEdit}
-
-                tournament={tournament}
-              />
+          {isTabVisible("schedule") && (
+            <TabsContent value="schedule" className="mt-4">
+              <MatchSchedule tournament={tournament} canEdit={canEdit} />
             </TabsContent>
           )}
-          {showStats && (
+          {canEdit && (
+            <TabsContent value="dates" className="mt-4">
+              <DateOrganizer tournament={tournament} />
+            </TabsContent>
+          )}
+          {isTabVisible("teams") && isAuthenticated && (
+            <TabsContent value="teams" className="mt-4">
+              <TeamsRosterSection teamIds={tournament.teamIds} canEdit={canEdit} tournament={tournament} />
+            </TabsContent>
+          )}
+          {isTabVisible("stats") && showStats && (
             <TabsContent value="stats" className="mt-4">
               <TournamentStats tournament={tournament} canEdit={canEdit} />
             </TabsContent>
@@ -476,16 +517,16 @@ export function TournamentDetail({
         </Tabs>
       ) : (
         <Tabs defaultValue="standings">
-          <TabsList>
-            <TabsTrigger value="standings">Clasificacion</TabsTrigger>
-            <TabsTrigger value="schedule">Calendario</TabsTrigger>
-            {isAuthenticated && (
-              <TabsTrigger value="teams">Equipos</TabsTrigger>
-            )}
-            {showStats && (
-              <TabsTrigger value="stats">Estadisticas</TabsTrigger>
-            )}
-          </TabsList>
+          <div className="flex items-center gap-2">
+            <TabsList>
+              <TabsTrigger value="standings">Clasificacion</TabsTrigger>
+              {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
+              {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
+              {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+              {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+            </TabsList>
+            {canEdit && <TabsSettingsButton configurableTabs={configurableTabs} visibleTabs={tournament.visibleTabs} onToggle={toggleTab} />}
+          </div>
           <TabsContent value="standings" className="mt-4">
             {sportCategory === "baseball" ? (
               <BaseballStandingsTable tournament={tournament} />
@@ -497,20 +538,22 @@ export function TournamentDetail({
               <StandingsTable tournament={tournament} />
             )}
           </TabsContent>
-          <TabsContent value="schedule" className="mt-4">
-            <MatchSchedule tournament={tournament} canEdit={canEdit} />
-          </TabsContent>
-          {isAuthenticated && (
-            <TabsContent value="teams" className="mt-4">
-              <TeamsRosterSection
-                teamIds={tournament.teamIds}
-                canEdit={canEdit}
-
-                tournament={tournament}
-              />
+          {isTabVisible("schedule") && (
+            <TabsContent value="schedule" className="mt-4">
+              <MatchSchedule tournament={tournament} canEdit={canEdit} />
             </TabsContent>
           )}
-          {showStats && (
+          {canEdit && (
+            <TabsContent value="dates" className="mt-4">
+              <DateOrganizer tournament={tournament} />
+            </TabsContent>
+          )}
+          {isTabVisible("teams") && isAuthenticated && (
+            <TabsContent value="teams" className="mt-4">
+              <TeamsRosterSection teamIds={tournament.teamIds} canEdit={canEdit} tournament={tournament} />
+            </TabsContent>
+          )}
+          {isTabVisible("stats") && showStats && (
             <TabsContent value="stats" className="mt-4">
               <TournamentStats tournament={tournament} canEdit={canEdit} />
             </TabsContent>
@@ -518,5 +561,51 @@ export function TournamentDetail({
         </Tabs>
       )}
     </div>
+  );
+}
+
+function TabsSettingsButton({
+  configurableTabs,
+  visibleTabs,
+  onToggle,
+}: {
+  configurableTabs: { key: string; label: string }[];
+  visibleTabs?: string[];
+  onToggle: (tab: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const isChecked = (key: string) =>
+    !visibleTabs || visibleTabs.includes(key);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+          <Settings className="h-4 w-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-xs">
+        <DialogHeader>
+          <DialogTitle>Tabs visibles</DialogTitle>
+          <DialogDescription>
+            Elige que tabs pueden ver los usuarios
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          {configurableTabs.map((tab) => (
+            <label key={tab.key} className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isChecked(tab.key)}
+                onChange={() => onToggle(tab.key)}
+                className="h-4 w-4 rounded border-border"
+              />
+              <span className="text-sm">{tab.label}</span>
+            </label>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

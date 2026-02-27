@@ -285,6 +285,7 @@ export interface Tournament {
   tier?: TournamentTier;
   couponId?: string;
   phaseConfigs?: PhaseConfig[];
+  visibleTabs?: string[];
 }
 
 export interface TournamentFilters {

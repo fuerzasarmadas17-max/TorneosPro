@@ -136,6 +136,7 @@ export function mapTournament(row: Record<string, unknown>): Tournament {
     tier: (row.tier as TournamentTier) ?? undefined,
     couponId: (row.coupon_id as string) ?? undefined,
     phaseConfigs: (row.phase_configs as PhaseConfig[]) ?? undefined,
+    visibleTabs: (row.visible_tabs as string[]) ?? undefined,
   };
 }
 
@@ -227,6 +228,7 @@ export function toDbTournament(t: Partial<Tournament>): Record<string, unknown> 
   if (t.enabledStats !== undefined) db.enabled_stats = t.enabledStats;
   if (t.couponId !== undefined) db.coupon_id = t.couponId;
   if (t.phaseConfigs !== undefined) db.phase_configs = t.phaseConfigs;
+  if (t.visibleTabs !== undefined) db.visible_tabs = t.visibleTabs;
   return db;
 }
 
