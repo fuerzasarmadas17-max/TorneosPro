@@ -169,19 +169,17 @@ function MatchDisplay({
     .map((id) => ({ id, name: getTeamById(id)?.name || id }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  // Filter out unscheduled matches for public view
-  const baseMatches = canEdit
-    ? tournament.matches
-    : tournament.matches.filter((m) => m.status !== "unscheduled");
+  // Only show scheduled/completed/postponed matches (unscheduled go to Fechas tab)
+  const baseMatches = tournament.matches.filter((m) => m.status !== "unscheduled");
 
   // Apply team filter
   const visibleMatches = teamFilter === "all"
     ? baseMatches
     : baseMatches.filter((m) => m.homeTeamId === teamFilter || m.awayTeamId === teamFilter);
 
-  // Status counts (after canEdit and team filters)
+  // Status counts (after team filter)
   const upcomingCount = visibleMatches.filter(
-    (m) => m.status === "unscheduled" || m.status === "scheduled"
+    (m) => m.status === "scheduled"
   ).length;
   const completedCount = visibleMatches.filter(
     (m) => m.status === "completed"
@@ -192,7 +190,7 @@ function MatchDisplay({
 
   // Apply status tab filter
   const tabMatches = visibleMatches.filter((m) => {
-    if (statusTab === "upcoming") return m.status === "unscheduled" || m.status === "scheduled";
+    if (statusTab === "upcoming") return m.status === "scheduled";
     if (statusTab === "completed") return m.status === "completed";
     if (statusTab === "postponed") return m.status === "postponed";
     return true;
@@ -339,8 +337,6 @@ function MatchDisplay({
     const isPostponed = match.status === "postponed";
     const isCompleted = match.status === "completed";
     const canEditDetails = canEdit && !isCompleted;
-    const hasFullDetails = !!(match.date && match.time && match.venue);
-
     const groupName = match.groupId
       ? tournament.groups?.find((g) => g.id === match.groupId)?.name || ""
       : "";
@@ -407,15 +403,6 @@ function MatchDisplay({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {match.status === "unscheduled" && (
-                      <>
-                        <SelectItem value="unscheduled">Sin Programar</SelectItem>
-                        <SelectItem value="scheduled" disabled={!hasFullDetails}>
-                          Programado{!hasFullDetails ? " (completar datos)" : ""}
-                        </SelectItem>
-                        <SelectItem value="postponed">Aplazado</SelectItem>
-                      </>
-                    )}
                     {match.status === "scheduled" && (
                       <>
                         <SelectItem value="scheduled">Programado</SelectItem>
@@ -503,15 +490,6 @@ function MatchDisplay({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {match.status === "unscheduled" && (
-                      <>
-                        <SelectItem value="unscheduled">Sin Programar</SelectItem>
-                        <SelectItem value="scheduled" disabled={!hasFullDetails}>
-                          Programado{!hasFullDetails ? " (completar datos)" : ""}
-                        </SelectItem>
-                        <SelectItem value="postponed">Aplazado</SelectItem>
-                      </>
-                    )}
                     {match.status === "scheduled" && (
                       <>
                         <SelectItem value="scheduled">Programado</SelectItem>
@@ -584,43 +562,8 @@ function MatchDisplay({
           </div>
         )}
 
-        {/* Match details row: date, time, venue */}
-        {canEditDetails && !isPostponed && match.status === "unscheduled" ? (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 px-3 py-2.5 bg-muted/30 border-t">
-            <div className="flex items-center gap-1.5">
-              <CalendarIcon className="h-4 w-4 sm:h-3 sm:w-3 text-muted-foreground shrink-0" />
-              <Input
-                type="date"
-                className="h-8 sm:h-7 text-sm sm:text-xs flex-1"
-                value={match.date || ""}
-                onChange={(e) => updateMatchDetails(tournament.id, match.id, { date: e.target.value || undefined })}
-              />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Clock className="h-4 w-4 sm:h-3 sm:w-3 text-muted-foreground shrink-0" />
-              <Input
-                type="time"
-                className="h-8 sm:h-7 text-sm sm:text-xs flex-1"
-                value={match.time || ""}
-                onChange={(e) => updateMatchDetails(tournament.id, match.id, { time: e.target.value || undefined })}
-              />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <MapPin className="h-4 w-4 sm:h-3 sm:w-3 text-muted-foreground shrink-0" />
-              <Input
-                type="text"
-                placeholder="Estadio"
-                className="h-8 sm:h-7 text-sm sm:text-xs flex-1"
-                list={`venues-${tournament.id}`}
-                value={match.venue || ""}
-                onChange={(e) => {
-                  const capitalized = e.target.value.replace(/\b\w/g, (c) => c.toUpperCase());
-                  updateMatchDetails(tournament.id, match.id, { venue: capitalized || undefined });
-                }}
-              />
-            </div>
-          </div>
-        ) : (match.date || match.time || match.venue) ? (
+        {/* Match details row: date, time, venue (read-only) */}
+        {(match.date || match.time || match.venue) ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2.5 bg-muted/30 border-t text-sm sm:text-xs text-muted-foreground">
             {match.date && (
               <span className="flex items-center gap-1.5">

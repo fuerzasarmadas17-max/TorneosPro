@@ -9,6 +9,43 @@ import { useTournaments } from "@/context/tournament-context";
 import { CalendarIcon, Clock, MapPin, Check } from "lucide-react";
 import { toast } from "sonner";
 
+/** Normalizes user input into HH:MM format. Accepts: "1630", "16:30", "430pm", "4:30 PM", etc. */
+function normalizeTime(raw: string): string {
+  const s = raw.trim().toLowerCase().replace(/\s+/g, "");
+  if (!s) return "";
+
+  const isPM = s.includes("pm") || s.includes("p");
+  const isAM = s.includes("am") || s.includes("a");
+  const digits = s.replace(/[^0-9:]/g, "");
+
+  let h: number, m: number;
+
+  if (digits.includes(":")) {
+    const [hh, mm] = digits.split(":");
+    h = parseInt(hh, 10);
+    m = parseInt(mm || "0", 10);
+  } else if (digits.length <= 2) {
+    h = parseInt(digits, 10);
+    m = 0;
+  } else if (digits.length === 3) {
+    h = parseInt(digits[0], 10);
+    m = parseInt(digits.slice(1), 10);
+  } else {
+    h = parseInt(digits.slice(0, 2), 10);
+    m = parseInt(digits.slice(2, 4), 10);
+  }
+
+  if (isNaN(h)) return "";
+
+  if (isPM && h < 12) h += 12;
+  if (isAM && h === 12) h = 0;
+
+  h = Math.min(h, 23);
+  m = isNaN(m) ? 0 : Math.min(m, 59);
+
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+}
+
 interface DateOrganizerProps {
   tournament: Tournament;
 }
@@ -167,11 +204,23 @@ function MatchRow({
   updateMatchDetails: (tournamentId: string, matchId: string, details: Record<string, unknown>) => void;
   onSchedule: (match: Match) => void;
 }) {
+  const [date, setDate] = useState(match.date || "");
+  const [time, setTime] = useState(match.time || "");
   const [venue, setVenue] = useState(match.venue || "");
 
   const home = match.homeTeamId ? getTeamById(match.homeTeamId) : null;
   const away = match.awayTeamId ? getTeamById(match.awayTeamId) : null;
-  const isReady = !!(match.date && match.time && venue.trim());
+  const isReady = !!(date && time && venue.trim());
+
+  const commitDate = () => {
+    updateMatchDetails(tournament.id, match.id, { date: date || undefined });
+  };
+
+  const commitTime = () => {
+    const normalized = normalizeTime(time);
+    setTime(normalized);
+    updateMatchDetails(tournament.id, match.id, { time: normalized || undefined });
+  };
 
   const commitVenue = () => {
     const trimmed = venue.trim();
@@ -192,10 +241,9 @@ function MatchRow({
           <Input
             type="date"
             className="h-8 sm:h-7 text-sm sm:text-xs w-[130px]"
-            value={match.date || ""}
-            onChange={(e) =>
-              updateMatchDetails(tournament.id, match.id, { date: e.target.value || undefined })
-            }
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            onBlur={commitDate}
           />
         </div>
         <div className="flex items-center gap-1.5">
@@ -203,10 +251,10 @@ function MatchRow({
           <Input
             type="time"
             className="h-8 sm:h-7 text-sm sm:text-xs w-[100px]"
-            value={match.time || ""}
-            onChange={(e) =>
-              updateMatchDetails(tournament.id, match.id, { time: e.target.value || undefined })
-            }
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+            onBlur={commitTime}
+            onKeyDown={(e) => { if (e.key === "Enter") commitTime(); }}
           />
         </div>
         <div className="flex items-center gap-1.5 flex-1 min-w-[120px]">
@@ -227,6 +275,8 @@ function MatchRow({
           className="h-8 sm:h-7 text-xs gap-1"
           disabled={!isReady}
           onClick={() => {
+            commitDate();
+            commitTime();
             commitVenue();
             onSchedule(match);
           }}
