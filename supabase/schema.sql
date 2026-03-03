@@ -128,6 +128,9 @@ CREATE TABLE players (
   team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   age INT,
+  document_number TEXT,
+  eps TEXT,
+  birth_date TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -157,6 +160,7 @@ CREATE TABLE tournaments (
   enabled_stats match_event_type[] DEFAULT '{}',
   phase_configs JSONB DEFAULT NULL,
   visible_tabs TEXT[] DEFAULT NULL,
+  disqualified_team_ids TEXT[] DEFAULT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

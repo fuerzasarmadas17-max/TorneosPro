@@ -185,12 +185,18 @@ export function useVolleyballStandings(
   tournament: Tournament
 ): VolleyballStandingsEntry[] {
   return useMemo(() => {
+    const dqTeams = new Set(tournament.disqualifiedTeamIds || []);
     const setsToWin = tournament.bestOf
       ? Math.ceil(tournament.bestOf / 2)
       : 2;
 
+    // Filter out matches involving disqualified teams
+    const validMatches = tournament.matches.filter(
+      (m) => !m.homeTeamId || !m.awayTeamId || (!dqTeams.has(m.homeTeamId) && !dqTeams.has(m.awayTeamId))
+    );
+
     const entries = buildEntries(
-      tournament.matches,
+      validMatches,
       tournament.teamIds,
       setsToWin
     );
@@ -238,5 +244,5 @@ export function useVolleyballStandings(
     }
 
     return result;
-  }, [tournament.matches, tournament.teamIds, tournament.bestOf]);
+  }, [tournament.matches, tournament.teamIds, tournament.bestOf, tournament.disqualifiedTeamIds]);
 }

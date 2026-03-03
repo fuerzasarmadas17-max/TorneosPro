@@ -12,12 +12,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Team, Player } from "@/types";
 import { useTournaments } from "@/context/tournament-context";
 import { toast } from "sonner";
-import { Plus, Trash2, Users, Upload } from "lucide-react";
+import { Plus, Trash2, Users, Upload, ChevronDown, ChevronUp } from "lucide-react";
 import * as XLSX from "xlsx";
 
 interface TeamRosterDialogProps {
@@ -27,6 +26,9 @@ interface TeamRosterDialogProps {
 interface PlayerEntry {
   name: string;
   age: string;
+  documentNumber: string;
+  eps: string;
+  birthDate: string;
 }
 
 export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
@@ -36,12 +38,22 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
   const [primaryColor, setPrimaryColor] = useState(team.primaryColor || "#ffffff");
   const [secondaryColor, setSecondaryColor] = useState(team.secondaryColor || "#000000");
   const [playerEntries, setPlayerEntries] = useState<PlayerEntry[]>(
-    team.players.map((p) => ({ name: p.name, age: p.age ? String(p.age) : "" }))
+    team.players.map((p) => ({ name: p.name, age: p.age ? String(p.age) : "", documentNumber: p.documentNumber || "", eps: p.eps || "", birthDate: p.birthDate || "" }))
   );
+  const [expandedPlayers, setExpandedPlayers] = useState<Set<number>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const toggleExpanded = (index: number) => {
+    setExpandedPlayers((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
   const addPlayer = () => {
-    setPlayerEntries([...playerEntries, { name: "", age: "" }]);
+    setPlayerEntries([...playerEntries, { name: "", age: "", documentNumber: "", eps: "", birthDate: "" }]);
   };
 
   const removePlayer = (index: number) => {
@@ -104,8 +116,30 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
             edad = edadRaw ? String(edadRaw).trim() : "";
           }
 
+          // Document number
+          const documento = String(row["Numero de documento"] || row["numero de documento"] || row["NUMERO DE DOCUMENTO"] || row["Documento"] || row["documento"] || row["DOCUMENTO"] || row["No. Documento"] || row["No. documento"] || "").trim();
+
+          // EPS
+          const epsVal = String(row["EPS"] || row["eps"] || row["Eps"] || "").trim();
+
+          // Birth date as string
+          let fechaNac = "";
+          if (fechaNacRaw) {
+            if (typeof fechaNacRaw === "number") {
+              const parsed = XLSX.SSF.parse_date_code(fechaNacRaw);
+              if (parsed.y) {
+                fechaNac = `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
+              }
+            } else {
+              const parsed = new Date(String(fechaNacRaw));
+              if (!isNaN(parsed.getTime())) {
+                fechaNac = parsed.toISOString().split("T")[0];
+              }
+            }
+          }
+
           const fullName = [nombre, apellido1, apellido2].filter(Boolean).join(" ");
-          imported.push({ name: fullName, age: edad });
+          imported.push({ name: fullName, age: edad, documentNumber: documento, eps: epsVal, birthDate: fechaNac });
         }
 
         if (imported.length === 0) {
@@ -141,6 +175,9 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
         name: entry.name.trim(),
         teamId: team.id,
         age: entry.age ? parseInt(entry.age) || undefined : undefined,
+        documentNumber: entry.documentNumber.trim() || undefined,
+        eps: entry.eps.trim() || undefined,
+        birthDate: entry.birthDate.trim() || undefined,
       }));
 
     updateTeamPlayers(team.id, players);
@@ -155,8 +192,9 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
       setPrimaryColor(team.primaryColor || "#ffffff");
       setSecondaryColor(team.secondaryColor || "#000000");
       setPlayerEntries(
-        team.players.map((p) => ({ name: p.name, age: p.age ? String(p.age) : "" }))
+        team.players.map((p) => ({ name: p.name, age: p.age ? String(p.age) : "", documentNumber: p.documentNumber || "", eps: p.eps || "", birthDate: p.birthDate || "" }))
       );
+      setExpandedPlayers(new Set());
     }
   };
 
@@ -165,16 +203,10 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="gap-1.5">
           <Users className="h-3.5 w-3.5" />
-          {team.players.length > 0 ? (
-            <Badge variant="secondary" className="text-xs px-1.5 py-0">
-              {team.players.length}
-            </Badge>
-          ) : (
-            <span className="text-xs">Editar</span>
-          )}
+          <span className="text-xs">Editar</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Editar Equipo</DialogTitle>
           <DialogDescription>
@@ -182,7 +214,7 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-1">
           {/* Team Name */}
           <div className="space-y-2">
             <Label>Nombre del equipo</Label>
@@ -236,32 +268,101 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
               </span>
             </div>
 
-            <div className="space-y-2 max-h-[250px] overflow-y-auto">
+            <div className="space-y-1">
               {playerEntries.map((entry, index) => (
-                <div key={index} className="flex gap-2 items-center">
-                  <Input
-                    placeholder={`Jugador ${index + 1}`}
-                    value={entry.name}
-                    onChange={(e) => updateEntry(index, "name", e.target.value)}
-                    className="h-9"
-                  />
-                  <Input
-                    placeholder="Edad"
-                    type="number"
-                    min="1"
-                    value={entry.age}
-                    onChange={(e) => updateEntry(index, "age", e.target.value)}
-                    className="h-9 w-20 shrink-0"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 shrink-0"
-                    onClick={() => removePlayer(index)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                <div
+                  key={index}
+                  className="border border-border rounded-md overflow-hidden"
+                >
+                  {/* Collapsed row: name + expand + delete */}
+                  <div className="flex gap-2 items-center px-2 py-1.5">
+                    <Input
+                      placeholder={`Jugador ${index + 1}`}
+                      value={entry.name}
+                      onChange={(e) => updateEntry(index, "name", e.target.value)}
+                      className="h-8 border-0 shadow-none focus-visible:ring-0 px-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0 text-muted-foreground"
+                      onClick={() => toggleExpanded(index)}
+                      title="Ver más datos"
+                    >
+                      {expandedPlayers.has(index) ? (
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => removePlayer(index)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+
+                  {/* Expanded details */}
+                  {expandedPlayers.has(index) && (
+                    <div className="px-3 pb-2 pt-1 border-t border-border bg-muted/30">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Fecha de nacimiento</Label>
+                          <Input
+                            type="date"
+                            value={entry.birthDate}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setPlayerEntries((prev) => {
+                                const updated = [...prev];
+                                updated[index] = { ...updated[index], birthDate: val };
+                                if (val) {
+                                  const birth = new Date(val);
+                                  updated[index].age = String(new Date().getFullYear() - birth.getFullYear());
+                                }
+                                return updated;
+                              });
+                            }}
+                            className="h-8"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Edad</Label>
+                          <Input
+                            placeholder="Edad"
+                            type="number"
+                            min="1"
+                            value={entry.age}
+                            onChange={(e) => updateEntry(index, "age", e.target.value)}
+                            className="h-8"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">No. Documento</Label>
+                          <Input
+                            placeholder="Número de documento"
+                            value={entry.documentNumber}
+                            onChange={(e) => updateEntry(index, "documentNumber", e.target.value)}
+                            className="h-8"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">EPS</Label>
+                          <Input
+                            placeholder="EPS"
+                            value={entry.eps}
+                            onChange={(e) => updateEntry(index, "eps", e.target.value)}
+                            className="h-8"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -296,12 +397,12 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              El Excel debe tener columnas: Nombre, Apellido 1, Apellido 2. Opcionalmente: Fecha de nacimiento, etc.
+              Columnas: Nombre, Apellido 1, Apellido 2. Opcionales: Fecha de nacimiento, Edad, No. Documento, EPS.
             </p>
           </div>
         </div>
 
-        <div className="flex gap-2 pt-2">
+        <div className="flex gap-2 pt-2 shrink-0">
           <Button
             variant="outline"
             className="flex-1"

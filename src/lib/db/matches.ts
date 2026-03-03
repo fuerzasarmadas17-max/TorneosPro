@@ -115,6 +115,7 @@ export async function updateMatchDetails(
   updates: Partial<
     Pick<
       Match,
+      | "round"
       | "homeTeamId"
       | "awayTeamId"
       | "date"

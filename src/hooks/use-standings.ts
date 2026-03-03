@@ -3,6 +3,7 @@ import { StandingsEntry, Tournament } from "@/types";
 
 export function useStandings(tournament: Tournament): StandingsEntry[] {
   return useMemo(() => {
+    const dqTeams = new Set(tournament.disqualifiedTeamIds || []);
     const entries: Record<string, StandingsEntry> = {};
 
     // Initialize entries for all teams
@@ -20,7 +21,7 @@ export function useStandings(tournament: Tournament): StandingsEntry[] {
       };
     }
 
-    // Process completed matches
+    // Process completed matches (skip matches involving DQ teams)
     for (const match of tournament.matches) {
       if (
         match.status !== "completed" ||
@@ -30,6 +31,9 @@ export function useStandings(tournament: Tournament): StandingsEntry[] {
         !match.awayTeamId
       )
         continue;
+
+      // UEFA rule: void all matches involving disqualified teams
+      if (dqTeams.has(match.homeTeamId) || dqTeams.has(match.awayTeamId)) continue;
 
       const home = entries[match.homeTeamId];
       const away = entries[match.awayTeamId];
@@ -70,5 +74,5 @@ export function useStandings(tournament: Tournament): StandingsEntry[] {
           return b.goalDifference - a.goalDifference;
         return b.goalsFor - a.goalsFor;
       });
-  }, [tournament.matches, tournament.teamIds]);
+  }, [tournament.matches, tournament.teamIds, tournament.disqualifiedTeamIds]);
 }

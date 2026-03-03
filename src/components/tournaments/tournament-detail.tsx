@@ -30,7 +30,14 @@ import { getSportCategory, Tournament, Sponsor } from "@/types";
 import { SponsorBanner } from "@/components/sponsors/sponsor-banner";
 import { SponsorForm } from "@/components/sponsors/sponsor-form";
 import { AddTeamsDialog } from "@/components/tournaments/add-teams-dialog";
-import { Download, Settings } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Download, Settings, MoreVertical, Trash2, Ban } from "lucide-react";
+import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
 const statusLabels: Record<string, string> = {
@@ -158,15 +165,29 @@ function TemplateDownloadDialog() {
 function TeamsRosterSection({
   teamIds,
   canEdit,
-
   tournament,
 }: {
   teamIds: string[];
   canEdit: boolean;
-
   tournament?: Tournament;
 }) {
-  const { getTeamById } = useTournaments();
+  const { getTeamById, removeTeamFromTournament, disqualifyTeam } = useTournaments();
+  const [confirmAction, setConfirmAction] = useState<{ type: "delete" | "disqualify"; teamId: string; teamName: string } | null>(null);
+
+  const isDisqualified = (teamId: string) =>
+    tournament?.disqualifiedTeamIds?.includes(teamId) ?? false;
+
+  const handleConfirm = async () => {
+    if (!confirmAction || !tournament) return;
+    if (confirmAction.type === "delete") {
+      await removeTeamFromTournament(tournament.id, confirmAction.teamId);
+      toast.success(`${confirmAction.teamName} eliminado del torneo`);
+    } else {
+      await disqualifyTeam(tournament.id, confirmAction.teamId);
+      toast.success(`${confirmAction.teamName} descalificado`);
+    }
+    setConfirmAction(null);
+  };
 
   return (
     <div className="space-y-4">
@@ -182,8 +203,9 @@ function TeamsRosterSection({
         {teamIds.map((teamId) => {
           const team = getTeamById(teamId);
           if (!team) return null;
+          const dq = isDisqualified(teamId);
           return (
-            <Card key={teamId}>
+            <Card key={teamId} className={dq ? "opacity-60 border-destructive/30" : ""}>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -191,55 +213,108 @@ function TeamsRosterSection({
                       <div className="w-6 h-6 rounded border border-border overflow-hidden flex shrink-0">
                         <div
                           className="w-1/2 h-full"
-                          style={{
-                            backgroundColor: team.primaryColor || "#fff",
-                          }}
+                          style={{ backgroundColor: team.primaryColor || "#fff" }}
                         />
                         <div
                           className="w-1/2 h-full"
-                          style={{
-                            backgroundColor: team.secondaryColor || "#000",
-                          }}
+                          style={{ backgroundColor: team.secondaryColor || "#000" }}
                         />
                       </div>
                     )}
                     <CardTitle className="text-base">{team.name}</CardTitle>
+                    {dq && (
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                        DQ
+                      </Badge>
+                    )}
                   </div>
-                  {canEdit && (
-                    <TeamRosterDialog team={team} />
-                  )}
+                  <div className="flex items-center gap-1">
+                    {canEdit && <TeamRosterDialog team={team} />}
+                    {canEdit && tournament && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {!dq && (
+                            <DropdownMenuItem
+                              onClick={() => setConfirmAction({ type: "disqualify", teamId, teamName: team.name })}
+                            >
+                              <Ban className="h-4 w-4 mr-2" />
+                              Descalificar
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setConfirmAction({ type: "delete", teamId, teamName: team.name })}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Eliminar del torneo
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
-              <CardContent>
-                {team.players.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Sin jugadores registrados
-                  </p>
-                ) : (
-                  <ul className="space-y-1">
-                    {team.players.map((player, i) => (
-                      <li
-                        key={player.id}
-                        className="text-sm flex items-center gap-2"
-                      >
-                        <span className="text-muted-foreground text-xs w-5">
-                          {i + 1}.
-                        </span>
-                        {player.name}
-                        {player.age && (
-                          <span className="text-xs text-muted-foreground">
-                            ({player.age})
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+              <CardContent className="pt-0">
+                <p className="text-xs text-muted-foreground">
+                  {team.players.length === 0
+                    ? "Sin jugadores registrados"
+                    : `${team.players.length} jugador${team.players.length === 1 ? "" : "es"}`}
+                </p>
               </CardContent>
             </Card>
           );
         })}
       </div>
+
+      {/* Confirmation dialog */}
+      <Dialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {confirmAction?.type === "delete" ? "Eliminar equipo" : "Descalificar equipo"}
+            </DialogTitle>
+          </DialogHeader>
+          {confirmAction?.type === "delete" ? (
+            <div className="text-sm text-muted-foreground space-y-2">
+              <p><strong>{confirmAction.teamName}</strong> será eliminado del torneo.</p>
+              <ul className="list-disc pl-4 space-y-1">
+                <li>Se borrarán <strong>todos</strong> sus partidos (jugados y por jugar)</li>
+                <li>Se eliminará de su grupo si tiene uno asignado</li>
+                <li>La tabla de posiciones se recalculará sin este equipo</li>
+              </ul>
+              <p className="text-destructive font-medium">Esta acción no se puede deshacer.</p>
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground space-y-2">
+              <p><strong>{confirmAction?.teamName}</strong> será descalificado del torneo.</p>
+              <ul className="list-disc pl-4 space-y-1">
+                <li>Todos sus partidos (jugados y futuros) serán <strong>anulados</strong> en la tabla de posiciones</li>
+                <li>Ningun rival ganará ni perderá puntos por partidos contra este equipo</li>
+                <li>Si está en playoffs, el rival avanzará automáticamente (3-0)</li>
+                <li>Las estadísticas individuales (goles, tarjetas) se mantienen</li>
+              </ul>
+              <p className="text-destructive font-medium">Esta acción no se puede deshacer.</p>
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setConfirmAction(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant={confirmAction?.type === "delete" ? "destructive" : "default"}
+              size="sm"
+              onClick={handleConfirm}
+            >
+              {confirmAction?.type === "delete" ? "Eliminar" : "Descalificar"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

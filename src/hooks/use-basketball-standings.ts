@@ -5,6 +5,7 @@ export function useBasketballStandings(
   tournament: Tournament
 ): BasketballStandingsEntry[] {
   return useMemo(() => {
+    const dqTeams = new Set(tournament.disqualifiedTeamIds || []);
     const entries: Record<string, BasketballStandingsEntry> = {};
 
     for (const teamId of tournament.teamIds) {
@@ -30,6 +31,8 @@ export function useBasketballStandings(
         !match.awayTeamId
       )
         continue;
+
+      if (dqTeams.has(match.homeTeamId) || dqTeams.has(match.awayTeamId)) continue;
 
       const home = entries[match.homeTeamId];
       const away = entries[match.awayTeamId];
@@ -77,5 +80,5 @@ export function useBasketballStandings(
     }
 
     return sorted;
-  }, [tournament.matches, tournament.teamIds]);
+  }, [tournament.matches, tournament.teamIds, tournament.disqualifiedTeamIds]);
 }

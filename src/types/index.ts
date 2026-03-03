@@ -61,6 +61,9 @@ export interface Player {
   name: string;
   teamId: string;
   age?: number;
+  documentNumber?: string;
+  eps?: string;
+  birthDate?: string;
 }
 
 export interface Team {
@@ -286,6 +289,7 @@ export interface Tournament {
   couponId?: string;
   phaseConfigs?: PhaseConfig[];
   visibleTabs?: string[];
+  disqualifiedTeamIds?: string[];
 }
 
 export interface TournamentFilters {

@@ -92,6 +92,9 @@ export function mapPlayer(row: Record<string, unknown>): Player {
     name: row.name as string,
     teamId: row.team_id as string,
     age: (row.age as number) ?? undefined,
+    documentNumber: (row.document_number as string) ?? undefined,
+    eps: (row.eps as string) ?? undefined,
+    birthDate: (row.birth_date as string) ?? undefined,
   };
 }
 
@@ -137,6 +140,7 @@ export function mapTournament(row: Record<string, unknown>): Tournament {
     couponId: (row.coupon_id as string) ?? undefined,
     phaseConfigs: (row.phase_configs as PhaseConfig[]) ?? undefined,
     visibleTabs: (row.visible_tabs as string[]) ?? undefined,
+    disqualifiedTeamIds: (row.disqualified_team_ids as string[]) ?? undefined,
   };
 }
 
@@ -229,6 +233,7 @@ export function toDbTournament(t: Partial<Tournament>): Record<string, unknown> 
   if (t.couponId !== undefined) db.coupon_id = t.couponId;
   if (t.phaseConfigs !== undefined) db.phase_configs = t.phaseConfigs;
   if (t.visibleTabs !== undefined) db.visible_tabs = t.visibleTabs;
+  if (t.disqualifiedTeamIds !== undefined) db.disqualified_team_ids = t.disqualifiedTeamIds;
   return db;
 }
 

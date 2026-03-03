@@ -138,6 +138,37 @@ export async function addTournamentTeams(
   return !error;
 }
 
+export async function removeTeamFromTournament(
+  tournamentId: string,
+  teamId: string
+): Promise<boolean> {
+  // 1. Remove from group_teams (via subquery for groups of this tournament)
+  const { data: groups } = await supabase
+    .from("tournament_groups")
+    .select("id")
+    .eq("tournament_id", tournamentId);
+  if (groups?.length) {
+    await supabase
+      .from("tournament_group_teams")
+      .delete()
+      .eq("team_id", teamId)
+      .in("group_id", groups.map((g) => g.id));
+  }
+  // 2. Delete all matches involving this team
+  await supabase
+    .from("matches")
+    .delete()
+    .eq("tournament_id", tournamentId)
+    .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`);
+  // 3. Remove from tournament_teams
+  const { error } = await supabase
+    .from("tournament_teams")
+    .delete()
+    .eq("tournament_id", tournamentId)
+    .eq("team_id", teamId);
+  return !error;
+}
+
 export async function updatePlayoffConfig(
   tournamentId: string,
   advancePerGroup: number,

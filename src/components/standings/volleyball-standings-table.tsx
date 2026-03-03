@@ -159,7 +159,12 @@ export function VolleyballStandingsTable({
               <TableRow key={entry.teamId}>
                 <TableCell className="font-medium">{index + 1}</TableCell>
                 <TableCell className="font-medium">
-                  {team?.name || entry.teamId}
+                  <span className="flex items-center gap-1.5">
+                    {team?.name || entry.teamId}
+                    {tournament.disqualifiedTeamIds?.includes(entry.teamId) && (
+                      <span className="text-[10px] font-semibold text-destructive">DQ</span>
+                    )}
+                  </span>
                 </TableCell>
                 <TableCell className="text-center">{entry.played}</TableCell>
                 <TableCell className="text-center">{entry.won}</TableCell>

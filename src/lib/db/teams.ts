@@ -50,6 +50,9 @@ export async function createTeams(
           team_id: teamId,
           name: p.name,
           age: p.age ?? null,
+          document_number: p.documentNumber ?? null,
+          eps: p.eps ?? null,
+          birth_date: p.birthDate ?? null,
         }))
       );
     }
@@ -85,6 +88,9 @@ export async function updateTeamPlayers(
       team_id: teamId,
       name: p.name,
       age: p.age ?? null,
+      document_number: p.documentNumber ?? null,
+      eps: p.eps ?? null,
+      birth_date: p.birthDate ?? null,
     }))
   );
   return !error;

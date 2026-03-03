@@ -11,7 +11,7 @@ import {
 } from "react";
 import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, VolleyballSet, Sponsor, PhaseConfig } from "@/types";
 import { fillPlayoffBracket, fillPhase2Groups } from "@/data/helpers";
-import { fetchTournaments, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, addTournamentTeams, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup } from "@/lib/db/tournaments";
+import { fetchTournaments, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, addTournamentTeams, removeTeamFromTournament as dbRemoveTeamFromTournament, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup } from "@/lib/db/tournaments";
 import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam, updateTeamPlayers as dbUpdateTeamPlayers } from "@/lib/db/teams";
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
@@ -28,8 +28,10 @@ interface TournamentContextType {
   setTournamentMatches: (tournamentId: string, matches: Match[]) => Promise<void>;
   addMatchToTournament: (tournamentId: string, match: Match) => Promise<void>;
   removeMatchFromTournament: (tournamentId: string, matchId: string) => Promise<void>;
-  updateMatchDetails: (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => Promise<void>;
-  updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs">>) => Promise<void>;
+  removeTeamFromTournament: (tournamentId: string, teamId: string) => Promise<void>;
+  disqualifyTeam: (tournamentId: string, teamId: string) => Promise<void>;
+  updateMatchDetails: (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "round" | "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => Promise<void>;
+  updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs" | "disqualifiedTeamIds">>) => Promise<void>;
   updatePlayoffConfig: (tournamentId: string, advancePerGroup: number, totalAdvancing: number) => Promise<void>;
   updateMatch: (
     tournamentId: string,
@@ -210,8 +212,104 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const removeTeamFromTournamentFn = useCallback(async (tournamentId: string, teamId: string) => {
+    await dbRemoveTeamFromTournament(tournamentId, teamId);
+    // Optimistic update
+    setTournaments((prev) =>
+      prev.map((t) => {
+        if (t.id !== tournamentId) return t;
+        return {
+          ...t,
+          teamIds: t.teamIds.filter((id) => id !== teamId),
+          groups: t.groups?.map((g) => ({
+            ...g,
+            teamIds: g.teamIds.filter((id) => id !== teamId),
+          })),
+          matches: t.matches.filter(
+            (m) => m.homeTeamId !== teamId && m.awayTeamId !== teamId
+          ),
+        };
+      })
+    );
+  }, []);
+
+  const disqualifyTeam = useCallback(async (tournamentId: string, teamId: string) => {
+    const tournament = tournaments.find((t) => t.id === tournamentId);
+    if (!tournament) return;
+
+    // 1. Add to disqualifiedTeamIds
+    const current = tournament.disqualifiedTeamIds || [];
+    if (current.includes(teamId)) return;
+    const newDQ = [...current, teamId];
+
+    // 2. Find non-completed PLAYOFF matches (walkover only in playoffs)
+    const futurePlayoffMatches = tournament.matches.filter(
+      (m) => m.status !== "completed" && m.phase === "playoff" &&
+        (m.homeTeamId === teamId || m.awayTeamId === teamId)
+    );
+
+    // 3. Playoff: walkover 3-0 + propagate winner
+    for (const match of futurePlayoffMatches) {
+      const opponentIsHome = match.awayTeamId === teamId;
+      const winnerId = opponentIsHome ? match.homeTeamId : match.awayTeamId;
+      await dbUpdateMatchDetails(match.id, {
+        homeScore: opponentIsHome ? 3 : 0,
+        awayScore: opponentIsHome ? 0 : 3,
+        winnerId: winnerId,
+        status: "completed",
+      });
+
+      if (match.nextMatchId && winnerId) {
+        const nextMatch = tournament.matches.find((m) => m.id === match.nextMatchId);
+        if (nextMatch) {
+          const feeders = tournament.matches.filter((m) => m.nextMatchId === nextMatch.id);
+          const feederIdx = feeders.findIndex((f) => f.id === match.id);
+          if (feederIdx === 0) {
+            await dbUpdateMatchDetails(nextMatch.id, { homeTeamId: winnerId });
+          } else {
+            await dbUpdateMatchDetails(nextMatch.id, { awayTeamId: winnerId });
+          }
+        }
+      }
+    }
+
+    // 4. Persist disqualifiedTeamIds (standings will ignore DQ team matches automatically)
+    await dbUpdateTournament(tournamentId, { disqualifiedTeamIds: newDQ });
+
+    // 5. Optimistic update
+    setTournaments((prev) =>
+      prev.map((t) => {
+        if (t.id !== tournamentId) return t;
+        let updatedMatches = [...t.matches];
+        for (const match of futurePlayoffMatches) {
+          const opponentIsHome = match.awayTeamId === teamId;
+          const winnerId = opponentIsHome ? match.homeTeamId : match.awayTeamId;
+          updatedMatches = updatedMatches.map((m) => {
+            if (m.id === match.id) {
+              return {
+                ...m,
+                homeScore: opponentIsHome ? 3 : 0,
+                awayScore: opponentIsHome ? 0 : 3,
+                winnerId,
+                status: "completed" as const,
+              };
+            }
+            if (match.nextMatchId && m.id === match.nextMatchId && winnerId) {
+              const feeders = t.matches.filter((f) => f.nextMatchId === match.nextMatchId);
+              const feederIdx = feeders.findIndex((f) => f.id === match.id);
+              if (feederIdx === 0) return { ...m, homeTeamId: winnerId };
+              return { ...m, awayTeamId: winnerId };
+            }
+            return m;
+          });
+        }
+        return { ...t, disqualifiedTeamIds: newDQ, matches: updatedMatches };
+      })
+    );
+  }, [tournaments]);
+
   const updateMatchDetails = useCallback(
-    async (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => {
+    async (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "round" | "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => {
       await dbUpdateMatchDetails(matchId, updates);
       // Optimistic update
       setTournaments((prev) =>
@@ -230,7 +328,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   );
 
   const updateTournamentProps = useCallback(
-    async (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs">>) => {
+    async (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs" | "disqualifiedTeamIds">>) => {
       // Update tournament fields in DB
       const dbUpdates: Partial<Tournament> = {};
       if (updates.doubleRoundRobin !== undefined) dbUpdates.doubleRoundRobin = updates.doubleRoundRobin;
@@ -240,6 +338,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       if (updates.plan !== undefined) dbUpdates.plan = updates.plan;
       if (updates.phaseConfigs !== undefined) dbUpdates.phaseConfigs = updates.phaseConfigs;
       if (updates.visibleTabs !== undefined) dbUpdates.visibleTabs = updates.visibleTabs;
+      if (updates.disqualifiedTeamIds !== undefined) dbUpdates.disqualifiedTeamIds = updates.disqualifiedTeamIds;
 
       if (Object.keys(dbUpdates).length > 0) {
         await dbUpdateTournament(tournamentId, dbUpdates);
@@ -562,6 +661,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       setTournamentMatches,
       addMatchToTournament,
       removeMatchFromTournament,
+      removeTeamFromTournament: removeTeamFromTournamentFn,
+      disqualifyTeam,
       updateMatchDetails,
       updateTournamentProps,
       updatePlayoffConfig,
@@ -587,6 +688,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       setTournamentMatches,
       addMatchToTournament,
       removeMatchFromTournament,
+      removeTeamFromTournamentFn,
+      disqualifyTeam,
       updateMatchDetails,
       updateTournamentProps,
       updatePlayoffConfig,

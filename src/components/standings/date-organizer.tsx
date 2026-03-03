@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tournament, Match } from "@/types";
 import { useTournaments } from "@/context/tournament-context";
-import { CalendarIcon, Clock, MapPin, Check } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CalendarIcon, Clock, MapPin, Check, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 
 /** Normalizes user input into HH:MM format. Accepts: "1630", "16:30", "430pm", "4:30 PM", etc. */
@@ -135,6 +136,27 @@ export function DateOrganizer({ tournament }: DateOrganizerProps) {
     toast.success("Partido programado");
   };
 
+  // All existing rounds > 0 for the jornada selector (from ALL matches, not just unscheduled)
+  const availableRounds = Array.from(new Set(
+    tournament.matches.filter((m) => m.round > 0).map((m) => m.round)
+  )).sort((a, b) => a - b);
+
+  const handleMoveToRound = (matchId: string, round: number) => {
+    updateMatchDetails(tournament.id, matchId, { round });
+    toast.success(`Partido movido a J${round}`);
+  };
+
+  // Calculate resting teams per section
+  const allTeamIds = new Set(tournament.teamIds);
+  const getRestingTeams = (sectionMatches: Match[]) => {
+    const playing = new Set<string>();
+    for (const m of sectionMatches) {
+      if (m.homeTeamId) playing.add(m.homeTeamId);
+      if (m.awayTeamId) playing.add(m.awayTeamId);
+    }
+    return Array.from(allTeamIds).filter((id) => !playing.has(id));
+  };
+
   const usedVenues = Array.from(new Set(
     tournament.matches.map((m) => m.venue).filter(Boolean) as string[]
   ));
@@ -183,8 +205,20 @@ export function DateOrganizer({ tournament }: DateOrganizerProps) {
               getTeamById={getTeamById}
               updateMatchDetails={updateMatchDetails}
               onSchedule={handleSchedule}
+              availableRounds={availableRounds}
+              onMoveToRound={handleMoveToRound}
             />
           ))}
+          {/* Descanso indicator */}
+          {currentSection.key !== "r-0" && (() => {
+            const resting = getRestingTeams(currentSection.matches);
+            if (resting.length === 0) return null;
+            return (
+              <div className="px-4 py-2.5 text-xs text-muted-foreground">
+                Descanso: {resting.map((id) => getTeamById(id)?.name || "?").join(", ")}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -197,12 +231,16 @@ function MatchRow({
   getTeamById,
   updateMatchDetails,
   onSchedule,
+  availableRounds,
+  onMoveToRound,
 }: {
   match: Match;
   tournament: Tournament;
   getTeamById: (id: string) => import("@/types").Team | undefined;
   updateMatchDetails: (tournamentId: string, matchId: string, details: Record<string, unknown>) => void;
   onSchedule: (match: Match) => void;
+  availableRounds: number[];
+  onMoveToRound: (matchId: string, round: number) => void;
 }) {
   const [date, setDate] = useState(match.date || "");
   const [time, setTime] = useState(match.time || "");
@@ -231,9 +269,24 @@ function MatchRow({
 
   return (
     <div className="px-4 py-3 space-y-2">
-      <p className="text-sm font-medium">
-        {home?.name || "TBD"} <span className="text-muted-foreground font-normal">vs</span> {away?.name || "TBD"}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium">
+          {home?.name || "TBD"} <span className="text-muted-foreground font-normal">vs</span> {away?.name || "TBD"}
+        </p>
+        {match.round === 0 && availableRounds.length > 0 && (
+          <Select onValueChange={(v) => onMoveToRound(match.id, parseInt(v, 10))}>
+            <SelectTrigger className="h-7 w-auto text-xs gap-1">
+              <ArrowRight className="h-3 w-3" />
+              <SelectValue placeholder="Mover a..." />
+            </SelectTrigger>
+            <SelectContent>
+              {availableRounds.map((r) => (
+                <SelectItem key={r} value={String(r)}>J{r}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1.5">
