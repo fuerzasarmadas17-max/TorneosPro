@@ -55,6 +55,17 @@ function formatDateShort(dateStr: string): string {
   return `${d} ${MONTHS_SHORT[m - 1]}`;
 }
 
+const DAYS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const MONTHS_FULL = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+function formatDateFull(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  const dayName = DAYS[date.getDay()];
+  const cap = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+  return `${cap} ${d} de ${MONTHS_FULL[m - 1]}`;
+}
+
 const statusLabels: Record<MatchStatus, string> = {
   unscheduled: "Sin Programar",
   scheduled: "Programado",
@@ -156,6 +167,10 @@ function MatchDisplay({
   const { updateMatchDetails } = useTournaments();
   const [postponingId, setPostponingId] = useState<string | null>(null);
   const [postponeReason, setPostponeReason] = useState("");
+  const [reschedulingId, setReschedulingId] = useState<string | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleTime, setRescheduleTime] = useState("");
+  const [rescheduleVenue, setRescheduleVenue] = useState("");
   const [teamFilter, setTeamFilter] = useState<string>("all");
   const [statusTab, setStatusTab] = useState<"upcoming" | "completed" | "postponed">("upcoming");
 
@@ -208,85 +223,34 @@ function MatchDisplay({
     return [...tabMatches].sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
   })();
 
-  // --- Default view: grouped by jornada ---
+  // --- Default view: grouped by date ---
   const allSections: { label: string; matches: Match[] }[] = [];
 
   if (!isFiltered) {
-    const groupPhaseMatches = tabMatches.filter((m) => m.phase === "group");
-    const playoffMatches = tabMatches.filter((m) => m.phase === "playoff");
-    const regularMatches = tabMatches.filter((m) => !m.phase);
+    const dateGroups = new Map<string, Match[]>();
+    const sortAsc = statusTab !== "completed";
 
-    if (regularMatches.length > 0) {
-      const rounds = new Map<number, Match[]>();
-      for (const m of regularMatches) {
-        const arr = rounds.get(m.round) || [];
-        arr.push(m);
-        rounds.set(m.round, arr);
-      }
-      for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
-        allSections.push({
-          label: round === 0 ? "Partidos adicionales" : `Jornada ${round}`,
-          matches,
-        });
-      }
+    for (const m of tabMatches) {
+      const key = m.date || "__nodate__";
+      const arr = dateGroups.get(key) || [];
+      arr.push(m);
+      dateGroups.set(key, arr);
     }
 
-    if (groupPhaseMatches.length > 0) {
-      const groupIdToPhase = new Map<string, number>();
-      if (tournament.phaseConfigs?.length && tournament.groups) {
-        for (const g of tournament.groups) {
-          if (g.phase) groupIdToPhase.set(g.id, g.phase);
-        }
-      }
+    const sortedKeys = Array.from(dateGroups.keys()).sort((a, b) => {
+      if (a === "__nodate__") return 1;
+      if (b === "__nodate__") return -1;
+      return sortAsc ? a.localeCompare(b) : b.localeCompare(a);
+    });
 
-      if (groupIdToPhase.size > 0) {
-        const phaseMatches = new Map<number, Match[]>();
-        for (const m of groupPhaseMatches) {
-          const phase = m.groupId ? (groupIdToPhase.get(m.groupId) || 1) : 1;
-          const arr = phaseMatches.get(phase) || [];
-          arr.push(m);
-          phaseMatches.set(phase, arr);
-        }
-        for (const [phase, pMatches] of Array.from(phaseMatches.entries()).sort(([a], [b]) => a - b)) {
-          const rounds = new Map<number, Match[]>();
-          for (const m of pMatches) {
-            const arr = rounds.get(m.round) || [];
-            arr.push(m);
-            rounds.set(m.round, arr);
-          }
-          for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
-            allSections.push({
-              label: round === 0 ? `Partidos adicionales (Fase ${phase})` : `Jornada ${round} (Fase ${phase})`,
-              matches,
-            });
-          }
-        }
-      } else {
-        const rounds = new Map<number, Match[]>();
-        for (const m of groupPhaseMatches) {
-          const arr = rounds.get(m.round) || [];
-          arr.push(m);
-          rounds.set(m.round, arr);
-        }
-        for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
-          allSections.push({
-            label: round === 0 ? "Partidos adicionales (Grupos)" : `Jornada ${round} (Grupos)`,
-            matches,
-          });
-        }
-      }
-    }
-
-    if (playoffMatches.length > 0) {
-      const rounds = new Map<number, Match[]>();
-      for (const m of playoffMatches) {
-        const arr = rounds.get(m.round) || [];
-        arr.push(m);
-        rounds.set(m.round, arr);
-      }
-      for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
-        allSections.push({ label: `Playoff - Ronda ${round}`, matches });
-      }
+    for (const key of sortedKeys) {
+      const matches = dateGroups.get(key)!;
+      // Sort matches by time within each date
+      matches.sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
+      const label = key === "__nodate__"
+        ? "Sin fecha asignada"
+        : formatDateFull(key);
+      allSections.push({ label, matches });
     }
   }
 
@@ -297,10 +261,14 @@ function MatchDisplay({
       ? "No hay partidos completados aun"
       : "No hay partidos aplazados";
 
-  const handleStatusChange = (matchId: string, newStatus: MatchStatus) => {
+  const handleStatusChange = (matchId: string, newStatus: MatchStatus | "reschedule") => {
     if (newStatus === "postponed") {
       setPostponingId(matchId);
       setPostponeReason("");
+      return;
+    }
+    if (newStatus === "reschedule") {
+      handleRescheduleStart(matchId);
       return;
     }
     // Validate: "scheduled" requires date, time, and venue
@@ -315,7 +283,35 @@ function MatchDisplay({
       status: newStatus,
       postponedReason: undefined,
     });
-    toast.success(`Estado cambiado a ${statusLabels[newStatus]}`);
+    if (newStatus === "unscheduled") {
+      toast.success("Partido enviado a Fechas para reprogramar");
+    } else {
+      toast.success(`Estado cambiado a ${statusLabels[newStatus]}`);
+    }
+  };
+
+  const handleRescheduleStart = (matchId: string) => {
+    const match = tournament.matches.find((m) => m.id === matchId);
+    setReschedulingId(matchId);
+    setRescheduleDate(match?.date || "");
+    setRescheduleTime(match?.time || "");
+    setRescheduleVenue(match?.venue || "");
+  };
+
+  const handleRescheduleConfirm = (matchId: string) => {
+    if (!rescheduleDate || !rescheduleTime || !rescheduleVenue.trim()) {
+      toast.error("Completa fecha, hora y cancha para reprogramar");
+      return;
+    }
+    updateMatchDetails(tournament.id, matchId, {
+      status: "scheduled",
+      date: rescheduleDate,
+      time: rescheduleTime,
+      venue: rescheduleVenue.trim(),
+      postponedReason: undefined,
+    });
+    setReschedulingId(null);
+    toast.success("Partido reprogramado");
   };
 
   const handlePostponeConfirm = (matchId: string) => {
@@ -340,6 +336,11 @@ function MatchDisplay({
     const groupName = match.groupId
       ? tournament.groups?.find((g) => g.id === match.groupId)?.name || ""
       : "";
+    const roundLabel = match.phase === "playoff"
+      ? `Ronda ${match.round}`
+      : match.round === 0
+        ? "Extra"
+        : `J${match.round}`;
 
     return (
       <div key={match.id} className={`rounded-lg border overflow-hidden ${isPostponed ? "border-amber-500/40" : ""}`}>
@@ -389,6 +390,9 @@ function MatchDisplay({
             )}
             {/* Badges row */}
             <div className="flex items-center gap-2 mt-1">
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+                {roundLabel}
+              </Badge>
               {groupName && (
                 <Badge variant="secondary" className="text-xs">
                   {groupName}
@@ -413,7 +417,8 @@ function MatchDisplay({
                     {match.status === "postponed" && (
                       <>
                         <SelectItem value="postponed">Aplazado</SelectItem>
-                        <SelectItem value="scheduled">Programado</SelectItem>
+                        <SelectItem value="reschedule">Reprogramar</SelectItem>
+                        <SelectItem value="unscheduled">Enviar a Fechas</SelectItem>
                       </>
                     )}
                   </SelectContent>
@@ -476,6 +481,9 @@ function MatchDisplay({
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+                {roundLabel}
+              </Badge>
               {groupName && (
                 <Badge variant="secondary" className="text-xs">
                   {groupName}
@@ -500,7 +508,8 @@ function MatchDisplay({
                     {match.status === "postponed" && (
                       <>
                         <SelectItem value="postponed">Aplazado</SelectItem>
-                        <SelectItem value="scheduled">Programado</SelectItem>
+                        <SelectItem value="reschedule">Reprogramar</SelectItem>
+                        <SelectItem value="unscheduled">Enviar a Fechas</SelectItem>
                       </>
                     )}
                   </SelectContent>
@@ -555,32 +564,73 @@ function MatchDisplay({
           </div>
         )}
 
+        {/* Reschedule inline inputs */}
+        {reschedulingId === match.id && (
+          <div className="px-3 py-2 bg-blue-500/5 border-t border-blue-500/20 space-y-2">
+            <p className="text-xs font-medium text-blue-700">Reprogramar partido</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                type="date"
+                className="h-7 text-xs w-auto"
+                value={rescheduleDate}
+                onChange={(e) => setRescheduleDate(e.target.value)}
+              />
+              <Input
+                type="time"
+                className="h-7 text-xs w-auto"
+                value={rescheduleTime}
+                onChange={(e) => setRescheduleTime(e.target.value)}
+              />
+              <Input
+                type="text"
+                placeholder="Cancha / Estadio"
+                className="h-7 text-xs flex-1 min-w-[120px]"
+                value={rescheduleVenue}
+                onChange={(e) => setRescheduleVenue(e.target.value)}
+                list={`venues-${tournament.id}`}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                disabled={!rescheduleDate || !rescheduleTime || !rescheduleVenue.trim()}
+                onClick={() => handleRescheduleConfirm(match.id)}
+              >
+                Confirmar
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setReschedulingId(null)}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Postpone reason display */}
-        {isPostponed && match.postponedReason && postponingId !== match.id && (
+        {isPostponed && match.postponedReason && postponingId !== match.id && reschedulingId !== match.id && (
           <div className="px-3 py-2 bg-amber-500/5 border-t border-amber-500/20 text-xs text-amber-700">
             Motivo: {match.postponedReason}
           </div>
         )}
 
-        {/* Match details row: date, time, venue (read-only) */}
-        {(match.date || match.time || match.venue) ? (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2.5 bg-muted/30 border-t text-sm sm:text-xs text-muted-foreground">
-            {match.date && (
-              <span className="flex items-center gap-1.5">
-                <CalendarIcon className="h-4 w-4 sm:h-3 sm:w-3" />
-                {formatDateShort(match.date)}
-              </span>
-            )}
+        {/* Match details row: time, venue (read-only) */}
+        {(match.time || match.venue) ? (
+          <div className="flex items-center gap-x-4 px-3 py-2 bg-muted/30 border-t">
             {match.time && (
-              <span className="flex items-center gap-1.5">
-                <Clock className="h-4 w-4 sm:h-3 sm:w-3" />
+              <span className="flex items-center gap-1.5 text-sm font-medium shrink-0">
+                <Clock className="h-4 w-4 sm:h-3.5 sm:w-3.5 text-muted-foreground" />
                 {formatTime12h(match.time)}
               </span>
             )}
             {match.venue && (
-              <span className="flex items-center gap-1.5">
-                <MapPin className="h-4 w-4 sm:h-3 sm:w-3" />
-                {match.venue}
+              <span className="flex items-center gap-1.5 text-sm text-muted-foreground truncate min-w-0">
+                <MapPin className="h-4 w-4 sm:h-3.5 sm:w-3.5 shrink-0" />
+                <span className="truncate">{match.venue}</span>
               </span>
             )}
           </div>
