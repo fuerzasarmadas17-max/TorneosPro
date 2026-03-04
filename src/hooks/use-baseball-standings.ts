@@ -66,18 +66,73 @@ export function useBaseballStandings(tournament: Tournament): BaseballStandingsE
         diff: e.runsFor - e.runsAgainst,
       }))
       .sort((a, b) => {
+        // 1. PCT
         if (b.pct !== a.pct) return b.pct - a.pct;
-        return b.diff - a.diff;
+        // 2. Run differential
+        if (b.diff !== a.diff) return b.diff - a.diff;
+        // 3. Runs scored
+        if (b.runsFor !== a.runsFor) return b.runsFor - a.runsFor;
+        return 0;
       });
 
+    // 4. Head-to-head resolution for teams still tied
+    const validMatches = tournament.matches.filter(
+      (m) =>
+        m.status === "completed" &&
+        m.homeScore !== null &&
+        m.awayScore !== null &&
+        m.homeTeamId &&
+        m.awayTeamId &&
+        !dqTeams.has(m.homeTeamId!) &&
+        !dqTeams.has(m.awayTeamId!)
+    );
+
+    const result: BaseballStandingsEntry[] = [];
+    let i = 0;
+    while (i < sorted.length) {
+      let j = i + 1;
+      while (j < sorted.length) {
+        const same =
+          sorted[i].pct === sorted[j].pct &&
+          sorted[i].diff === sorted[j].diff &&
+          sorted[i].runsFor === sorted[j].runsFor;
+        if (same) j++;
+        else break;
+      }
+
+      if (j - i === 1) {
+        result.push(sorted[i]);
+      } else {
+        const tiedIds = new Set(sorted.slice(i, j).map((e) => e.teamId));
+        const h2hMatches = validMatches.filter(
+          (m) => tiedIds.has(m.homeTeamId!) && tiedIds.has(m.awayTeamId!)
+        );
+
+        if (h2hMatches.length === 0) {
+          for (let k = i; k < j; k++) result.push(sorted[k]);
+        } else {
+          const h2hWins: Record<string, number> = {};
+          for (const id of tiedIds) h2hWins[id] = 0;
+          for (const m of h2hMatches) {
+            if (m.homeScore! > m.awayScore!) h2hWins[m.homeTeamId!]++;
+            else if (m.homeScore! < m.awayScore!) h2hWins[m.awayTeamId!]++;
+          }
+          const tiedGroup = sorted.slice(i, j);
+          tiedGroup.sort((a, b) => (h2hWins[b.teamId] ?? 0) - (h2hWins[a.teamId] ?? 0));
+          for (const e of tiedGroup) result.push(e);
+        }
+      }
+      i = j;
+    }
+
     // Calcular GB respecto al lider
-    if (sorted.length > 0) {
-      const leader = sorted[0];
-      for (const entry of sorted) {
+    if (result.length > 0) {
+      const leader = result[0];
+      for (const entry of result) {
         entry.gb = ((leader.won - entry.won) + (entry.lost - leader.lost)) / 2;
       }
     }
 
-    return sorted;
+    return result;
   }, [tournament.matches, tournament.teamIds, tournament.disqualifiedTeamIds]);
 }

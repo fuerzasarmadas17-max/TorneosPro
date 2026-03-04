@@ -62,17 +62,84 @@ export function useStandings(tournament: Tournament): StandingsEntry[] {
       }
     }
 
-    // Calculate goal difference and sort
-    return Object.values(entries)
+    // Calculate goal difference
+    const sorted = Object.values(entries)
       .map((e) => ({
         ...e,
         goalDifference: e.goalsFor - e.goalsAgainst,
       }))
       .sort((a, b) => {
+        // 1. Points
         if (b.points !== a.points) return b.points - a.points;
+        // 2. Goal difference
         if (b.goalDifference !== a.goalDifference)
           return b.goalDifference - a.goalDifference;
-        return b.goalsFor - a.goalsFor;
+        // 3. Goals for
+        if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor;
+        // 4. Wins
+        if (b.won !== a.won) return b.won - a.won;
+        return 0;
       });
+
+    // 5. Head-to-head resolution for teams still tied after criteria 1-4
+    const validMatches = tournament.matches.filter(
+      (m) =>
+        m.status === "completed" &&
+        m.homeScore !== null &&
+        m.awayScore !== null &&
+        m.homeTeamId &&
+        m.awayTeamId &&
+        !dqTeams.has(m.homeTeamId!) &&
+        !dqTeams.has(m.awayTeamId!)
+    );
+
+    const result: StandingsEntry[] = [];
+    let i = 0;
+    while (i < sorted.length) {
+      let j = i + 1;
+      while (j < sorted.length) {
+        const same =
+          sorted[i].points === sorted[j].points &&
+          sorted[i].goalDifference === sorted[j].goalDifference &&
+          sorted[i].goalsFor === sorted[j].goalsFor &&
+          sorted[i].won === sorted[j].won;
+        if (same) j++;
+        else break;
+      }
+
+      if (j - i === 1) {
+        result.push(sorted[i]);
+      } else {
+        // Resolve via head-to-head
+        const tiedIds = new Set(sorted.slice(i, j).map((e) => e.teamId));
+        const h2hMatches = validMatches.filter(
+          (m) => tiedIds.has(m.homeTeamId!) && tiedIds.has(m.awayTeamId!)
+        );
+
+        if (h2hMatches.length === 0) {
+          for (let k = i; k < j; k++) result.push(sorted[k]);
+        } else {
+          // Build h2h points
+          const h2hPoints: Record<string, number> = {};
+          for (const id of tiedIds) h2hPoints[id] = 0;
+          for (const m of h2hMatches) {
+            if (m.homeScore! > m.awayScore!) {
+              h2hPoints[m.homeTeamId!] += 3;
+            } else if (m.homeScore! < m.awayScore!) {
+              h2hPoints[m.awayTeamId!] += 3;
+            } else {
+              h2hPoints[m.homeTeamId!] += 1;
+              h2hPoints[m.awayTeamId!] += 1;
+            }
+          }
+          const tiedGroup = sorted.slice(i, j);
+          tiedGroup.sort((a, b) => (h2hPoints[b.teamId] ?? 0) - (h2hPoints[a.teamId] ?? 0));
+          for (const e of tiedGroup) result.push(e);
+        }
+      }
+      i = j;
+    }
+
+    return result;
   }, [tournament.matches, tournament.teamIds, tournament.disqualifiedTeamIds]);
 }
