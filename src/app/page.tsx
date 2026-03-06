@@ -12,10 +12,12 @@ import {
   formatCOP,
 } from "@/lib/pricing";
 import { TournamentTier } from "@/types";
+import { PageViewTracker } from "@/components/analytics/page-view-tracker";
 
 export default function HomePage() {
   return (
     <div className="flex flex-col">
+      <PageViewTracker />
       {/* Hero */}
       <section className="relative flex flex-col items-center justify-center gap-6 py-32 px-4 text-center min-h-[70vh]">
         <VideoBackground />

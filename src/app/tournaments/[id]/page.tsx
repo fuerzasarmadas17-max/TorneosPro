@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { TournamentDetail } from "@/components/tournaments/tournament-detail";
 import { useTournaments } from "@/context/tournament-context";
 import { useAuth } from "@/context/auth-context";
+import { usePageView } from "@/hooks/use-page-view";
 import { Loader2 } from "lucide-react";
 
 export default function TournamentDetailPage({
@@ -16,6 +17,7 @@ export default function TournamentDetailPage({
   const { id } = use(params);
   const { getTournamentById, isLoading: dataLoading } = useTournaments();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  usePageView("tournament", id, "tournament");
 
   const tournament = getTournamentById(id);
 

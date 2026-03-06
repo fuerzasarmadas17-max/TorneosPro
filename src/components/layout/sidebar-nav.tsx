@@ -14,6 +14,7 @@ import {
   Shield,
   DollarSign,
   Ticket,
+  BarChart3,
 } from "lucide-react";
 
 const navItems = [
@@ -119,6 +120,19 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
             >
               <Ticket className="h-4 w-4" />
               Cupones
+            </Link>
+            <Link
+              href="/admin/analytics"
+              onClick={onNavigate}
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                pathname === "/admin/analytics"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              )}
+            >
+              <BarChart3 className="h-4 w-4" />
+              Analiticas
             </Link>
           </>
         )}

@@ -1,17 +1,38 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { AuthGuard } from "@/components/auth-guard";
 import { TournamentList } from "@/components/tournaments/tournament-list";
+import { AnalyticsCards } from "@/components/analytics/analytics-cards";
+import { TournamentViews } from "@/components/analytics/tournament-views";
 import { useAuth } from "@/context/auth-context";
 import { useTournaments } from "@/context/tournament-context";
+import {
+  useEntityAnalytics,
+  useOrganizerTournamentViews,
+} from "@/hooks/use-analytics";
+
+const dayOptions = [7, 30, 90] as const;
 
 function DashboardContent() {
   const { user } = useAuth();
   const { tournaments } = useTournaments();
+  const [analyticsDays, setAnalyticsDays] = useState<number>(30);
+
+  const hasPublicProfile = !!user?.organizationProfile?.isPublic;
+  const { data: profileAnalytics } = useEntityAnalytics(
+    hasPublicProfile ? "organization" : null,
+    hasPublicProfile ? user?.id : null,
+    analyticsDays
+  );
+  const { data: tournamentViews } = useOrganizerTournamentViews(
+    user?.id,
+    analyticsDays
+  );
 
   const myTournaments = tournaments.filter(
     (t) => t.createdBy === user?.id
@@ -74,6 +95,33 @@ function DashboardContent() {
             <p className="text-3xl font-bold">{stats.completed}</p>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Analytics */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">Analiticas</h2>
+          <div className="flex gap-1">
+            {dayOptions.map((d) => (
+              <Button
+                key={d}
+                variant={analyticsDays === d ? "default" : "outline"}
+                size="sm"
+                onClick={() => setAnalyticsDays(d)}
+              >
+                {d}d
+              </Button>
+            ))}
+          </div>
+        </div>
+        {profileAnalytics && (
+          <AnalyticsCards
+            totalViews={profileAnalytics.total_views}
+            uniqueVisitors={profileAnalytics.unique_visitors}
+            avgDurationMs={profileAnalytics.avg_duration_ms}
+          />
+        )}
+        <TournamentViews data={tournamentViews} tournaments={myTournaments} />
       </div>
 
       {/* Tournaments */}

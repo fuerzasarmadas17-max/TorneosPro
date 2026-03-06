@@ -6,8 +6,10 @@ import { TournamentFilters } from "@/components/tournaments/tournament-filters";
 import { TournamentList } from "@/components/tournaments/tournament-list";
 import { useTournaments } from "@/context/tournament-context";
 import { TournamentFilters as TournamentFiltersType } from "@/types";
+import { usePageView } from "@/hooks/use-page-view";
 
 function TournamentsContent() {
+  usePageView("browse", null, null);
   const searchParams = useSearchParams();
   const { getFilteredTournaments } = useTournaments();
 

@@ -8,6 +8,7 @@ import { ProfileTournaments } from "@/components/profile/profile-tournaments";
 import { SponsorBanner } from "@/components/sponsors/sponsor-banner";
 import { getUserBySlug } from "@/data/users";
 import { useTournaments } from "@/context/tournament-context";
+import { usePageView } from "@/hooks/use-page-view";
 
 interface ProfileUser {
   id: string;
@@ -21,6 +22,7 @@ export default function ProfilePage() {
   const { tournaments } = useTournaments();
   const [user, setUser] = useState<ProfileUser | undefined>(undefined);
   const [checked, setChecked] = useState(false);
+  usePageView("profile", user?.id, "organization");
 
   useEffect(() => {
     getUserBySlug(params.slug)
