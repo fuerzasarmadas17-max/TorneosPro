@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SPORTS } from "@/data/sports";
+import { DEPARTMENTS, getDepartment } from "@/data/colombia";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 
@@ -17,6 +18,8 @@ interface Filters {
   sport?: Sport;
   status?: TournamentStatus;
   search?: string;
+  department?: string;
+  municipality?: string;
 }
 
 interface ProfileTournamentFiltersProps {
@@ -28,10 +31,10 @@ export function ProfileTournamentFilters({
   filters,
   onFiltersChange,
 }: ProfileTournamentFiltersProps) {
-  const hasActive = filters.sport || filters.status || filters.search;
+  const hasActive = filters.sport || (filters.status && filters.status !== "in-progress") || filters.search || filters.department;
 
   return (
-    <div className="flex flex-col sm:flex-row gap-4">
+    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4">
       <Input
         placeholder="Buscar torneos..."
         value={filters.search || ""}
@@ -83,11 +86,58 @@ export function ProfileTournamentFilters({
         </SelectContent>
       </Select>
 
+      <Select
+        value={filters.department || "all"}
+        onValueChange={(v) =>
+          onFiltersChange({
+            ...filters,
+            department: v === "all" ? undefined : v,
+            municipality: undefined,
+          })
+        }
+      >
+        <SelectTrigger className="sm:w-[180px]">
+          <SelectValue placeholder="Departamento" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Todos los departamentos</SelectItem>
+          {DEPARTMENTS.map((d) => (
+            <SelectItem key={d.key} value={d.key}>
+              {d.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {filters.department && (
+        <Select
+          value={filters.municipality || "all"}
+          onValueChange={(v) =>
+            onFiltersChange({
+              ...filters,
+              municipality: v === "all" ? undefined : v,
+            })
+          }
+        >
+          <SelectTrigger className="sm:w-[180px]">
+            <SelectValue placeholder="Municipio" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los municipios</SelectItem>
+            {(getDepartment(filters.department)?.municipalities ?? []).map((m) => (
+              <SelectItem key={m.key} value={m.key}>
+                {m.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
       {hasActive && (
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => onFiltersChange({})}
+          onClick={() => onFiltersChange({ status: "in-progress" })}
         >
           <X className="h-4 w-4 mr-2" />
           Limpiar

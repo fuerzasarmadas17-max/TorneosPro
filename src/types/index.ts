@@ -23,6 +23,8 @@ export type MatchPhase = "group" | "playoff";
 
 export type TournamentStatus = "upcoming" | "in-progress" | "completed";
 
+export type TournamentScope = "nacional" | "departamental" | "municipal";
+
 export type MatchStatus = "unscheduled" | "scheduled" | "postponed" | "completed";
 
 export interface OrganizationProfile {
@@ -290,6 +292,9 @@ export interface Tournament {
   phaseConfigs?: PhaseConfig[];
   visibleTabs?: string[];
   disqualifiedTeamIds?: string[];
+  scope?: TournamentScope;
+  department?: string;
+  municipality?: string;
 }
 
 export interface TournamentFilters {
@@ -297,6 +302,8 @@ export interface TournamentFilters {
   format?: TournamentFormat;
   status?: TournamentStatus;
   search?: string;
+  department?: string;
+  municipality?: string;
 }
 
 export interface SportInfo {

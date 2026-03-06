@@ -23,7 +23,8 @@ import {
 import { useAuth } from "@/context/auth-context";
 import { useTournaments } from "@/context/tournament-context";
 import { SPORTS } from "@/data/sports";
-import { Sport, TournamentFormat, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, MatchEventType, STAT_CATALOG, getDefaultStats } from "@/types";
+import { SCOPES, DEPARTMENTS, getDepartment } from "@/data/colombia";
+import { Sport, TournamentFormat, TournamentScope, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, MatchEventType, STAT_CATALOG, getDefaultStats } from "@/types";
 import { toast } from "sonner";
 import { Trash2, Plus } from "lucide-react";
 import { getTournamentPriceInfo, TournamentPriceInfo, distributeTeamsToGroups, checkFreeTier, FREE_TIER_LIMITS } from "@/lib/pricing";
@@ -58,6 +59,9 @@ export function CreateTournamentForm() {
   const [phase1AdvancePerGroup, setPhase1AdvancePerGroup] = useState("2");
   const [phase2GroupCount, setPhase2GroupCount] = useState("2");
   const [phase2AdvancePerGroup, setPhase2AdvancePerGroup] = useState("2");
+  const [scope, setScope] = useState<TournamentScope | "">("");
+  const [department, setDepartment] = useState("");
+  const [municipality, setMunicipality] = useState("");
   const [error, setError] = useState("");
   const [showCostDialog, setShowCostDialog] = useState(false);
   const [priceInfo, setPriceInfo] = useState<TournamentPriceInfo | null>(null);
@@ -80,6 +84,9 @@ export function CreateTournamentForm() {
     teamCount: !isNaN(teamCountNum) && teamCountNum >= 2,
     groups: !needsGroups || hasGroups,
     advance: !needsAdvance || (!isNaN(advanceNum) && advanceNum >= 2),
+    scope: scope !== "",
+    scopeDept: scope !== "departamental" && scope !== "municipal" || department !== "",
+    scopeMun: scope !== "municipal" || municipality !== "",
   };
 
   const isFormValid = Object.values(validations).every(Boolean);
@@ -127,6 +134,9 @@ export function CreateTournamentForm() {
       phase2AdvancePerGroup: hasPhase2 ? parseInt(phase2AdvancePerGroup) : null,
       price: priceInfo?.price ?? null,
       tier: priceInfo?.tier ?? null,
+      scope: scope || null,
+      department: department || null,
+      municipality: municipality || null,
     };
   };
 
@@ -148,6 +158,18 @@ export function CreateTournamentForm() {
     }
     if (!startDate) {
       setError("Selecciona una fecha de inicio");
+      return;
+    }
+    if (!scope) {
+      setError("Selecciona el alcance del torneo");
+      return;
+    }
+    if ((scope === "departamental" || scope === "municipal") && !department) {
+      setError("Selecciona un departamento");
+      return;
+    }
+    if (scope === "municipal" && !municipality) {
+      setError("Selecciona un municipio");
       return;
     }
 
@@ -321,6 +343,9 @@ export function CreateTournamentForm() {
         tier: plan === "paid" && priceInfo ? priceInfo.tier : undefined,
         couponId: couponId ?? undefined,
         phaseConfigs,
+        scope: scope as TournamentScope,
+        department: department || undefined,
+        municipality: municipality || undefined,
       };
 
       const newTournament = await addTournament(tournament);
@@ -404,6 +429,80 @@ export function CreateTournamentForm() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
+            </div>
+          </div>
+
+          {/* Location / Scope */}
+          <div className="space-y-4">
+            <h3 className="font-semibold text-lg">Ubicacion</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Alcance del Torneo</Label>
+                <Select
+                  value={scope}
+                  onValueChange={(v) => {
+                    setScope(v as TournamentScope);
+                    setDepartment("");
+                    setMunicipality("");
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar alcance" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SCOPES.map((s) => (
+                      <SelectItem key={s.key} value={s.key}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {(scope === "departamental" || scope === "municipal") && (
+                <div className="space-y-2">
+                  <Label>Departamento</Label>
+                  <Select
+                    value={department}
+                    onValueChange={(v) => {
+                      setDepartment(v);
+                      setMunicipality("");
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar departamento" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DEPARTMENTS.map((d) => (
+                        <SelectItem key={d.key} value={d.key}>
+                          {d.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {scope === "municipal" && department && (
+                <div className="space-y-2">
+                  <Label>Municipio / Ciudad</Label>
+                  <Select
+                    value={municipality}
+                    onValueChange={setMunicipality}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar municipio" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(getDepartment(department)?.municipalities ?? []).map((m) => (
+                        <SelectItem key={m.key} value={m.key}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </div>
 

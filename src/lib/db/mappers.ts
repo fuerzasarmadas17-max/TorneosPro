@@ -19,6 +19,7 @@ import {
   MatchPhase,
   MatchEventType,
   TournamentTier,
+  TournamentScope,
 } from "@/types";
 
 // ============================================================
@@ -141,6 +142,9 @@ export function mapTournament(row: Record<string, unknown>): Tournament {
     phaseConfigs: (row.phase_configs as PhaseConfig[]) ?? undefined,
     visibleTabs: (row.visible_tabs as string[]) ?? undefined,
     disqualifiedTeamIds: (row.disqualified_team_ids as string[]) ?? undefined,
+    scope: (row.scope as TournamentScope) ?? undefined,
+    department: (row.department as string) ?? undefined,
+    municipality: (row.municipality as string) ?? undefined,
   };
 }
 
@@ -234,6 +238,9 @@ export function toDbTournament(t: Partial<Tournament>): Record<string, unknown> 
   if (t.phaseConfigs !== undefined) db.phase_configs = t.phaseConfigs;
   if (t.visibleTabs !== undefined) db.visible_tabs = t.visibleTabs;
   if (t.disqualifiedTeamIds !== undefined) db.disqualified_team_ids = t.disqualifiedTeamIds;
+  if (t.scope !== undefined) db.scope = t.scope;
+  if (t.department !== undefined) db.department = t.department;
+  if (t.municipality !== undefined) db.municipality = t.municipality;
   return db;
 }
 

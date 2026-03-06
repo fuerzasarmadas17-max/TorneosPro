@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { useTournaments } from "@/context/tournament-context";
 import { getSportInfo } from "@/data/sports";
+import { getDepartmentLabel, getMunicipalityLabel } from "@/data/colombia";
 import { getSportCategory, Tournament, Sponsor } from "@/types";
 import { SponsorBanner } from "@/components/sponsors/sponsor-banner";
 import { SponsorForm } from "@/components/sponsors/sponsor-form";
@@ -401,6 +402,17 @@ export function TournamentDetail({
           <Badge className={statusColors[tournament.status]}>
             {statusLabels[tournament.status]}
           </Badge>
+          {tournament.scope && (
+            <Badge variant="outline">
+              {tournament.scope === "nacional"
+                ? "Nacional"
+                : tournament.scope === "departamental" && tournament.department
+                  ? getDepartmentLabel(tournament.department)
+                  : tournament.department && tournament.municipality
+                    ? `${getMunicipalityLabel(tournament.department, tournament.municipality)}, ${getDepartmentLabel(tournament.department)}`
+                    : ""}
+            </Badge>
+          )}
         </div>
         <h1 className="text-3xl font-bold">{tournament.name}</h1>
         {tournament.description && (

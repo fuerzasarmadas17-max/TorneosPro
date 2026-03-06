@@ -161,6 +161,9 @@ CREATE TABLE tournaments (
   phase_configs JSONB DEFAULT NULL,
   visible_tabs TEXT[] DEFAULT NULL,
   disqualified_team_ids TEXT[] DEFAULT NULL,
+  scope TEXT, -- nacional, departamental, municipal
+  department TEXT,
+  municipality TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -168,6 +171,7 @@ CREATE TABLE tournaments (
 CREATE INDEX idx_tournaments_created_by ON tournaments(created_by);
 CREATE INDEX idx_tournaments_status ON tournaments(status);
 CREATE INDEX idx_tournaments_sport ON tournaments(sport);
+CREATE INDEX idx_tournaments_department ON tournaments(department);
 
 -- FK para sponsors.tournament_id
 ALTER TABLE sponsors

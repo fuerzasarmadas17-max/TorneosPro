@@ -9,6 +9,8 @@ interface Filters {
   sport?: Sport;
   status?: TournamentStatus;
   search?: string;
+  department?: string;
+  municipality?: string;
 }
 
 interface ProfileTournamentsProps {
@@ -22,7 +24,7 @@ export function ProfileTournaments({
   organizationName,
   slug,
 }: ProfileTournamentsProps) {
-  const [filters, setFilters] = useState<Filters>({});
+  const [filters, setFilters] = useState<Filters>({ status: "in-progress" });
 
   const filteredTournaments = useMemo(() => {
     return tournaments.filter((t) => {
@@ -33,6 +35,8 @@ export function ProfileTournaments({
         !t.name.toLowerCase().includes(filters.search.toLowerCase())
       )
         return false;
+      if (filters.department && t.department !== filters.department) return false;
+      if (filters.municipality && t.municipality !== filters.municipality) return false;
       return true;
     });
   }, [tournaments, filters]);

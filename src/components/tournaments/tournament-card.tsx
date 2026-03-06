@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tournament } from "@/types";
 import { getSportInfo } from "@/data/sports";
+import { getDepartmentLabel, getMunicipalityLabel } from "@/data/colombia";
 import { supabase } from "@/lib/supabase";
 
 const statusLabels: Record<string, string> = {
@@ -70,6 +71,14 @@ export function TournamentCard({ tournament, href }: TournamentCardProps) {
           <p>{formatLabels[tournament.format]}</p>
           <p>{tournament.teamIds.length} equipos</p>
           <p>Inicio: {tournament.startDate}</p>
+          {tournament.scope === "nacional" && <p>Nacional</p>}
+          {tournament.scope !== "nacional" && tournament.department && (
+            <p>
+              {getDepartmentLabel(tournament.department)}
+              {tournament.municipality &&
+                `, ${getMunicipalityLabel(tournament.department, tournament.municipality)}`}
+            </p>
+          )}
           {organizer && (
             <p>
               Organizador:{" "}

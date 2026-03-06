@@ -643,6 +643,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
           !t.name.toLowerCase().includes(filters.search.toLowerCase())
         )
           return false;
+        if (filters.department && t.department !== filters.department) return false;
+        if (filters.municipality && t.municipality !== filters.municipality) return false;
         return true;
       });
     },

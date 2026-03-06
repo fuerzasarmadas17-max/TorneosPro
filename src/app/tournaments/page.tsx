@@ -13,8 +13,10 @@ function TournamentsContent() {
 
   const filters: TournamentFiltersType = {
     sport: (searchParams.get("sport") as TournamentFiltersType["sport"]) || undefined,
-    status: (searchParams.get("status") as TournamentFiltersType["status"]) || undefined,
+    status: (searchParams.get("status") as TournamentFiltersType["status"]) || "in-progress",
     search: searchParams.get("search") || undefined,
+    department: searchParams.get("department") || undefined,
+    municipality: searchParams.get("municipality") || undefined,
   };
 
   const tournaments = getFilteredTournaments(filters);
