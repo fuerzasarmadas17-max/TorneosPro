@@ -9,7 +9,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -20,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Stepper } from "@/components/ui/stepper";
 import { useAuth } from "@/context/auth-context";
 import { useTournaments } from "@/context/tournament-context";
 import { SPORTS } from "@/data/sports";
@@ -27,8 +27,8 @@ import { SCOPES, DEPARTMENTS, getDepartment } from "@/data/colombia";
 import { Sport, TournamentFormat, TournamentScope, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, MatchEventType, STAT_CATALOG, getDefaultStats } from "@/types";
 import { toast } from "sonner";
 import { Trash2, Plus } from "lucide-react";
-import { getTournamentPriceInfo, TournamentPriceInfo, distributeTeamsToGroups, checkFreeTier, FREE_TIER_LIMITS } from "@/lib/pricing";
-import { TournamentCostDialog } from "./tournament-cost-dialog";
+import { getTournamentPriceInfo, TournamentPriceInfo, checkFreeTier, FREE_TIER_LIMITS } from "@/lib/pricing";
+import { TournamentCostDialog, FORMAT_LABELS } from "./tournament-cost-dialog";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabase";
 
@@ -40,11 +40,28 @@ interface GroupEntry {
 
 const GROUP_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
+const WIZARD_STEPS = [
+  { label: "Esencial" },
+  { label: "Formato" },
+  { label: "Detalles" },
+  { label: "Confirmar" },
+];
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 px-3 py-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium text-right">{value}</span>
+    </div>
+  );
+}
+
 export function CreateTournamentForm() {
   const { user } = useAuth();
   const { addTournament, addTeams, tournaments } = useTournaments();
   const router = useRouter();
 
+  const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [sport, setSport] = useState<Sport | "">("");
   const [format, setFormat] = useState<TournamentFormat | "">("");
@@ -65,31 +82,12 @@ export function CreateTournamentForm() {
   const [error, setError] = useState("");
   const [showCostDialog, setShowCostDialog] = useState(false);
   const [priceInfo, setPriceInfo] = useState<TournamentPriceInfo | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const isIndividual = sport ? INDIVIDUAL_SPORTS.includes(sport as Sport) : false;
   const participantLabel = isIndividual ? "Jugadores" : "Equipos";
-  const participantSingular = isIndividual ? "jugador" : "equipo";
 
   const teamCountNum = parseInt(teamCount);
-  const advanceNum = parseInt(advanceCount);
-  const needsGroups = format === "group-playoff";
-  const hasGroups = groups.length > 0;
-  const needsAdvance = format === "group-playoff" && hasGroups;
-
-  const validations = {
-    name: name.trim() !== "",
-    sport: sport !== "",
-    format: format !== "",
-    startDate: startDate !== "",
-    teamCount: !isNaN(teamCountNum) && teamCountNum >= 2,
-    groups: !needsGroups || hasGroups,
-    advance: !needsAdvance || (!isNaN(advanceNum) && advanceNum >= 2),
-    scope: scope !== "",
-    scopeDept: scope !== "departamental" && scope !== "municipal" || department !== "",
-    scopeMun: scope !== "municipal" || municipality !== "",
-  };
-
-  const isFormValid = Object.values(validations).every(Boolean);
 
   // Free tier detection
   const freeTierCheck = checkFreeTier({
@@ -111,6 +109,85 @@ export function CreateTournamentForm() {
 
   const removeGroup = (index: number) => {
     setGroups(groups.filter((_, i) => i !== index));
+  };
+
+  // Per-step validation — reuses the exact same checks/messages as the final
+  // submit so gating "Siguiente" and the final create stay consistent.
+  const getStepError = (s: number): string | null => {
+    const count = parseInt(teamCount);
+
+    if (s === 1) {
+      if (!name.trim()) return "El nombre del torneo es obligatorio";
+      if (!sport) return "Selecciona un deporte";
+      if (!startDate) return "Selecciona una fecha de inicio";
+      return null;
+    }
+
+    if (s === 2) {
+      if (!format) return "Selecciona un formato";
+      if (isNaN(count) || count < 2) {
+        return `Necesitas al menos 2 ${participantLabel.toLowerCase()}`;
+      }
+      if (format === "elimination") {
+        const isPowerOf2 = count > 0 && (count & (count - 1)) === 0;
+        if (!isPowerOf2) {
+          return `Para eliminacion directa necesitas 2, 4, 8 o 16 ${participantLabel.toLowerCase()}`;
+        }
+      }
+      if (format === "round-robin" && count < 3) {
+        return `Para liga necesitas al menos 3 ${participantLabel.toLowerCase()}`;
+      }
+      if (format === "group-playoff" && groups.length < 1) {
+        return "Necesitas al menos 1 grupo";
+      }
+      const hasGroups = (format === "round-robin" || format === "group-playoff") && groups.length > 0;
+      if (hasGroups) {
+        const perGroup = Math.floor(count / groups.length);
+        if (perGroup < 2) {
+          return `No hay suficientes ${participantLabel.toLowerCase()} para ${groups.length} grupos (minimo 2 por grupo)`;
+        }
+        if (format === "group-playoff") {
+          const advance = parseInt(advanceCount);
+          if (isNaN(advance) || advance < 2) return "Deben clasificar al menos 2";
+          if (advance >= count) return "Los que clasifican deben ser menos que el total";
+        }
+      }
+      return null;
+    }
+
+    if (s === 3) {
+      if (!scope) return "Selecciona el alcance del torneo";
+      if ((scope === "departamental" || scope === "municipal") && !department) {
+        return "Selecciona un departamento";
+      }
+      if (scope === "municipal" && !municipality) return "Selecciona un municipio";
+      return null;
+    }
+
+    return null;
+  };
+
+  const getAllErrors = (): { step: number; message: string } | null => {
+    for (let s = 1; s <= 3; s++) {
+      const message = getStepError(s);
+      if (message) return { step: s, message };
+    }
+    return null;
+  };
+
+  const goNext = () => {
+    const err = getStepError(step);
+    if (err) {
+      setError(err);
+      return;
+    }
+    setError("");
+    setStep((s) => Math.min(s + 1, WIZARD_STEPS.length));
+  };
+
+  const goBack = () => {
+    setError("");
+    setStep((s) => Math.max(s - 1, 1));
   };
 
   // Build tournament data for the payment record (used by webhook recovery)
@@ -140,82 +217,17 @@ export function CreateTournamentForm() {
     };
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleFinalSubmit = () => {
     setError("");
 
-    if (!name.trim()) {
-      setError("El nombre del torneo es obligatorio");
-      return;
-    }
-    if (!sport) {
-      setError("Selecciona un deporte");
-      return;
-    }
-    if (!format) {
-      setError("Selecciona un formato");
-      return;
-    }
-    if (!startDate) {
-      setError("Selecciona una fecha de inicio");
-      return;
-    }
-    if (!scope) {
-      setError("Selecciona el alcance del torneo");
-      return;
-    }
-    if ((scope === "departamental" || scope === "municipal") && !department) {
-      setError("Selecciona un departamento");
-      return;
-    }
-    if (scope === "municipal" && !municipality) {
-      setError("Selecciona un municipio");
+    const err = getAllErrors();
+    if (err) {
+      setStep(err.step);
+      setError(err.message);
       return;
     }
 
     const count = parseInt(teamCount);
-    if (isNaN(count) || count < 2) {
-      setError(`Necesitas al menos 2 ${participantLabel.toLowerCase()}`);
-      return;
-    }
-
-    if (format === "elimination") {
-      const isPowerOf2 = count > 0 && (count & (count - 1)) === 0;
-      if (!isPowerOf2) {
-        setError(`Para eliminacion directa necesitas 2, 4, 8 o 16 ${participantLabel.toLowerCase()}`);
-        return;
-      }
-    }
-
-    if (format === "round-robin" && count < 3) {
-      setError(`Para liga necesitas al menos 3 ${participantLabel.toLowerCase()}`);
-      return;
-    }
-
-    // Validate groups
-    const hasGroups = (format === "round-robin" || format === "group-playoff") && groups.length > 0;
-    if (format === "group-playoff" && groups.length < 1) {
-      setError("Necesitas al menos 1 grupo");
-      return;
-    }
-    if (hasGroups) {
-      const perGroup = Math.floor(count / groups.length);
-      if (perGroup < 2) {
-        setError(`No hay suficientes ${participantLabel.toLowerCase()} para ${groups.length} grupos (minimo 2 por grupo)`);
-        return;
-      }
-      if (format === "group-playoff") {
-        const advance = parseInt(advanceCount);
-        if (isNaN(advance) || advance < 2) {
-          setError("Deben clasificar al menos 2");
-          return;
-        }
-        if (advance >= count) {
-          setError("Los que clasifican deben ser menos que el total");
-          return;
-        }
-      }
-    }
 
     // Free tier: create directly without cost dialog
     if (canUseFree) {
@@ -228,8 +240,6 @@ export function CreateTournamentForm() {
     setPriceInfo(info);
     setShowCostDialog(true);
   };
-
-  const [creating, setCreating] = useState(false);
 
   const createTournament = async (plan: "free" | "paid", couponId?: string, paymentId?: string) => {
     setCreating(true);
@@ -379,6 +389,14 @@ export function CreateTournamentForm() {
     }
   };
 
+  // Summary labels (step 4)
+  const sportInfo = SPORTS.find((s) => s.key === sport);
+  const sportLabel = sportInfo ? `${sportInfo.emoji} ${sportInfo.label}` : "";
+  const scopeLabel = SCOPES.find((s) => s.key === scope)?.label ?? "";
+  const deptLabel = DEPARTMENTS.find((d) => d.key === department)?.label ?? "";
+  const munLabel =
+    getDepartment(department)?.municipalities.find((m) => m.key === municipality)?.label ?? "";
+
   return (
     <>
     <Card>
@@ -388,128 +406,42 @@ export function CreateTournamentForm() {
           Configura tu nuevo torneo
         </CardDescription>
       </CardHeader>
-      <form onSubmit={handleSubmit}>
-        <CardContent className="space-y-8">
+      <form onSubmit={(e) => e.preventDefault()}>
+        <CardContent className="space-y-6">
+          <Stepper steps={WIZARD_STEPS} current={step} />
+
           {error && (
             <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
               {error}
             </div>
           )}
 
-          {/* Basic Info */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Informacion General</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nombre del Torneo</Label>
-                <Input
-                  id="name"
-                  placeholder="Ej: Copa Primavera 2025"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="startDate">Fecha de Inicio</Label>
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Descripcion (opcional)</Label>
-              <Input
-                id="description"
-                placeholder="Descripcion del torneo"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Location / Scope */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Ubicacion</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Alcance del Torneo</Label>
-                <Select
-                  value={scope}
-                  onValueChange={(v) => {
-                    setScope(v as TournamentScope);
-                    setDepartment("");
-                    setMunicipality("");
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar alcance" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SCOPES.map((s) => (
-                      <SelectItem key={s.key} value={s.key}>
-                        {s.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {(scope === "departamental" || scope === "municipal") && (
+          {/* ===================== PASO 1 — Esencial ===================== */}
+          {step === 1 && (
+            <div className="space-y-4">
+              <h3 className="font-semibold text-lg">Informacion General</h3>
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Departamento</Label>
-                  <Select
-                    value={department}
-                    onValueChange={(v) => {
-                      setDepartment(v);
-                      setMunicipality("");
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar departamento" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DEPARTMENTS.map((d) => (
-                        <SelectItem key={d.key} value={d.key}>
-                          {d.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="name">Nombre del Torneo</Label>
+                  <Input
+                    id="name"
+                    placeholder="Ej: Copa Primavera 2025"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
                 </div>
-              )}
 
-              {scope === "municipal" && department && (
                 <div className="space-y-2">
-                  <Label>Municipio / Ciudad</Label>
-                  <Select
-                    value={municipality}
-                    onValueChange={setMunicipality}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar municipio" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(getDepartment(department)?.municipalities ?? []).map((m) => (
-                        <SelectItem key={m.key} value={m.key}>
-                          {m.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="startDate">Fecha de Inicio</Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
 
-          {/* Sport & Format */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Deporte y Formato</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Deporte</Label>
                 <Select
@@ -534,385 +466,544 @@ export function CreateTournamentForm() {
               </div>
 
               <div className="space-y-2">
-                <Label>Formato</Label>
-                <Select
-                  value={format}
-                  onValueChange={(v) => setFormat(v as TournamentFormat)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar formato" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="elimination">
-                      Eliminacion Directa
-                    </SelectItem>
-                    <SelectItem value="round-robin">
-                      Liga
-                    </SelectItem>
-                    <SelectItem value="group-playoff">
-                      Fase de Grupos + Playoffs
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-
-          {/* Participants */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Participantes</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="teamCount">
-                  Cantidad de {participantLabel.toLowerCase()}
-                </Label>
+                <Label htmlFor="description">Descripcion (opcional)</Label>
                 <Input
-                  id="teamCount"
-                  type="number"
-                  min="2"
-                  placeholder={format === "elimination" ? "2, 4, 8 o 16" : "Minimo 2"}
-                  value={teamCount}
-                  onChange={(e) => setTeamCount(e.target.value)}
+                  id="description"
+                  placeholder="Descripcion del torneo"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                 />
-                {format === "elimination" && (
-                  <p className="text-xs text-muted-foreground">
-                    Debe ser potencia de 2 (2, 4, 8, 16)
-                  </p>
-                )}
               </div>
-            </div>
-          </div>
-
-          {/* Volleyball Sets Config */}
-          {sport === "volleyball" && (
-            <div className="space-y-4">
-              <h3 className="font-semibold text-lg">Formato de Sets</h3>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={bestOf === 3 ? "default" : "outline"}
-                  className="flex-1"
-                  onClick={() => setBestOf(3)}
-                >
-                  Mejor de 3
-                </Button>
-                <Button
-                  type="button"
-                  variant={bestOf === 5 ? "default" : "outline"}
-                  className="flex-1"
-                  onClick={() => setBestOf(5)}
-                >
-                  Mejor de 5
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {bestOf === 3
-                  ? "Gana el primero en llegar a 2 sets"
-                  : "Gana el primero en llegar a 3 sets"}
-              </p>
             </div>
           )}
 
-          {/* Group Configuration */}
-          {(format === "group-playoff" || format === "round-robin") && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-lg">Configuracion de Grupos</h3>
-                <span className="text-xs text-muted-foreground">
-                  {format === "group-playoff" ? "Minimo 1 grupo" : "Opcional"}
-                </span>
+          {/* ===================== PASO 2 — Formato ===================== */}
+          {step === 2 && (
+            <div className="space-y-8">
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg">Formato</h3>
+                <div className="space-y-2">
+                  <Label>Formato del torneo</Label>
+                  <Select
+                    value={format}
+                    onValueChange={(v) => {
+                      const f = v as TournamentFormat;
+                      setFormat(f);
+                      // Clear group config when switching to a format without
+                      // groups, so phantom groups don't contaminate pricing/validation.
+                      if (f === "elimination") {
+                        setGroups([]);
+                        setHasPhase2(false);
+                        setAdvanceCount("2");
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar formato" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="elimination">
+                        Eliminacion Directa
+                      </SelectItem>
+                      <SelectItem value="round-robin">
+                        Liga
+                      </SelectItem>
+                      <SelectItem value="group-playoff">
+                        Fase de Grupos + Playoffs
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              {groups.map((group, gIdx) => (
-                <div
-                  key={gIdx}
-                  className="border rounded-lg p-3 flex items-center justify-between"
-                >
-                  <span className="font-medium text-sm">{group.name}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => removeGroup(gIdx)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+              {/* Participants */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg">Participantes</h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="teamCount">
+                      Cantidad de {participantLabel.toLowerCase()}
+                    </Label>
+                    <Input
+                      id="teamCount"
+                      type="number"
+                      min="2"
+                      placeholder={format === "elimination" ? "2, 4, 8 o 16" : "Minimo 2"}
+                      value={teamCount}
+                      onChange={(e) => setTeamCount(e.target.value)}
+                    />
+                    {format === "elimination" && (
+                      <p className="text-xs text-muted-foreground">
+                        Debe ser potencia de 2 (2, 4, 8, 16)
+                      </p>
+                    )}
+                  </div>
                 </div>
-              ))}
+              </div>
 
-              {groups.length < 8 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={addGroup}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Agregar Grupo
-                </Button>
-              )}
-
-              {teamCount && groups.length >= 1 && (
-                <p className="text-xs text-muted-foreground">
-                  Los {participantLabel.toLowerCase()} se distribuiran automaticamente entre los grupos
-                </p>
-              )}
-
-              {groups.length >= 1 && format === "group-playoff" && !hasPhase2 && (
-                <div className="space-y-2">
-                  <Label>Equipos que clasifican a playoffs</Label>
-                  <Input
-                    type="number"
-                    min={2}
-                    max={(parseInt(teamCount) || 2) - 1}
-                    value={advanceCount}
-                    onChange={(e) => setAdvanceCount(e.target.value)}
-                  />
-                  {advanceCount && !isNaN(parseInt(advanceCount)) && (
-                    <p className="text-xs text-muted-foreground">
-                      {parseInt(advanceCount)} {participantLabel.toLowerCase()} pasan a playoffs
-                      {(() => {
-                        const num = parseInt(advanceCount);
-                        let p = 1;
-                        while (p < num) p *= 2;
-                        return p !== num
-                          ? ` (${p - num} bye${p - num > 1 ? "s" : ""} para los mejor clasificados)`
-                          : "";
-                      })()}
-                    </p>
-                  )}
+              {/* Volleyball Sets Config */}
+              {sport === "volleyball" && (
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg">Formato de Sets</h3>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={bestOf === 3 ? "default" : "outline"}
+                      className="flex-1"
+                      onClick={() => setBestOf(3)}
+                    >
+                      Mejor de 3
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={bestOf === 5 ? "default" : "outline"}
+                      className="flex-1"
+                      onClick={() => setBestOf(5)}
+                    >
+                      Mejor de 5
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {bestOf === 3
+                      ? "Gana el primero en llegar a 2 sets"
+                      : "Gana el primero en llegar a 3 sets"}
+                  </p>
                 </div>
               )}
 
-              {/* Multi-phase: visual flow diagram */}
-              {groups.length >= 1 && format === "group-playoff" && hasPhase2 && (() => {
-                const label = participantLabel.toLowerCase();
-                const p1Advance = parseInt(phase1AdvancePerGroup) || 0;
-                const p1Total = p1Advance * groups.length;
-                const p2Groups = parseInt(phase2GroupCount) || 1;
-                const p2PerGroup = Math.floor(p1Total / p2Groups);
-                const p2Advance = parseInt(phase2AdvancePerGroup) || 0;
-                const playoffTotal = p2Advance * p2Groups;
-                let bracket = 1;
-                while (bracket < playoffTotal) bracket *= 2;
-                const byes = bracket - playoffTotal;
+              {/* Group Configuration */}
+              {(format === "group-playoff" || format === "round-robin") && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-lg">Configuracion de Grupos</h3>
+                    <span className="text-xs text-muted-foreground">
+                      {format === "group-playoff" ? "Minimo 1 grupo" : "Opcional"}
+                    </span>
+                  </div>
 
-                // Group name lists
-                const p1Names = groups.map((_, i) => GROUP_LETTERS[i] || `${i + 1}`).join(", ");
-                const p2Names = Array.from({ length: p2Groups }, (_, i) => GROUP_LETTERS[groups.length + i] || `${groups.length + i + 1}`).join(", ");
-
-                return (
-                  <div className="space-y-3 border rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-semibold">Estructura del torneo</h4>
+                  {groups.map((group, gIdx) => (
+                    <div
+                      key={gIdx}
+                      className="border rounded-lg p-3 flex items-center justify-between"
+                    >
+                      <span className="font-medium text-sm">{group.name}</span>
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
-                        className="text-destructive h-7 text-xs"
-                        onClick={() => setHasPhase2(false)}
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => removeGroup(gIdx)}
                       >
-                        <Trash2 className="h-3 w-3 mr-1" />
-                        Quitar
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
+                  ))}
 
-                    {/* Fase 1 */}
-                    <div className="rounded-md bg-muted/40 p-3 space-y-2">
-                      <p className="text-sm font-medium">
-                        {groups.length === 1
-                          ? "Fase 1 — Liga (todos contra todos)"
-                          : `Fase 1 — Grupos ${p1Names}`}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {groups.length === 1
-                          ? "Todos los equipos juegan entre si."
-                          : "Todos contra todos dentro de cada grupo."}
-                      </p>
-                      <div className="flex items-center gap-2 pt-1">
-                        <span className="text-sm">Los mejores</span>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={Math.floor((parseInt(teamCount) || 2) / Math.max(groups.length, 1))}
-                          value={phase1AdvancePerGroup}
-                          onChange={(e) => setPhase1AdvancePerGroup(e.target.value)}
-                          className="w-14 h-8 text-center text-sm"
-                        />
-                        <span className="text-sm">
-                          {groups.length === 1 ? "avanzan" : "de cada grupo avanzan"}
-                        </span>
-                      </div>
+                  {groups.length < 8 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={addGroup}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Agregar Grupo
+                    </Button>
+                  )}
+
+                  {teamCount && groups.length >= 1 && (
+                    <p className="text-xs text-muted-foreground">
+                      Los {participantLabel.toLowerCase()} se distribuiran automaticamente entre los grupos
+                    </p>
+                  )}
+
+                  {groups.length >= 1 && format === "group-playoff" && !hasPhase2 && (
+                    <div className="space-y-2">
+                      <Label>Equipos que clasifican a playoffs</Label>
+                      <Input
+                        type="number"
+                        min={2}
+                        max={(parseInt(teamCount) || 2) - 1}
+                        value={advanceCount}
+                        onChange={(e) => setAdvanceCount(e.target.value)}
+                      />
+                      {advanceCount && !isNaN(parseInt(advanceCount)) && (
+                        <p className="text-xs text-muted-foreground">
+                          {parseInt(advanceCount)} {participantLabel.toLowerCase()} pasan a playoffs
+                          {(() => {
+                            const num = parseInt(advanceCount);
+                            let p = 1;
+                            while (p < num) p *= 2;
+                            return p !== num
+                              ? ` (${p - num} bye${p - num > 1 ? "s" : ""} para los mejor clasificados)`
+                              : "";
+                          })()}
+                        </p>
+                      )}
                     </div>
+                  )}
 
-                    {/* Connector */}
-                    <div className="flex flex-col items-center gap-0.5 text-muted-foreground">
-                      <div className="w-px h-2 bg-border" />
-                      <span className="text-xs font-medium">{p1Total} {label} pasan</span>
-                      <div className="w-px h-2 bg-border" />
-                    </div>
+                  {/* Multi-phase: visual flow diagram */}
+                  {groups.length >= 1 && format === "group-playoff" && hasPhase2 && (() => {
+                    const label = participantLabel.toLowerCase();
+                    const p1Advance = parseInt(phase1AdvancePerGroup) || 0;
+                    const p1Total = p1Advance * groups.length;
+                    const p2Groups = parseInt(phase2GroupCount) || 1;
+                    const p2PerGroup = Math.floor(p1Total / p2Groups);
+                    const p2Advance = parseInt(phase2AdvancePerGroup) || 0;
+                    const playoffTotal = p2Advance * p2Groups;
+                    let bracket = 1;
+                    while (bracket < playoffTotal) bracket *= 2;
+                    const byes = bracket - playoffTotal;
 
-                    {/* Fase 2 */}
-                    <div className="rounded-md bg-muted/40 p-3 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">Fase 2 —</span>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={4}
-                          value={phase2GroupCount}
-                          onChange={(e) => setPhase2GroupCount(e.target.value)}
-                          className="w-14 h-8 text-center text-sm"
-                        />
-                        <span className="text-sm font-medium">
-                          {p2Groups === 1 ? "grupo (todos contra todos)" : `grupos nuevos (${p2Names})`}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {p2Groups === 1
-                          ? `Los ${p1Total} ${label} clasificados juegan todos entre si en una sola tabla.`
-                          : `Se arman ${p2Groups} grupos nuevos de ${p2PerGroup} ${label} cada uno. Vuelven a jugar todos contra todos.`}
-                      </p>
-                      <div className="flex items-center gap-2 pt-1">
-                        <span className="text-sm">Los mejores</span>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={p2PerGroup || 1}
-                          value={phase2AdvancePerGroup}
-                          onChange={(e) => setPhase2AdvancePerGroup(e.target.value)}
-                          className="w-14 h-8 text-center text-sm"
-                        />
-                        <span className="text-sm">
-                          {p2Groups === 1 ? "avanzan" : "de cada grupo avanzan"}
-                        </span>
-                      </div>
-                    </div>
+                    // Group name lists
+                    const p1Names = groups.map((_, i) => GROUP_LETTERS[i] || `${i + 1}`).join(", ");
+                    const p2Names = Array.from({ length: p2Groups }, (_, i) => GROUP_LETTERS[groups.length + i] || `${groups.length + i + 1}`).join(", ");
 
-                    {/* Connector */}
-                    <div className="flex flex-col items-center gap-0.5 text-muted-foreground">
-                      <div className="w-px h-2 bg-border" />
-                      <span className="text-xs font-medium">{playoffTotal} {label} pasan</span>
-                      <div className="w-px h-2 bg-border" />
-                    </div>
-
-                    {/* Playoffs */}
-                    <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-sm font-medium">Playoffs — Eliminacion directa</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {playoffTotal} {label} se enfrentan en eliminacion directa
-                        {byes > 0 ? `. ${byes} ${label} avanzan directo a la siguiente ronda (byes).` : " hasta definir al campeon."}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Add Phase 2 button */}
-              {groups.length >= 1 && format === "group-playoff" && !hasPhase2 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => setHasPhase2(true)}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Agregar otra Fase de Grupos
-                </Button>
-              )}
-            </div>
-          )}
-
-          {/* Stats Selection — at the end */}
-          {sport && STAT_CATALOG.some((s) => s.sportDefaults.includes(sport as Sport)) && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-lg">Estadisticas del Torneo</h3>
-                <span className="text-xs text-muted-foreground">
-                  {enabledStats.length} seleccionadas
-                </span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Selecciona que eventos se pueden registrar en los partidos
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {STAT_CATALOG
-                  .filter((stat) => stat.sportDefaults.includes(sport as Sport))
-                  .map((stat) => {
-                    const isEnabled = enabledStats.includes(stat.key);
                     return (
-                      <button
-                        key={stat.key}
-                        type="button"
-                        onClick={() =>
-                          setEnabledStats((prev) =>
-                            isEnabled
-                              ? prev.filter((s) => s !== stat.key)
-                              : [...prev, stat.key]
-                          )
-                        }
-                        className={`text-left text-sm px-3 py-2 rounded-lg border transition-colors ${
-                          isEnabled
-                            ? "bg-primary/10 border-primary text-primary font-medium"
-                            : "border-border hover:border-muted-foreground/50"
-                        }`}
-                      >
-                        {stat.label}
-                      </button>
+                      <div className="space-y-3 border rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-semibold">Estructura del torneo</h4>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive h-7 text-xs"
+                            onClick={() => setHasPhase2(false)}
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Quitar
+                          </Button>
+                        </div>
+
+                        {/* Fase 1 */}
+                        <div className="rounded-md bg-muted/40 p-3 space-y-2">
+                          <p className="text-sm font-medium">
+                            {groups.length === 1
+                              ? "Fase 1 — Liga (todos contra todos)"
+                              : `Fase 1 — Grupos ${p1Names}`}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {groups.length === 1
+                              ? "Todos los equipos juegan entre si."
+                              : "Todos contra todos dentro de cada grupo."}
+                          </p>
+                          <div className="flex items-center gap-2 pt-1">
+                            <span className="text-sm">Los mejores</span>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={Math.floor((parseInt(teamCount) || 2) / Math.max(groups.length, 1))}
+                              value={phase1AdvancePerGroup}
+                              onChange={(e) => setPhase1AdvancePerGroup(e.target.value)}
+                              className="w-14 h-8 text-center text-sm"
+                            />
+                            <span className="text-sm">
+                              {groups.length === 1 ? "avanzan" : "de cada grupo avanzan"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Connector */}
+                        <div className="flex flex-col items-center gap-0.5 text-muted-foreground">
+                          <div className="w-px h-2 bg-border" />
+                          <span className="text-xs font-medium">{p1Total} {label} pasan</span>
+                          <div className="w-px h-2 bg-border" />
+                        </div>
+
+                        {/* Fase 2 */}
+                        <div className="rounded-md bg-muted/40 p-3 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">Fase 2 —</span>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={4}
+                              value={phase2GroupCount}
+                              onChange={(e) => setPhase2GroupCount(e.target.value)}
+                              className="w-14 h-8 text-center text-sm"
+                            />
+                            <span className="text-sm font-medium">
+                              {p2Groups === 1 ? "grupo (todos contra todos)" : `grupos nuevos (${p2Names})`}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {p2Groups === 1
+                              ? `Los ${p1Total} ${label} clasificados juegan todos entre si en una sola tabla.`
+                              : `Se arman ${p2Groups} grupos nuevos de ${p2PerGroup} ${label} cada uno. Vuelven a jugar todos contra todos.`}
+                          </p>
+                          <div className="flex items-center gap-2 pt-1">
+                            <span className="text-sm">Los mejores</span>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={p2PerGroup || 1}
+                              value={phase2AdvancePerGroup}
+                              onChange={(e) => setPhase2AdvancePerGroup(e.target.value)}
+                              className="w-14 h-8 text-center text-sm"
+                            />
+                            <span className="text-sm">
+                              {p2Groups === 1 ? "avanzan" : "de cada grupo avanzan"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Connector */}
+                        <div className="flex flex-col items-center gap-0.5 text-muted-foreground">
+                          <div className="w-px h-2 bg-border" />
+                          <span className="text-xs font-medium">{playoffTotal} {label} pasan</span>
+                          <div className="w-px h-2 bg-border" />
+                        </div>
+
+                        {/* Playoffs */}
+                        <div className="rounded-md bg-muted/40 p-3">
+                          <p className="text-sm font-medium">Playoffs — Eliminacion directa</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {playoffTotal} {label} se enfrentan en eliminacion directa
+                            {byes > 0 ? `. ${byes} ${label} avanzan directo a la siguiente ronda (byes).` : " hasta definir al campeon."}
+                          </p>
+                        </div>
+                      </div>
                     );
-                  })}
-              </div>
-            </div>
-          )}
-        </CardContent>
-        <CardFooter className="pt-6 flex-col gap-3">
-          {/* Plan indicator */}
-          {isFormValid && (
-            <div className="w-full text-center">
-              {canUseFree ? (
-                <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
-                  Gratis
-                </Badge>
-              ) : (
-                <Badge className="bg-primary/10 text-primary border-primary/20">
-                  Plan Pago
-                </Badge>
+                  })()}
+
+                  {/* Add Phase 2 button */}
+                  {groups.length >= 1 && format === "group-playoff" && !hasPhase2 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => setHasPhase2(true)}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Agregar otra Fase de Grupos
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           )}
 
-          {/* Free tier limits hint */}
-          {isFormValid && !freeTierCheck.isFree && (
-            <div className="w-full text-xs text-muted-foreground bg-muted/50 rounded-md p-3 space-y-1">
-              <p className="font-medium">Este torneo requiere plan pago porque:</p>
-              <ul className="list-disc list-inside space-y-0.5">
-                {freeTierCheck.reasons.map((r, i) => (
-                  <li key={i}>{r}</li>
-                ))}
-              </ul>
-              <p className="pt-1 text-muted-foreground/70">
-                Gratis: hasta {FREE_TIER_LIMITS.maxTeams} equipos, eliminacion directa, sin estadisticas
-              </p>
+          {/* ===================== PASO 3 — Detalles ===================== */}
+          {step === 3 && (
+            <div className="space-y-8">
+              {/* Location / Scope */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg">Ubicacion</h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Alcance del Torneo</Label>
+                    <Select
+                      value={scope}
+                      onValueChange={(v) => {
+                        setScope(v as TournamentScope);
+                        setDepartment("");
+                        setMunicipality("");
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar alcance" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SCOPES.map((s) => (
+                          <SelectItem key={s.key} value={s.key}>
+                            {s.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {(scope === "departamental" || scope === "municipal") && (
+                    <div className="space-y-2">
+                      <Label>Departamento</Label>
+                      <Select
+                        value={department}
+                        onValueChange={(v) => {
+                          setDepartment(v);
+                          setMunicipality("");
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar departamento" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DEPARTMENTS.map((d) => (
+                            <SelectItem key={d.key} value={d.key}>
+                              {d.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {scope === "municipal" && department && (
+                    <div className="space-y-2">
+                      <Label>Municipio / Ciudad</Label>
+                      <Select
+                        value={municipality}
+                        onValueChange={setMunicipality}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar municipio" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(getDepartment(department)?.municipalities ?? []).map((m) => (
+                            <SelectItem key={m.key} value={m.key}>
+                              {m.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Stats Selection */}
+              {sport && STAT_CATALOG.some((s) => s.sportDefaults.includes(sport as Sport)) && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-lg">Estadisticas del Torneo</h3>
+                    <span className="text-xs text-muted-foreground">
+                      {enabledStats.length} seleccionadas
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Selecciona que eventos se pueden registrar en los partidos
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {STAT_CATALOG
+                      .filter((stat) => stat.sportDefaults.includes(sport as Sport))
+                      .map((stat) => {
+                        const isEnabled = enabledStats.includes(stat.key);
+                        return (
+                          <button
+                            key={stat.key}
+                            type="button"
+                            onClick={() =>
+                              setEnabledStats((prev) =>
+                                isEnabled
+                                  ? prev.filter((s) => s !== stat.key)
+                                  : [...prev, stat.key]
+                              )
+                            }
+                            className={`text-left text-sm px-3 py-2 rounded-lg border transition-colors ${
+                              isEnabled
+                                ? "bg-primary/10 border-primary text-primary font-medium"
+                                : "border-border hover:border-muted-foreground/50"
+                            }`}
+                          >
+                            {stat.label}
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Active free limit warning */}
-          {isFormValid && freeTierCheck.isFree && !canUseFree && (
-            <p className="w-full text-xs text-amber-600 bg-amber-500/10 rounded-md p-3">
-              Ya tienes {activeFreeCount} torneo gratis activo. Puedes crear mas torneos con el plan pago.
-            </p>
+          {/* ===================== PASO 4 — Confirmar ===================== */}
+          {step === 4 && (
+            <div className="space-y-4">
+              <h3 className="font-semibold text-lg">Resumen</h3>
+              <div className="rounded-lg border divide-y text-sm">
+                <SummaryRow label="Nombre" value={name} />
+                <SummaryRow label="Deporte" value={sportLabel} />
+                <SummaryRow label="Fecha de inicio" value={startDate} />
+                <SummaryRow label="Formato" value={format ? FORMAT_LABELS[format] : ""} />
+                <SummaryRow label={participantLabel} value={teamCount} />
+                {sport === "volleyball" && (
+                  <SummaryRow label="Sets" value={`Mejor de ${bestOf}`} />
+                )}
+                {groups.length > 0 && (
+                  <SummaryRow label="Grupos" value={`${groups.length}`} />
+                )}
+                {format === "group-playoff" && !hasPhase2 && (
+                  <SummaryRow label="Clasifican" value={`${advanceCount} ${participantLabel.toLowerCase()}`} />
+                )}
+                {format === "group-playoff" && hasPhase2 && (
+                  <SummaryRow label="Estructura" value="Fase 1 → Fase 2 → Playoffs" />
+                )}
+                <SummaryRow label="Alcance" value={scopeLabel} />
+                {department && <SummaryRow label="Departamento" value={deptLabel} />}
+                {municipality && <SummaryRow label="Municipio" value={munLabel} />}
+                {enabledStats.length > 0 && (
+                  <SummaryRow label="Estadisticas" value={`${enabledStats.length} seleccionadas`} />
+                )}
+                {description.trim() && (
+                  <SummaryRow label="Descripcion" value={description.trim()} />
+                )}
+              </div>
+
+              {/* Plan indicator */}
+              <div className="text-center">
+                {canUseFree ? (
+                  <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
+                    Gratis
+                  </Badge>
+                ) : (
+                  <Badge className="bg-primary/10 text-primary border-primary/20">
+                    Plan Pago
+                  </Badge>
+                )}
+              </div>
+
+              {/* Free tier limits hint */}
+              {!freeTierCheck.isFree && (
+                <div className="w-full text-xs text-muted-foreground bg-muted/50 rounded-md p-3 space-y-1">
+                  <p className="font-medium">Este torneo requiere plan pago porque:</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    {freeTierCheck.reasons.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                  <p className="pt-1 text-muted-foreground/70">
+                    Gratis: hasta {FREE_TIER_LIMITS.maxTeams} equipos, eliminacion directa, sin estadisticas
+                  </p>
+                </div>
+              )}
+
+              {/* Active free limit warning */}
+              {freeTierCheck.isFree && !canUseFree && (
+                <p className="w-full text-xs text-amber-600 bg-amber-500/10 rounded-md p-3">
+                  Ya tienes {activeFreeCount} torneo gratis activo. Puedes crear mas torneos con el plan pago.
+                </p>
+              )}
+            </div>
           )}
 
-          <Button type="submit" className="w-full" disabled={!isFormValid || creating}>
-            {creating ? "Creando..." : canUseFree ? "Crear Torneo Gratis" : "Crear Torneo"}
-          </Button>
-          {!isFormValid && (
-            <p className="text-xs text-muted-foreground">
-              Completa todos los campos para crear el torneo
-            </p>
-          )}
-        </CardFooter>
+          {/* ===================== Navegacion (sticky) ===================== */}
+          <div className="sticky bottom-0 z-30 -mx-6 flex gap-2 border-t bg-background/95 px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            {step > 1 && (
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={goBack}
+                disabled={creating}
+              >
+                Atras
+              </Button>
+            )}
+            {step < WIZARD_STEPS.length ? (
+              <Button type="button" className="flex-1" onClick={goNext}>
+                Siguiente
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                className="flex-1"
+                onClick={handleFinalSubmit}
+                disabled={creating}
+              >
+                {creating ? "Creando..." : canUseFree ? "Crear Torneo Gratis" : "Crear Torneo"}
+              </Button>
+            )}
+          </div>
+        </CardContent>
       </form>
     </Card>
 

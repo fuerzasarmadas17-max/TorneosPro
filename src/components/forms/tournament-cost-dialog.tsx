@@ -20,7 +20,7 @@ import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { Loader2, X } from "lucide-react";
 
-const FORMAT_LABELS: Record<TournamentFormat, string> = {
+export const FORMAT_LABELS: Record<TournamentFormat, string> = {
   elimination: "Eliminacion Directa",
   "round-robin": "Liga",
   "group-playoff": "Fase de Grupos + Playoffs",
