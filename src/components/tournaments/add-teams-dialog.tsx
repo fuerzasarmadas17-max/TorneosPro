@@ -29,6 +29,7 @@ import {
   formatCOP,
 } from "@/lib/pricing";
 import { generateIncrementalMatchesForGroup } from "@/data/helpers";
+import { redirectToWompiCheckout } from "@/lib/payments/wompi-redirect";
 import { Tournament, Team, TournamentGroup } from "@/types";
 import { toast } from "sonner";
 import { Loader2, Plus } from "lucide-react";
@@ -268,17 +269,15 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
       }
 
       const returnUrl = `${window.location.origin}/tournaments/payment-return?ref=${encodeURIComponent(data.reference)}`;
-      const query = [
-        `public-key=${encodeURIComponent(publicKey)}`,
-        `currency=COP`,
-        `amount-in-cents=${data.amountInCents}`,
-        `reference=${encodeURIComponent(data.reference)}`,
-        `signature:integrity=${encodeURIComponent(data.integrity)}`,
-        `redirect-url=${encodeURIComponent(returnUrl)}`,
-      ].join("&");
 
       // Navigating away — keep `processing` true.
-      window.location.assign(`https://checkout.wompi.co/p/?${query}`);
+      redirectToWompiCheckout({
+        publicKey,
+        amountInCents: data.amountInCents,
+        reference: data.reference,
+        integrity: data.integrity,
+        redirectUrl: returnUrl,
+      });
     } catch (err) {
       console.error("Payment error:", err);
       toast.error("Error al procesar el pago");

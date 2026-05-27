@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { TournamentPriceInfo, formatCOP } from "@/lib/pricing";
 import { TournamentFormat, Sport, CouponType } from "@/types";
 import { getSportInfo } from "@/data/sports";
+import { redirectToWompiCheckout } from "@/lib/payments/wompi-redirect";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { Loader2, X } from "lucide-react";
@@ -161,21 +162,19 @@ export function TournamentCostDialog({
         return;
       }
 
-      // Redirect to Wompi's hosted checkout. On completion Wompi returns to
-      // redirect-url?id=<txn>; the tournament is created server-side (webhook /
-      // confirm) and the return page polls until it's ready.
+      // Redirect to Wompi's hosted checkout (HTML form GET). On completion Wompi
+      // returns to redirect-url?id=<txn>; the tournament is created server-side
+      // (webhook / confirm) and the return page polls until it's ready.
       const returnUrl = `${window.location.origin}/tournaments/payment-return?ref=${encodeURIComponent(reference)}`;
-      const query = [
-        `public-key=${encodeURIComponent(publicKey)}`,
-        `currency=COP`,
-        `amount-in-cents=${amountInCents}`,
-        `reference=${encodeURIComponent(reference)}`,
-        `signature:integrity=${encodeURIComponent(integrity)}`,
-        `redirect-url=${encodeURIComponent(returnUrl)}`,
-      ].join("&");
 
       // Keep `processing` true: we're navigating away.
-      window.location.assign(`https://checkout.wompi.co/p/?${query}`);
+      redirectToWompiCheckout({
+        publicKey,
+        amountInCents,
+        reference,
+        integrity,
+        redirectUrl: returnUrl,
+      });
     } catch (err) {
       console.error("Payment error:", err);
       toast.error("Error al procesar el pago");
