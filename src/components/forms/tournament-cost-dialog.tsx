@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { TournamentPriceInfo, formatCOP } from "@/lib/pricing";
 import { TournamentFormat, Sport, CouponType } from "@/types";
 import { getSportInfo } from "@/data/sports";
-import { redirectToWompiCheckout } from "@/lib/payments/wompi-redirect";
+import { redirectToWompiCheckout, paymentReturnUrl } from "@/lib/payments/wompi-redirect";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { Loader2, X } from "lucide-react";
@@ -165,7 +165,7 @@ export function TournamentCostDialog({
       // Redirect to Wompi's hosted checkout (HTML form GET). On completion Wompi
       // returns to redirect-url?id=<txn>; the tournament is created server-side
       // (webhook / confirm) and the return page polls until it's ready.
-      const returnUrl = `${window.location.origin}/tournaments/payment-return?ref=${encodeURIComponent(reference)}`;
+      const returnUrl = paymentReturnUrl(reference);
 
       // Keep `processing` true: we're navigating away.
       redirectToWompiCheckout({

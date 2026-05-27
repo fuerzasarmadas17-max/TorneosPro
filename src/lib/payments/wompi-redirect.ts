@@ -1,3 +1,14 @@
+// Builds the post-payment return URL. Wompi's WAF blocks any redirect-url
+// containing "localhost"/"127.0.0.1" (anti-SSRF) → 403, so local testing needs
+// a public URL. Set NEXT_PUBLIC_APP_URL (e.g. an ngrok https URL) to override
+// window.location.origin; in production it falls back to the real origin.
+export function paymentReturnUrl(reference: string): string {
+  const origin =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") ||
+    window.location.origin;
+  return `${origin}/tournaments/payment-return?ref=${encodeURIComponent(reference)}`;
+}
+
 // Redirects the browser to Wompi's hosted Web Checkout by submitting an HTML
 // GET form — exactly as Wompi documents. Building the URL by hand and using
 // location.assign sends a literal ":" in `signature:integrity`, which the

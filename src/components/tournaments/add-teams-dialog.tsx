@@ -29,7 +29,7 @@ import {
   formatCOP,
 } from "@/lib/pricing";
 import { generateIncrementalMatchesForGroup } from "@/data/helpers";
-import { redirectToWompiCheckout } from "@/lib/payments/wompi-redirect";
+import { redirectToWompiCheckout, paymentReturnUrl } from "@/lib/payments/wompi-redirect";
 import { Tournament, Team, TournamentGroup } from "@/types";
 import { toast } from "sonner";
 import { Loader2, Plus } from "lucide-react";
@@ -268,7 +268,7 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
         return;
       }
 
-      const returnUrl = `${window.location.origin}/tournaments/payment-return?ref=${encodeURIComponent(data.reference)}`;
+      const returnUrl = paymentReturnUrl(data.reference);
 
       // Navigating away — keep `processing` true.
       redirectToWompiCheckout({
