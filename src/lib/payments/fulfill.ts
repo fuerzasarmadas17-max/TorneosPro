@@ -1,5 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { createTournament as dbCreateTournament } from "@/lib/db/tournaments";
+import { toDbMatch } from "@/lib/db/mappers";
+import { generateIncrementalMatchesForGroup } from "@/data/helpers";
 import {
   Tournament,
   TournamentGroup,
@@ -203,47 +205,118 @@ async function upgradeTournamentFromPayment(
 ): Promise<string | null> {
   const tournamentId = data.tournamentId as string;
 
+  // Idempotent claim: only the first caller (webhook OR confirm) proceeds.
+  const { data: claimed } = await supabaseAdmin
+    .from("payments")
+    .update({ tournament_id: tournamentId, status: "approved" })
+    .eq("id", payment.id)
+    .is("tournament_id", null)
+    .select("id")
+    .single();
+  if (!claimed) return tournamentId;
+
   try {
     await supabaseAdmin
       .from("tournaments")
-      .update({
-        tier: data.newTier,
-        price: data.newPrice,
-        plan: "paid",
-      })
+      .update({ tier: data.newTier, price: data.newPrice, plan: "paid" })
       .eq("id", tournamentId);
-
-    await supabaseAdmin
-      .from("payments")
-      .update({ tournament_id: tournamentId, status: "approved" })
-      .eq("id", payment.id);
 
     const teamsToAdd = Number(data.teamsToAdd) || 0;
     const isIndividual = Boolean(data.isIndividual);
     const currentCount = Number(data.currentCount) || 0;
+    if (teamsToAdd <= 0) return tournamentId;
 
-    if (teamsToAdd > 0) {
-      const dbTeamIds: string[] = [];
-      for (let i = 0; i < teamsToAdd; i++) {
-        const { data: teamRow } = await supabaseAdmin
-          .from("teams")
-          .insert({
-            name: isIndividual
-              ? `Jugador ${currentCount + i + 1}`
-              : `Equipo ${currentCount + i + 1}`,
-          })
-          .select("id")
-          .single();
-        if (teamRow) dbTeamIds.push(teamRow.id as string);
+    // Create + link the new teams.
+    const dbTeamIds: string[] = [];
+    for (let i = 0; i < teamsToAdd; i++) {
+      const { data: teamRow } = await supabaseAdmin
+        .from("teams")
+        .insert({
+          name: isIndividual
+            ? `Jugador ${currentCount + i + 1}`
+            : `Equipo ${currentCount + i + 1}`,
+        })
+        .select("id")
+        .single();
+      if (teamRow) dbTeamIds.push(teamRow.id as string);
+    }
+    if (dbTeamIds.length > 0) {
+      await supabaseAdmin.from("tournament_teams").insert(
+        dbTeamIds.map((teamId) => ({
+          tournament_id: tournamentId,
+          team_id: teamId,
+        }))
+      );
+    }
+
+    // Group assignment + incremental matches (mirrors add-teams-dialog).
+    const groupAssignments = data.groupAssignments as
+      | (string | null)[]
+      | null
+      | undefined;
+    if (groupAssignments && dbTeamIds.length > 0) {
+      const byGroup: Record<string, string[]> = {};
+      for (let i = 0; i < dbTeamIds.length; i++) {
+        const gId = groupAssignments[i];
+        if (!gId) continue;
+        (byGroup[gId] ||= []).push(dbTeamIds[i]);
       }
 
-      if (dbTeamIds.length > 0) {
-        await supabaseAdmin.from("tournament_teams").insert(
-          dbTeamIds.map((teamId) => ({
-            tournament_id: tournamentId,
-            team_id: teamId,
-          }))
-        );
+      // Existing group members + current matches (for incremental generation).
+      const { data: groupRows } = await supabaseAdmin
+        .from("tournament_groups")
+        .select("id, tournament_group_teams(team_id)")
+        .eq("tournament_id", tournamentId);
+      const { data: matchRows } = await supabaseAdmin
+        .from("matches")
+        .select("match_number, phase")
+        .eq("tournament_id", tournamentId);
+      const { data: tRow } = await supabaseAdmin
+        .from("tournaments")
+        .select("double_round_robin")
+        .eq("id", tournamentId)
+        .single();
+
+      const existingByGroup: Record<string, string[]> = {};
+      for (const g of groupRows ?? []) {
+        existingByGroup[g.id as string] = (
+          (g.tournament_group_teams as { team_id: string }[]) ?? []
+        ).map((t) => t.team_id);
+      }
+
+      // Assign new teams to their chosen groups.
+      for (const [groupId, ids] of Object.entries(byGroup)) {
+        await supabaseAdmin
+          .from("tournament_group_teams")
+          .insert(ids.map((teamId) => ({ group_id: groupId, team_id: teamId })));
+      }
+
+      // If the group stage already has a calendar, extend it.
+      const hasGroupMatches = (matchRows ?? []).some((m) => m.phase === "group");
+      if (hasGroupMatches) {
+        let counter =
+          Math.max(
+            0,
+            ...(matchRows ?? []).map((m) => Number(m.match_number) || 0)
+          ) + 1;
+        const doubleRR = Boolean(tRow?.double_round_robin);
+        const newMatches = [];
+        for (const [groupId, newIds] of Object.entries(byGroup)) {
+          const existing = existingByGroup[groupId] ?? [];
+          const ms = generateIncrementalMatchesForGroup(
+            groupId,
+            newIds,
+            existing,
+            tournamentId,
+            counter,
+            doubleRR
+          );
+          newMatches.push(...ms);
+          counter += ms.length;
+        }
+        if (newMatches.length > 0) {
+          await supabaseAdmin.from("matches").insert(newMatches.map(toDbMatch));
+        }
       }
     }
 
@@ -253,6 +326,6 @@ async function upgradeTournamentFromPayment(
     return tournamentId;
   } catch (err) {
     console.error("Error upgrading tournament from payment:", err);
-    return null;
+    return tournamentId;
   }
 }

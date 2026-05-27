@@ -1,7 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
-import Script from "next/script";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -26,7 +25,6 @@ import { useAuth } from "@/context/auth-context";
 import {
   getTier,
   getTournamentPriceInfo,
-  TIER_PRICES,
   TIER_LABELS,
   formatCOP,
 } from "@/lib/pricing";
@@ -37,6 +35,12 @@ import { Loader2, Plus } from "lucide-react";
 
 interface AddTeamsDialogProps {
   tournament: Tournament;
+}
+
+interface UpgradeQuote {
+  needsUpgrade: boolean;
+  cobro: number;
+  newTierLabel: string;
 }
 
 export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
@@ -52,9 +56,9 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
   const [step, setStep] = useState<"count" | "assign">("count");
   const [countStr, setCountStr] = useState("1");
   const [processing, setProcessing] = useState(false);
-  const [wompiReady, setWompiReady] = useState(false);
   const [groupAssignments, setGroupAssignments] = useState<Record<number, string>>({});
-  const pendingTeamIdsRef = useRef<string[] | null>(null);
+  const [quote, setQuote] = useState<UpgradeQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
 
   const count = parseInt(countStr) || 0;
   const currentCount = tournament.teamIds.length;
@@ -67,35 +71,57 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
   // Groups available for assignment
   const availableGroups: TournamentGroup[] = (() => {
     if (!tournament.groups || tournament.groups.length === 0) return [];
-    // For multi-phase: only show groups from the active (first incomplete) phase
     if (tournament.phaseConfigs?.length) {
       const activePhase = tournament.phaseConfigs.find((pc) => !pc.complete);
       if (activePhase) {
         return tournament.groups.filter((g) => g.phase === activePhase.phase);
       }
     }
-    // Single-phase or no phases: show all groups
     return tournament.groups;
   })();
 
   const hasGroups = availableGroups.length > 0;
   const allAssigned =
     count > 0 &&
-    Array.from({ length: count }, (_, i) => i).every(
-      (i) => groupAssignments[i]
-    );
+    Array.from({ length: count }, (_, i) => i).every((i) => groupAssignments[i]);
 
-  // Tier calculations
   const currentTier =
     tournament.plan === "paid" && tournament.tier ? tournament.tier : null;
-  const currentTierPrice = currentTier ? TIER_PRICES[currentTier] : 0;
   const newTierInfo = getTournamentPriceInfo(newTotal);
-  const needsUpgrade = currentTier
-    ? newTierInfo.price > currentTierPrice
-    : tournament.plan === "free" && newTotal > 10;
-  const upgradeCost = currentTier
-    ? newTierInfo.price - currentTierPrice
-    : newTierInfo.price;
+  const needsUpgrade = quote?.needsUpgrade ?? false;
+  const cobro = quote?.cobro ?? 0;
+
+  // Fetch the upgrade quote server-side (honors the original bono) for display.
+  useEffect(() => {
+    if (!open) {
+      setQuote(null);
+      return;
+    }
+    if (step !== "count" || count < 1) return;
+
+    let cancelled = false;
+    setQuoteLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/payments/upgrade-quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tournamentId: tournament.id, addCount: count }),
+        });
+        const data = await res.json();
+        if (!cancelled) setQuote(res.ok ? data : null);
+      } catch {
+        if (!cancelled) setQuote(null);
+      } finally {
+        if (!cancelled) setQuoteLoading(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [open, step, count, tournament.id]);
 
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
@@ -103,6 +129,7 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
       setProcessing(false);
       setStep("count");
       setGroupAssignments({});
+      setQuote(null);
     }
     setOpen(isOpen);
   };
@@ -132,7 +159,6 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
   };
 
   const assignToGroupsAndGenerateMatches = async (teamIds: string[]) => {
-    // Group teamIds by their assigned groupId
     const byGroup: Record<string, string[]> = {};
     for (let i = 0; i < teamIds.length; i++) {
       const gId = groupAssignments[i];
@@ -141,12 +167,10 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
       byGroup[gId].push(teamIds[i]);
     }
 
-    // Assign teams to groups in DB
     for (const [groupId, ids] of Object.entries(byGroup)) {
       await assignTeamsToGroupFn(groupId, ids);
     }
 
-    // Generate incremental matches if calendar already exists
     const hasMatches = tournament.matches.some((m) => m.phase === "group");
     if (hasMatches) {
       const maxMatchNumber = Math.max(
@@ -159,11 +183,10 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
       for (const [groupId, newIds] of Object.entries(byGroup)) {
         const group = availableGroups.find((g) => g.id === groupId);
         if (!group) continue;
-        const existingTeamIds = group.teamIds; // teams already in the group
         const matches = generateIncrementalMatchesForGroup(
           groupId,
           newIds,
-          existingTeamIds,
+          group.teamIds,
           tournament.id,
           counter,
           tournament.doubleRoundRobin
@@ -179,141 +202,83 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
     }
   };
 
-  const finishAdd = async (teamIds: string[]) => {
+  // Free add (no payment): genuine free add, or a 100%-bono upgrade.
+  const handleFreeAdd = async (setNewTier: boolean) => {
+    setProcessing(true);
+    const teamIds = await createAndLinkTeams();
+    if (!teamIds) {
+      setProcessing(false);
+      return;
+    }
     if (hasGroups) {
       await assignToGroupsAndGenerateMatches(teamIds);
     }
-
-    // Update tier/price if needed
-    if (currentTier && getTier(newTotal) !== currentTier) {
+    if (setNewTier || (currentTier && getTier(newTotal) !== currentTier)) {
       await updateTournamentProps(tournament.id, {
         tier: newTierInfo.tier,
         price: newTierInfo.price,
       });
     }
-
     toast.success(
       `${count} ${count === 1 ? "equipo agregado" : "equipos agregados"}`
     );
     handleOpenChange(false);
-  };
-
-  // Step 1 → proceed to step 2 or directly add
-  const handleProceed = () => {
-    if (hasGroups) {
-      setStep("assign");
-    } else {
-      handleAddFree();
-    }
-  };
-
-  const handleAddFree = async () => {
-    setProcessing(true);
-    const teamIds = await createAndLinkTeams();
-    if (teamIds) {
-      await finishAdd(teamIds);
-    }
     setProcessing(false);
   };
 
-  const handlePayAndAdd = async () => {
+  // Paid upgrade: compute amount server-side, then redirect to Wompi.
+  const handlePayRedirect = async () => {
     if (!user) return;
     setProcessing(true);
 
+    const assignments = hasGroups
+      ? Array.from({ length: count }, (_, i) => groupAssignments[i] ?? null)
+      : null;
+
     try {
-      const response = await fetch("/api/payments/create-reference", {
+      const res = await fetch("/api/payments/upgrade-reference", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: user.id,
-          amountCop: upgradeCost,
-          tournamentData: {
-            type: "upgrade",
-            tournamentId: tournament.id,
-            newTier: newTierInfo.tier,
-            newPrice: newTierInfo.price,
-            teamsToAdd: count,
-            isIndividual,
-            currentCount,
-          },
+          tournamentId: tournament.id,
+          addCount: count,
+          groupAssignments: assignments,
         }),
       });
+      const data = await res.json();
 
-      if (!response.ok) {
-        const data = await response.json();
+      if (!res.ok) {
         toast.error(data.error || "Error al iniciar el pago");
         setProcessing(false);
         return;
       }
 
-      const { reference, amountInCents, integrity, paymentId } =
-        await response.json();
+      // 100% bono (or no charge needed) → add for free and set the new tier.
+      if (!data.needsPayment) {
+        await handleFreeAdd(true);
+        return;
+      }
 
       const publicKey = process.env.NEXT_PUBLIC_WOMPI_PUBLIC_KEY;
-
-      if (!publicKey || !window.WidgetCheckout) {
+      if (!publicKey) {
         toast.error("Error al cargar el sistema de pago. Intenta de nuevo.");
         setProcessing(false);
         return;
       }
 
-      const checkout = new window.WidgetCheckout({
-        currency: "COP",
-        amountInCents,
-        reference,
-        publicKey,
-        signature: { integrity },
-      });
+      const returnUrl = `${window.location.origin}/tournaments/payment-return?ref=${encodeURIComponent(data.reference)}`;
+      const query = [
+        `public-key=${encodeURIComponent(publicKey)}`,
+        `currency=COP`,
+        `amount-in-cents=${data.amountInCents}`,
+        `reference=${encodeURIComponent(data.reference)}`,
+        `signature:integrity=${encodeURIComponent(data.integrity)}`,
+        `redirect-url=${encodeURIComponent(returnUrl)}`,
+      ].join("&");
 
-      checkout.open(async (result: WompiTransactionResult) => {
-        const transaction = result?.transaction;
-
-        if (!transaction) {
-          toast.error("No se recibio respuesta del pago");
-          setProcessing(false);
-          return;
-        }
-
-        if (transaction.status === "APPROVED") {
-          toast.success("Pago aprobado");
-
-          const teamIds = await createAndLinkTeams();
-          if (teamIds) {
-            await updateTournamentProps(tournament.id, {
-              tier: newTierInfo.tier,
-              price: newTierInfo.price,
-              plan: "paid",
-            });
-
-            await fetch("/api/payments/link-tournament", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                paymentId,
-                tournamentId: tournament.id,
-              }),
-            }).catch(() => {});
-
-            if (hasGroups) {
-              // After payment, go to assignment step
-              setProcessing(false);
-              setStep("assign");
-              pendingTeamIdsRef.current = teamIds;
-              return;
-            }
-
-            toast.success(
-              `${count} ${count === 1 ? "equipo agregado" : "equipos agregados"}`
-            );
-          }
-          handleOpenChange(false);
-        } else if (transaction.status === "DECLINED") {
-          toast.error("Pago rechazado. Intenta con otro metodo de pago.");
-        } else {
-          toast.error("Error en el pago. Intenta de nuevo.");
-        }
-        setProcessing(false);
-      });
+      // Navigating away — keep `processing` true.
+      window.location.assign(`https://checkout.wompi.co/p/?${query}`);
     } catch (err) {
       console.error("Payment error:", err);
       toast.error("Error al procesar el pago");
@@ -321,222 +286,207 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
     }
   };
 
-  const handleConfirmAssignment = async () => {
-    setProcessing(true);
-    // Check if we have pending team IDs from a payment flow
-    const pendingIds = pendingTeamIdsRef.current;
-    if (pendingIds) {
-      pendingTeamIdsRef.current = null;
-      await assignToGroupsAndGenerateMatches(pendingIds);
-      toast.success(
-        `${count} ${count === 1 ? "equipo agregado" : "equipos agregados"}`
-      );
-      handleOpenChange(false);
-      setProcessing(false);
-      return;
+  // Count step: decide whether to go to assignment or act now.
+  const handleCountProceed = () => {
+    if (hasGroups) {
+      setStep("assign");
+    } else if (needsUpgrade) {
+      handlePayRedirect();
+    } else {
+      handleFreeAdd(false);
     }
-
-    // Free flow: create teams then assign
-    const teamIds = await createAndLinkTeams();
-    if (teamIds) {
-      await finishAdd(teamIds);
-    }
-    setProcessing(false);
   };
 
+  // Assign step: act now (pay or free), with assignments collected.
+  const handleAssignConfirm = () => {
+    if (needsUpgrade) {
+      handlePayRedirect();
+    } else {
+      handleFreeAdd(false);
+    }
+  };
+
+  const countProceedLabel = hasGroups
+    ? "Siguiente"
+    : needsUpgrade
+      ? "Ir a pagar"
+      : "Agregar";
+
   return (
-    <>
-      <Script
-        src="https://checkout.wompi.co/widget.js"
-        strategy="lazyOnload"
-        onReady={() => setWompiReady(true)}
-      />
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogTrigger asChild>
-          <Button variant="outline" size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            Agregar Equipos
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>
-              {step === "count" ? "Agregar Equipos" : "Asignar a Grupos"}
-            </DialogTitle>
-            <DialogDescription>{tournament.name}</DialogDescription>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Plus className="h-4 w-4 mr-2" />
+          Agregar Equipos
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>
+            {step === "count" ? "Agregar Equipos" : "Asignar a Grupos"}
+          </DialogTitle>
+          <DialogDescription>{tournament.name}</DialogDescription>
+        </DialogHeader>
 
-          {step === "count" ? (
-            <>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-xs">
-                    Cantidad de {isIndividual ? "jugadores" : "equipos"} a
-                    agregar
-                  </Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={50}
-                    value={countStr}
-                    onChange={(e) => setCountStr(e.target.value)}
-                    className="h-9"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-muted-foreground">
-                    {currentCount} {isIndividual ? "jugadores" : "equipos"}
-                  </span>
-                  <span className="text-muted-foreground">&rarr;</span>
-                  <span className="font-medium">
-                    {newTotal} {isIndividual ? "jugadores" : "equipos"}
-                  </span>
-                </div>
-
-                {needsUpgrade && (
-                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        {currentTier ? (
-                          <>
-                            {TIER_LABELS[currentTier]} &rarr;{" "}
-                            {newTierInfo.tierLabel}
-                          </>
-                        ) : (
-                          <>Gratis &rarr; {newTierInfo.tierLabel}</>
-                        )}
-                      </span>
-                      <Badge className="text-xs">Upgrade</Badge>
-                    </div>
-                    <p className="text-2xl font-bold text-primary">
-                      {formatCOP(upgradeCost)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {currentTier
-                        ? "Diferencia de precio por cambio de rango"
-                        : "Pago unico por el torneo"}
-                    </p>
-                  </div>
-                )}
+        {step === "count" ? (
+          <>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs">
+                  Cantidad de {isIndividual ? "jugadores" : "equipos"} a agregar
+                </Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={countStr}
+                  onChange={(e) => setCountStr(e.target.value)}
+                  className="h-9"
+                />
               </div>
 
-              <div className="flex gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => handleOpenChange(false)}
-                  disabled={processing}
-                >
-                  Cancelar
-                </Button>
-                {needsUpgrade ? (
-                  <Button
-                    className="flex-1"
-                    onClick={handlePayAndAdd}
-                    disabled={processing || !wompiReady || count < 1}
-                  >
-                    {processing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Procesando...
-                      </>
-                    ) : (
-                      "Pagar y Agregar"
-                    )}
-                  </Button>
-                ) : (
-                  <Button
-                    className="flex-1"
-                    onClick={handleProceed}
-                    disabled={processing || count < 1}
-                  >
-                    {processing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Agregando...
-                      </>
-                    ) : hasGroups ? (
-                      "Siguiente"
-                    ) : (
-                      "Agregar"
-                    )}
-                  </Button>
-                )}
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">
+                  {currentCount} {isIndividual ? "jugadores" : "equipos"}
+                </span>
+                <span className="text-muted-foreground">&rarr;</span>
+                <span className="font-medium">
+                  {newTotal} {isIndividual ? "jugadores" : "equipos"}
+                </span>
               </div>
-            </>
-          ) : (
-            /* Step 2: Group Assignment */
-            <>
-              <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Elige a que grupo asignar cada{" "}
-                  {isIndividual ? "jugador" : "equipo"} nuevo.
+
+              {quoteLoading && count >= 1 && (
+                <p className="text-xs text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Calculando costo…
                 </p>
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {Array.from({ length: count }, (_, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-sm w-28 shrink-0 truncate">
-                        {isIndividual
-                          ? `Jugador ${currentCount + i + 1}`
-                          : `Equipo ${currentCount + i + 1}`}
-                      </span>
-                      <Select
-                        value={groupAssignments[i] || ""}
-                        onValueChange={(val) =>
-                          setGroupAssignments((prev) => ({
-                            ...prev,
-                            [i]: val,
-                          }))
-                        }
-                      >
-                        <SelectTrigger className="h-9 flex-1">
-                          <SelectValue placeholder="Seleccionar grupo" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableGroups.map((g) => (
-                            <SelectItem key={g.id} value={g.id}>
-                              {g.name} ({g.teamIds.length} equipos)
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              )}
 
-              <div className="flex gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => {
-                    setStep("count");
-                    setGroupAssignments({});
-                  }}
-                  disabled={processing}
-                >
-                  Atras
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={handleConfirmAssignment}
-                  disabled={processing || !allAssigned}
-                >
-                  {processing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Asignando...
-                    </>
+              {!quoteLoading && needsUpgrade && (
+                <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      {currentTier ? (
+                        <>
+                          {TIER_LABELS[currentTier]} &rarr; {newTierInfo.tierLabel}
+                        </>
+                      ) : (
+                        <>Gratis &rarr; {newTierInfo.tierLabel}</>
+                      )}
+                    </span>
+                    <Badge className="text-xs">Upgrade</Badge>
+                  </div>
+                  {cobro > 0 ? (
+                    <p className="text-2xl font-bold text-primary">
+                      {formatCOP(cobro)}
+                    </p>
                   ) : (
-                    "Confirmar"
+                    <p className="text-2xl font-bold text-green-600">Gratis</p>
                   )}
-                </Button>
+                  <p className="text-xs text-muted-foreground">
+                    {cobro > 0
+                      ? "Diferencia por cambio de rango (con tu bono aplicado)"
+                      : "Cubierto por tu bono"}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => handleOpenChange(false)}
+                disabled={processing}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={handleCountProceed}
+                disabled={processing || quoteLoading || count < 1}
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {needsUpgrade && !hasGroups ? "Redirigiendo..." : "Procesando..."}
+                  </>
+                ) : (
+                  countProceedLabel
+                )}
+              </Button>
+            </div>
+          </>
+        ) : (
+          /* Step 2: Group Assignment (before payment) */
+          <>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Elige a que grupo asignar cada{" "}
+                {isIndividual ? "jugador" : "equipo"} nuevo.
+              </p>
+              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                {Array.from({ length: count }, (_, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-sm w-28 shrink-0 truncate">
+                      {isIndividual
+                        ? `Jugador ${currentCount + i + 1}`
+                        : `Equipo ${currentCount + i + 1}`}
+                    </span>
+                    <Select
+                      value={groupAssignments[i] || ""}
+                      onValueChange={(val) =>
+                        setGroupAssignments((prev) => ({ ...prev, [i]: val }))
+                      }
+                    >
+                      <SelectTrigger className="h-9 flex-1">
+                        <SelectValue placeholder="Seleccionar grupo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableGroups.map((g) => (
+                          <SelectItem key={g.id} value={g.id}>
+                            {g.name} ({g.teamIds.length} equipos)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
               </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setStep("count");
+                  setGroupAssignments({});
+                }}
+                disabled={processing}
+              >
+                Atras
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={handleAssignConfirm}
+                disabled={processing || !allAssigned}
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {needsUpgrade ? "Redirigiendo..." : "Asignando..."}
+                  </>
+                ) : needsUpgrade ? (
+                  "Ir a pagar"
+                ) : (
+                  "Confirmar"
+                )}
+              </Button>
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
