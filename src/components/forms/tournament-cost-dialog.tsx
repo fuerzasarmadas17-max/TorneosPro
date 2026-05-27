@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Script from "next/script";
 import {
   Dialog,
   DialogContent,
@@ -59,7 +58,6 @@ export function TournamentCostDialog({
 }: TournamentCostDialogProps) {
   const sportInfo = getSportInfo(sport);
   const [processing, setProcessing] = useState(false);
-  const [wompiReady, setWompiReady] = useState(false);
 
   // Coupon
   const [couponCode, setCouponCode] = useState("");
@@ -154,48 +152,30 @@ export function TournamentCostDialog({
         return;
       }
 
-      const { reference, amountInCents, integrity, paymentId } =
-        await response.json();
+      const { reference, amountInCents, integrity } = await response.json();
 
       const publicKey = process.env.NEXT_PUBLIC_WOMPI_PUBLIC_KEY;
-
-      if (!publicKey || !window.WidgetCheckout) {
+      if (!publicKey) {
         toast.error("Error al cargar el sistema de pago. Intenta de nuevo.");
         setProcessing(false);
         return;
       }
 
-      const checkout = new window.WidgetCheckout({
-        currency: "COP",
-        amountInCents,
-        reference,
-        publicKey,
-        signature: { integrity },
-      });
+      // Redirect to Wompi's hosted checkout. On completion Wompi returns to
+      // redirect-url?id=<txn>; the tournament is created server-side (webhook /
+      // confirm) and the return page polls until it's ready.
+      const returnUrl = `${window.location.origin}/tournaments/payment-return?ref=${encodeURIComponent(reference)}`;
+      const query = [
+        `public-key=${encodeURIComponent(publicKey)}`,
+        `currency=COP`,
+        `amount-in-cents=${amountInCents}`,
+        `reference=${encodeURIComponent(reference)}`,
+        `signature:integrity=${encodeURIComponent(integrity)}`,
+        `redirect-url=${encodeURIComponent(returnUrl)}`,
+      ].join("&");
 
-      checkout.open((result: WompiTransactionResult) => {
-        const transaction = result?.transaction;
-
-        if (!transaction) {
-          toast.error("No se recibio respuesta del pago");
-          setProcessing(false);
-          return;
-        }
-
-        if (transaction.status === "APPROVED") {
-          toast.success("Pago aprobado");
-          onConfirm(appliedCoupon?.id, paymentId);
-        } else if (transaction.status === "DECLINED") {
-          toast.error("Pago rechazado. Intenta con otro metodo de pago.");
-          setProcessing(false);
-        } else if (transaction.status === "VOIDED") {
-          toast.error("Pago anulado");
-          setProcessing(false);
-        } else {
-          toast.error("Error en el pago. Intenta de nuevo.");
-          setProcessing(false);
-        }
-      });
+      // Keep `processing` true: we're navigating away.
+      window.location.assign(`https://checkout.wompi.co/p/?${query}`);
     } catch (err) {
       console.error("Payment error:", err);
       toast.error("Error al procesar el pago");
@@ -204,12 +184,6 @@ export function TournamentCostDialog({
   };
 
   return (
-    <>
-      <Script
-        src="https://checkout.wompi.co/widget.js"
-        strategy="lazyOnload"
-        onReady={() => setWompiReady(true)}
-      />
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
@@ -344,21 +318,20 @@ export function TournamentCostDialog({
               <Button
                 className="flex-1"
                 onClick={handleContinueToPayment}
-                disabled={processing || !wompiReady}
+                disabled={processing}
               >
                 {processing ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Procesando...
+                    Redirigiendo...
                   </>
                 ) : (
-                  "Continuar al Pago"
+                  "Ir a pagar"
                 )}
               </Button>
             )}
           </div>
         </DialogContent>
       </Dialog>
-    </>
   );
 }

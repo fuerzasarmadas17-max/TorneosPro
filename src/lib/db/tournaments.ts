@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { Match, Tournament } from "@/types";
 import { mapTournament, toDbMatch, toDbTournament } from "./mappers";
@@ -36,11 +37,13 @@ export async function fetchTournamentById(
 
 export async function createTournament(
   tournament: Tournament,
-  groupTeamMap?: Record<string, string[]>
+  groupTeamMap?: Record<string, string[]>,
+  client: SupabaseClient = supabase
 ): Promise<string | null> {
+  void groupTeamMap;
   // Insert tournament
   const dbData = toDbTournament(tournament);
-  const { data: inserted, error } = await supabase
+  const { data: inserted, error } = await client
     .from("tournaments")
     .insert(dbData)
     .select("id")
@@ -51,7 +54,7 @@ export async function createTournament(
 
   // Insert tournament_teams
   if (tournament.teamIds.length > 0) {
-    await supabase.from("tournament_teams").insert(
+    await client.from("tournament_teams").insert(
       tournament.teamIds.map((teamId) => ({
         tournament_id: tournamentId,
         team_id: teamId,
@@ -62,7 +65,7 @@ export async function createTournament(
   // Insert groups
   if (tournament.groups && tournament.groups.length > 0) {
     for (const group of tournament.groups) {
-      const { data: groupRow } = await supabase
+      const { data: groupRow } = await client
         .from("tournament_groups")
         .insert({
           tournament_id: tournamentId,
@@ -73,7 +76,7 @@ export async function createTournament(
         .single();
 
       if (groupRow && group.teamIds.length > 0) {
-        await supabase.from("tournament_group_teams").insert(
+        await client.from("tournament_group_teams").insert(
           group.teamIds.map((teamId) => ({
             group_id: groupRow.id,
             team_id: teamId,
@@ -85,7 +88,7 @@ export async function createTournament(
 
   // Insert playoff config
   if (tournament.playoffConfig) {
-    await supabase.from("playoff_configs").insert({
+    await client.from("playoff_configs").insert({
       tournament_id: tournamentId,
       advance_per_group: tournament.playoffConfig.advancePerGroup,
       total_advancing: tournament.playoffConfig.totalAdvancing,
@@ -94,7 +97,7 @@ export async function createTournament(
 
   // Insert sponsors
   if (tournament.sponsors && tournament.sponsors.length > 0) {
-    await supabase.from("sponsors").insert(
+    await client.from("sponsors").insert(
       tournament.sponsors.map((s) => ({
         image_url: s.imageUrl,
         link_url: s.linkUrl,
