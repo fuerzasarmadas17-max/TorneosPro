@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
     // Generate integrity signature: SHA256(reference + amountInCents + "COP" + secret)
     const integritySecret = process.env.WOMPI_INTEGRITY_SECRET;
     if (!integritySecret) {
+      console.error("WOMPI_INTEGRITY_SECRET not configured");
       return NextResponse.json(
         { error: "Configuracion de pago incompleta" },
         { status: 500 }
