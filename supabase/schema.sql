@@ -446,19 +446,6 @@ CREATE POLICY "Creador gestiona sets"
 -- POLICIES: Admin
 -- ========================
 
--- Helper usado por todas las policies de admin. SECURITY DEFINER permite leer
--- la tabla users desde dentro de otra policy sin caer en recursion infinita.
-CREATE OR REPLACE FUNCTION is_admin()
-RETURNS boolean
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'
-  )
-$$;
-
 -- Admin puede hacer todo en usuarios
 CREATE POLICY "Admin gestiona usuarios"
   ON users FOR ALL
@@ -472,49 +459,6 @@ CREATE POLICY "Admin gestiona sponsors"
   USING (
     EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin')
   );
-
--- Admin puede gestionar (leer/insertar/actualizar/borrar) cualquier torneo y
--- sus tablas asociadas. Necesario para acciones admin tipo "eliminar torneo"
--- o "avanzar resultados" desde el detalle.
-CREATE POLICY "Admin gestiona torneos"
-  ON tournaments FOR ALL
-  USING (is_admin())
-  WITH CHECK (is_admin());
-
-CREATE POLICY "Admin gestiona partidos"
-  ON matches FOR ALL
-  USING (is_admin())
-  WITH CHECK (is_admin());
-
-CREATE POLICY "Admin gestiona match_events"
-  ON match_events FOR ALL
-  USING (is_admin())
-  WITH CHECK (is_admin());
-
-CREATE POLICY "Admin gestiona sets"
-  ON volleyball_sets FOR ALL
-  USING (is_admin())
-  WITH CHECK (is_admin());
-
-CREATE POLICY "Admin gestiona tournament_teams"
-  ON tournament_teams FOR ALL
-  USING (is_admin())
-  WITH CHECK (is_admin());
-
-CREATE POLICY "Admin gestiona tournament_groups"
-  ON tournament_groups FOR ALL
-  USING (is_admin())
-  WITH CHECK (is_admin());
-
-CREATE POLICY "Admin gestiona tournament_group_teams"
-  ON tournament_group_teams FOR ALL
-  USING (is_admin())
-  WITH CHECK (is_admin());
-
-CREATE POLICY "Admin gestiona playoff_configs"
-  ON playoff_configs FOR ALL
-  USING (is_admin())
-  WITH CHECK (is_admin());
 
 -- Creador gestiona sus propios sponsors
 CREATE POLICY "Creador gestiona sponsors de org"
