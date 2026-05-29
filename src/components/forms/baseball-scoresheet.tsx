@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   Table,
   TableBody,
@@ -11,6 +10,10 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { MatchEventType, Player, getStatDefinition } from "@/types";
+
+function totalHits(v: Record<string, number>) {
+  return (v.hit ?? 0) + (v.double ?? 0) + (v.triple ?? 0) + (v.home_run ?? 0);
+}
 
 interface PlayerStats {
   [statKey: string]: number;
@@ -35,13 +38,24 @@ export function BaseballScoresheet({
 }: BaseballScoresheetProps) {
   // Fixed order for baseball stats - only show enabled ones, in this order
   const BASEBALL_STAT_ORDER: MatchEventType[] = [
-    "hit", "double", "triple", "home_run", "error", "strikeout", "ejection",
+    "at_bat", "hit", "double", "triple", "home_run",
+    "walk", "rbi", "run_scored",
+    "error", "strikeout", "ejection",
   ];
 
   const enabledSet = new Set(stats);
   const filteredStats = BASEBALL_STAT_ORDER.filter(
     (s) => enabledSet.has(s) && !getStatDefinition(s)?.computed
   );
+
+  // H > AB is logically impossible; surface it without blocking the save —
+  // the scorer might be entering hits before AB and will reconcile later.
+  const inconsistentPlayers = enabledSet.has("at_bat")
+    ? players.filter((p) => {
+        const v = values[p.name] || {};
+        return totalHits(v) > (v.at_bat ?? 0) && (v.at_bat ?? 0) > 0;
+      })
+    : [];
 
   if (players.length === 0) {
     return (
@@ -112,16 +126,25 @@ export function BaseballScoresheet({
           </TableBody>
         </Table>
       </div>
+      {inconsistentPlayers.length > 0 && (
+        <p className="text-xs text-amber-500">
+          Revisa: H &gt; AB en {inconsistentPlayers.map((p) => p.name).join(", ")}
+        </p>
+      )}
     </div>
   );
 }
 
 function getShortLabel(statKey: string): string {
   const labels: Record<string, string> = {
+    at_bat: "AB",
     hit: "H",
     double: "2B",
     triple: "3B",
     home_run: "HR",
+    walk: "BB",
+    rbi: "RBI",
+    run_scored: "R",
     error: "E",
     strikeout: "K",
     ejection: "EXP",

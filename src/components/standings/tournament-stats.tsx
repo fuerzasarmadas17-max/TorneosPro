@@ -10,9 +10,12 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tournament } from "@/types";
+import { Tournament, getSportCategory } from "@/types";
 import { useTournamentStats, CardEntry } from "@/hooks/use-tournament-stats";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useTournaments } from "@/context/tournament-context";
+
+const fmt = (v: number) => v.toFixed(3).replace(/^0/, "");
 
 interface TournamentStatsProps {
   tournament: Tournament;
@@ -20,8 +23,10 @@ interface TournamentStatsProps {
 }
 
 export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
-  const { leaderboards, hasStats, cardEntries } = useTournamentStats(tournament);
+  const { leaderboards, hasStats, cardEntries, baseballPlayerStats } = useTournamentStats(tournament);
   const { getTeamById, updateEventPaid } = useTournaments();
+  const isBaseball = getSportCategory(tournament.sport) === "baseball";
+  const showBaseballTable = isBaseball && baseballPlayerStats.length > 0;
 
   // Determine if cards/ejections are enabled
   const hasCardStats =
@@ -44,7 +49,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
     (lb) => lb.leaders.length > 0 || lb.teamLeaders.length > 0
   );
 
-  if (!hasStats && visibleCards.length === 0) {
+  if (!hasStats && visibleCards.length === 0 && !showBaseballTable) {
     return (
       <Card>
         <CardContent className="py-8 text-center">
@@ -157,6 +162,69 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
             <p className="text-sm text-muted-foreground">
               Todas las sanciones estan pagadas.
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Baseball / softball / wiffleball: per-player AVG / OBP / SLG / OPS */}
+      {showBaseballTable && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Estadisticas individuales</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="w-full">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">#</TableHead>
+                    <TableHead>Jugador</TableHead>
+                    <TableHead>Equipo</TableHead>
+                    <TableHead className="text-center w-12">AB</TableHead>
+                    <TableHead className="text-center w-12">H</TableHead>
+                    <TableHead className="text-center w-12">2B</TableHead>
+                    <TableHead className="text-center w-12">3B</TableHead>
+                    <TableHead className="text-center w-12">HR</TableHead>
+                    <TableHead className="text-center w-12">BB</TableHead>
+                    <TableHead className="text-center w-12">K</TableHead>
+                    <TableHead className="text-center w-12">RBI</TableHead>
+                    <TableHead className="text-center w-12">R</TableHead>
+                    <TableHead className="text-center w-14">AVG</TableHead>
+                    <TableHead className="text-center w-14">OBP</TableHead>
+                    <TableHead className="text-center w-14">SLG</TableHead>
+                    <TableHead className="text-center w-14 font-bold">OPS</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {baseballPlayerStats.map((p, index) => {
+                    const team = getTeamById(p.teamId);
+                    return (
+                      <TableRow key={`${p.playerName}-${p.teamId}`}>
+                        <TableCell className="font-medium">{index + 1}</TableCell>
+                        <TableCell className="font-medium">{p.playerName}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {team?.name || p.teamId}
+                        </TableCell>
+                        <TableCell className="text-center">{p.ab}</TableCell>
+                        <TableCell className="text-center">{p.h}</TableCell>
+                        <TableCell className="text-center">{p.doubles}</TableCell>
+                        <TableCell className="text-center">{p.triples}</TableCell>
+                        <TableCell className="text-center">{p.hr}</TableCell>
+                        <TableCell className="text-center">{p.bb}</TableCell>
+                        <TableCell className="text-center">{p.k}</TableCell>
+                        <TableCell className="text-center">{p.rbi}</TableCell>
+                        <TableCell className="text-center">{p.r}</TableCell>
+                        <TableCell className="text-center">{fmt(p.avg)}</TableCell>
+                        <TableCell className="text-center">{fmt(p.obp)}</TableCell>
+                        <TableCell className="text-center">{fmt(p.slg)}</TableCell>
+                        <TableCell className="text-center font-bold">{fmt(p.ops)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+              <ScrollBar orientation="horizontal" />
+            </ScrollArea>
           </CardContent>
         </Card>
       )}

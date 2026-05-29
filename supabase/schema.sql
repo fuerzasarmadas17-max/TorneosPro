@@ -29,7 +29,8 @@ CREATE TYPE match_event_type AS ENUM (
   'ace', 'double_fault', 'winner',
   'block', 'point', 'steal', 'rebound',
   'strikeout', 'ejection',
-  'blue_card'
+  'blue_card',
+  'at_bat', 'walk', 'rbi', 'run_scored'
 );
 
 -- ========================

@@ -83,7 +83,8 @@ export type MatchEventType =
   | "ace" | "double_fault" | "winner"
   | "block" | "point" | "steal" | "rebound"
   | "goals_against" | "strikeout" | "ejection"
-  | "blue_card";
+  | "blue_card"
+  | "at_bat" | "walk" | "rbi" | "run_scored";
 
 export interface MatchEvent {
   id: string;
@@ -130,10 +131,14 @@ export const STAT_CATALOG: StatDefinition[] = [
   { key: "red_card", label: "Tarjeta Roja", pluralLabel: "Tarjetas Rojas", sportDefaults: ["futbol", "futsal", "microfutbol", "volleyball"] },
   { key: "blue_card", label: "Tarjeta Azul", pluralLabel: "Tarjetas Azules", sportDefaults: ["microfutbol"] },
   { key: "goals_against", label: "Malla Menos Vencida", pluralLabel: "Malla Menos Vencida", sportDefaults: ["futbol", "futsal", "microfutbol"], computed: true },
+  { key: "at_bat", label: "Turno al bate", pluralLabel: "Turnos al bate", sportDefaults: ["beisbol", "softball", "wiffleball"] },
   { key: "hit", label: "Hit", pluralLabel: "Hits", sportDefaults: ["beisbol", "softball", "wiffleball"] },
   { key: "double", label: "Doble", pluralLabel: "Dobles", sportDefaults: ["beisbol", "softball", "wiffleball"] },
   { key: "triple", label: "Triple", pluralLabel: "Triples", sportDefaults: ["beisbol", "softball", "wiffleball"] },
   { key: "home_run", label: "Home Run", pluralLabel: "Home Runs", sportDefaults: ["beisbol", "softball", "wiffleball"] },
+  { key: "walk", label: "Base por bolas", pluralLabel: "Bases por bolas", sportDefaults: ["beisbol", "softball", "wiffleball"] },
+  { key: "rbi", label: "Carrera impulsada", pluralLabel: "Carreras impulsadas", sportDefaults: ["beisbol", "softball", "wiffleball"] },
+  { key: "run_scored", label: "Carrera anotada", pluralLabel: "Carreras anotadas", sportDefaults: ["beisbol", "softball", "wiffleball"] },
   { key: "error", label: "Error", pluralLabel: "Errores", sportDefaults: ["beisbol", "softball", "wiffleball"] },
   { key: "ace", label: "Ace", pluralLabel: "Aces", sportDefaults: [] },
   { key: "double_fault", label: "Doble Falta", pluralLabel: "Dobles Faltas", sportDefaults: [] },

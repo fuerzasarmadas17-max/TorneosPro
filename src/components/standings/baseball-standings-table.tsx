@@ -65,6 +65,25 @@ function ScoringRulesDialog() {
             <li>Resultado directo entre los equipos empatados</li>
           </ol>
         </div>
+
+        <div>
+          <h4 className="font-semibold mb-2">Estadisticas individuales</h4>
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+            <span className="font-mono font-medium">AB</span><span>Turnos al bate</span>
+            <span className="font-mono font-medium">H</span><span>Hits totales (incluye 2B, 3B, HR)</span>
+            <span className="font-mono font-medium">BB</span><span>Bases por bolas</span>
+            <span className="font-mono font-medium">K</span><span>Ponches recibidos</span>
+            <span className="font-mono font-medium">RBI</span><span>Carreras impulsadas</span>
+            <span className="font-mono font-medium">R</span><span>Carreras anotadas</span>
+            <span className="font-mono font-bold">AVG</span><span>Promedio de bateo (H / AB)</span>
+            <span className="font-mono font-bold">OBP</span><span>On-base % ((H + BB) / (AB + BB))</span>
+            <span className="font-mono font-bold">SLG</span><span>Slugging (Total Bases / AB)</span>
+            <span className="font-mono font-bold">OPS</span><span>OBP + SLG</span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            La tabla de stats individuales aparece en la pestaña Estadisticas si hay datos cargados.
+          </p>
+        </div>
       </div>
     </DialogContent>
   );
