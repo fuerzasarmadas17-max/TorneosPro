@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { Match, MatchEvent, VolleyballSet } from "@/types";
 import { toDbMatch, toDbMatchEvent, toDbVolleyballSet } from "./mappers";
@@ -73,9 +74,10 @@ export async function updateMatchResult(
   awayScore: number,
   winnerId: string | null,
   events?: MatchEvent[],
-  sets?: VolleyballSet[]
+  sets?: VolleyballSet[],
+  client: SupabaseClient = supabase
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await client
     .from("matches")
     .update({
       home_score: homeScore,
@@ -89,9 +91,9 @@ export async function updateMatchResult(
 
   // Replace events
   if (events !== undefined) {
-    await supabase.from("match_events").delete().eq("match_id", matchId);
+    await client.from("match_events").delete().eq("match_id", matchId);
     if (events.length > 0) {
-      await supabase
+      await client
         .from("match_events")
         .insert(events.map((e) => toDbMatchEvent({ ...e, matchId })));
     }
@@ -99,9 +101,9 @@ export async function updateMatchResult(
 
   // Replace sets
   if (sets !== undefined) {
-    await supabase.from("volleyball_sets").delete().eq("match_id", matchId);
+    await client.from("volleyball_sets").delete().eq("match_id", matchId);
     if (sets.length > 0) {
-      await supabase
+      await client
         .from("volleyball_sets")
         .insert(sets.map((s) => toDbVolleyballSet(matchId, s)));
     }
@@ -127,10 +129,11 @@ export async function updateMatchDetails(
       | "awayScore"
       | "winnerId"
     >
-  >
+  >,
+  client: SupabaseClient = supabase
 ): Promise<boolean> {
   const dbUpdates = toDbMatch(updates);
-  const { error } = await supabase
+  const { error } = await client
     .from("matches")
     .update(dbUpdates)
     .eq("id", matchId);

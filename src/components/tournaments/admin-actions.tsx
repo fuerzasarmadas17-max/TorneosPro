@@ -14,13 +14,8 @@ import { Button } from "@/components/ui/button";
 import { FastForward, Loader2, Trash2 } from "lucide-react";
 import { Tournament } from "@/types";
 import { useTournaments } from "@/context/tournament-context";
+import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
-import {
-  generateRandomResult,
-  getCurrentPhaseMatches,
-  getNextJornadaMatches,
-  shouldForceWinner,
-} from "@/lib/admin/auto-advance";
 
 type AdvanceMode = "jornada" | "phase";
 type AdvanceStep = "select" | "confirm";
@@ -29,9 +24,15 @@ interface AdminActionsProps {
   tournament: Tournament;
 }
 
+async function authHeader(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export function AdminActions({ tournament }: AdminActionsProps) {
   const router = useRouter();
-  const { updateMatch, removeTournament } = useTournaments();
+  const { refetch } = useTournaments();
 
   // Advance dialog
   const [advanceOpen, setAdvanceOpen] = useState(false);
@@ -50,38 +51,38 @@ export function AdminActions({ tournament }: AdminActionsProps) {
   };
 
   const handleAdvanceConfirm = async () => {
-    const matches =
-      advanceMode === "jornada"
-        ? getNextJornadaMatches(tournament)
-        : getCurrentPhaseMatches(tournament);
-
-    if (matches.length === 0) {
-      toast.error("No hay partidos pendientes para completar");
-      closeAdvance();
-      return;
-    }
-
     setAdvancing(true);
     try {
-      // Sequential so the downstream hooks (group stage complete → playoff
-      // bracket generation, winner propagation) fire in the right order.
-      for (const m of matches) {
-        const result = generateRandomResult(
-          tournament.sport,
-          tournament.bestOf,
-          shouldForceWinner(tournament, m)
-        );
-        await updateMatch(
-          tournament.id,
-          m.id,
-          result.homeScore,
-          result.awayScore,
-          undefined,
-          result.sets
-        );
+      const res = await fetch(
+        `/api/admin/tournaments/${tournament.id}/advance`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(await authHeader()),
+          },
+          body: JSON.stringify({ mode: advanceMode }),
+        }
+      );
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data?.error || "Error al avanzar el torneo");
+        setAdvancing(false);
+        return;
       }
+
+      const { matchesAffected } = await res.json();
+      if (matchesAffected === 0) {
+        toast.error("No hay partidos pendientes para completar");
+        closeAdvance();
+        return;
+      }
+
+      // Refresh the local tournaments cache so the UI shows the new state.
+      await refetch();
       toast.success(
-        `${matches.length} ${matches.length === 1 ? "partido completado" : "partidos completados"}`
+        `${matchesAffected} ${matchesAffected === 1 ? "partido completado" : "partidos completados"}`
       );
       closeAdvance();
     } catch (err) {
@@ -95,12 +96,18 @@ export function AdminActions({ tournament }: AdminActionsProps) {
   const handleDeleteConfirm = async () => {
     setDeleting(true);
     try {
-      const ok = await removeTournament(tournament.id);
-      if (!ok) {
-        toast.error("Error al eliminar el torneo");
+      const res = await fetch(`/api/admin/tournaments/${tournament.id}`, {
+        method: "DELETE",
+        headers: { ...(await authHeader()) },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data?.error || "Error al eliminar el torneo");
         setDeleting(false);
         return;
       }
+      // Drop it from the local cache too, so back navigation doesn't show it.
+      await refetch();
       toast.success("Torneo eliminado");
       router.push("/dashboard");
     } catch (err) {
