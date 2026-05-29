@@ -25,6 +25,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useTournaments } from "@/context/tournament-context";
+import { useAuth } from "@/context/auth-context";
+import { AdminActions } from "@/components/tournaments/admin-actions";
 import { getSportInfo } from "@/data/sports";
 import { getDepartmentLabel, getMunicipalityLabel } from "@/data/colombia";
 import { getSportCategory, Tournament, Sponsor } from "@/types";
@@ -336,6 +338,8 @@ export function TournamentDetail({
   isAuthenticated = false,
 }: TournamentDetailProps) {
   const { updateTournamentProps } = useTournaments();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const sport = getSportInfo(tournament.sport);
   const sportCategory = getSportCategory(tournament.sport);
   const showStats = (tournament.enabledStats?.length ?? 0) > 0;
@@ -423,6 +427,7 @@ export function TournamentDetail({
           <span>Inicio: {tournament.startDate}</span>
           {tournament.endDate && <span>Fin: {tournament.endDate}</span>}
         </div>
+        {isAdmin && <AdminActions tournament={tournament} />}
       </div>
 
       {/* Sponsors Banner */}

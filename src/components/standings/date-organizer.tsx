@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tournament, Match } from "@/types";
 import { useTournaments } from "@/context/tournament-context";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CalendarIcon, Clock, MapPin, Check, ArrowRight } from "lucide-react";
+import { CalendarIcon, Clock, MapPin, Check, ArrowRight, Filter } from "lucide-react";
 import { toast } from "sonner";
 
 /** Normalizes user input into HH:MM format. Accepts: "1630", "16:30", "430pm", "4:30 PM", etc. */
@@ -54,9 +54,22 @@ interface DateOrganizerProps {
 export function DateOrganizer({ tournament }: DateOrganizerProps) {
   const { updateMatchDetails, getTeamById } = useTournaments();
   const [activeSection, setActiveSection] = useState("");
+  const [teamFilter, setTeamFilter] = useState<string>("all");
 
-  const unscheduled = tournament.matches.filter((m) => m.status === "unscheduled");
-  if (unscheduled.length === 0) return null;
+  const allUnscheduled = tournament.matches.filter((m) => m.status === "unscheduled");
+  if (allUnscheduled.length === 0) return null;
+
+  // Team filter: lets the organizer quickly see which crossings are still
+  // pending for a given team.
+  const teamOptions = tournament.teamIds
+    .map((id) => ({ id, name: getTeamById(id)?.name || id }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const unscheduled = teamFilter === "all"
+    ? allUnscheduled
+    : allUnscheduled.filter(
+        (m) => m.homeTeamId === teamFilter || m.awayTeamId === teamFilter
+      );
 
   // Build sections grouped by phase+round
   const sections: { key: string; label: string; matches: Match[] }[] = [];
@@ -176,49 +189,109 @@ export function DateOrganizer({ tournament }: DateOrganizerProps) {
         </Badge>
       </div>
 
-      {/* Jornada pills */}
-      <div className="flex gap-1.5 px-4 py-2 border-b bg-muted/30 overflow-x-auto">
-        {sections.map((s) => (
-          <button
-            key={s.key}
-            className={`px-3 py-1 text-xs font-medium rounded-full whitespace-nowrap transition-colors ${
-              effectiveActive === s.key
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setActiveSection(s.key)}
-          >
-            {s.label}
-            <span className="ml-1 opacity-70">{s.matches.length}</span>
-          </button>
-        ))}
-      </div>
+      {/* Team filter */}
+      {teamOptions.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/20">
+          <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
+          <Select value={teamFilter} onValueChange={setTeamFilter}>
+            <SelectTrigger className="h-9 w-full sm:w-64">
+              <SelectValue placeholder="Filtrar por equipo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los equipos</SelectItem>
+              {teamOptions.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
-      {/* Matches for active jornada */}
-      {currentSection && (
-        <div className="divide-y">
-          {currentSection.matches.map((match) => (
-            <MatchRow
-              key={match.id}
-              match={match}
-              tournament={tournament}
-              getTeamById={getTeamById}
-              updateMatchDetails={updateMatchDetails}
-              onSchedule={handleSchedule}
-              availableRounds={availableRounds}
-              onMoveToRound={handleMoveToRound}
-            />
-          ))}
-          {/* Descanso indicator */}
-          {currentSection.key !== "r-0" && (() => {
-            const resting = getRestingTeams(currentSection.matches);
-            if (resting.length === 0) return null;
-            return (
-              <div className="px-4 py-2.5 text-xs text-muted-foreground">
-                Descanso: {resting.map((id) => getTeamById(id)?.name || "?").join(", ")}
+      {teamFilter === "all" ? (
+        <>
+          {/* Jornada pills (sin filtro: navega jornada por jornada) */}
+          <div className="flex gap-1.5 px-4 py-2 border-b bg-muted/30 overflow-x-auto">
+            {sections.map((s) => (
+              <button
+                key={s.key}
+                className={`px-3 py-1 text-xs font-medium rounded-full whitespace-nowrap transition-colors ${
+                  effectiveActive === s.key
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setActiveSection(s.key)}
+              >
+                {s.label}
+                <span className="ml-1 opacity-70">{s.matches.length}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Matches for active jornada */}
+          {currentSection && (
+            <div className="divide-y">
+              {currentSection.matches.map((match) => (
+                <MatchRow
+                  key={match.id}
+                  match={match}
+                  tournament={tournament}
+                  getTeamById={getTeamById}
+                  updateMatchDetails={updateMatchDetails}
+                  onSchedule={handleSchedule}
+                  availableRounds={availableRounds}
+                  onMoveToRound={handleMoveToRound}
+                />
+              ))}
+              {/* Descanso indicator */}
+              {currentSection.key !== "r-0" && (() => {
+                const resting = getRestingTeams(currentSection.matches);
+                if (resting.length === 0) return null;
+                return (
+                  <div className="px-4 py-2.5 text-xs text-muted-foreground">
+                    Descanso: {resting.map((id) => getTeamById(id)?.name || "?").join(", ")}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </>
+      ) : (
+        /* Filtrado por equipo: todos los cruces pendientes en una sola lista,
+           agrupados por jornada (sub-encabezado, sin pestañas) */
+        <div>
+          {sections.map((s) => (
+            <div key={s.key}>
+              <div className="flex items-center gap-2 px-4 py-1.5 text-xs font-medium text-muted-foreground bg-muted/30 border-b">
+                <span className="text-foreground">{s.label}</span>
+                <span className="opacity-60">·</span>
+                <span>
+                  {s.matches.length} {s.matches.length === 1 ? "cruce" : "cruces"}
+                </span>
               </div>
-            );
-          })()}
+              <div className="divide-y">
+                {s.matches.map((match) => (
+                  <MatchRow
+                    key={match.id}
+                    match={match}
+                    tournament={tournament}
+                    getTeamById={getTeamById}
+                    updateMatchDetails={updateMatchDetails}
+                    onSchedule={handleSchedule}
+                    availableRounds={availableRounds}
+                    onMoveToRound={handleMoveToRound}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {sections.length === 0 && (
+        <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+          {teamOptions.find((t) => t.id === teamFilter)?.name ?? "Ese equipo"} no tiene cruces pendientes
         </div>
       )}
     </div>

@@ -23,9 +23,10 @@ export async function fetchTournaments(): Promise<Tournament[]> {
 }
 
 export async function fetchTournamentById(
-  id: string
+  id: string,
+  client: SupabaseClient = supabase
 ): Promise<Tournament | null> {
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from("tournaments")
     .select(TOURNAMENT_SELECT)
     .eq("id", id)
@@ -111,10 +112,11 @@ export async function createTournament(
 
 export async function updateTournament(
   id: string,
-  updates: Partial<Tournament>
+  updates: Partial<Tournament>,
+  client: SupabaseClient = supabase
 ): Promise<boolean> {
   const dbUpdates = toDbTournament(updates);
-  const { error } = await supabase
+  const { error } = await client
     .from("tournaments")
     .update(dbUpdates)
     .eq("id", id);
@@ -122,8 +124,11 @@ export async function updateTournament(
   return !error;
 }
 
-export async function deleteTournament(id: string): Promise<boolean> {
-  const { error } = await supabase.from("tournaments").delete().eq("id", id);
+export async function deleteTournament(
+  id: string,
+  client: SupabaseClient = supabase
+): Promise<boolean> {
+  const { error } = await client.from("tournaments").delete().eq("id", id);
   return !error;
 }
 
@@ -218,7 +223,8 @@ export async function updateTournamentSponsors(
 
 export async function insertMatchesForPhase(
   matches: Match[],
-  tournamentId: string
+  tournamentId: string,
+  client: SupabaseClient = supabase
 ): Promise<Record<string, string>> {
   const idMapping: Record<string, string> = {};
 
@@ -227,7 +233,7 @@ export async function insertMatchesForPhase(
     dbData.next_match_id = null;
     if (match.groupId) dbData.group_id = match.groupId;
 
-    const { data } = await supabase
+    const { data } = await client
       .from("matches")
       .insert(dbData)
       .select("id")
@@ -241,7 +247,7 @@ export async function insertMatchesForPhase(
   // Update nextMatchId references
   for (const match of matches) {
     if (match.nextMatchId && idMapping[match.nextMatchId]) {
-      await supabase
+      await client
         .from("matches")
         .update({ next_match_id: idMapping[match.nextMatchId] })
         .eq("id", idMapping[match.id]);
@@ -253,10 +259,11 @@ export async function insertMatchesForPhase(
 
 export async function assignTeamsToGroup(
   groupId: string,
-  teamIds: string[]
+  teamIds: string[],
+  client: SupabaseClient = supabase
 ): Promise<boolean> {
   if (teamIds.length === 0) return true;
-  const { error } = await supabase.from("tournament_group_teams").insert(
+  const { error } = await client.from("tournament_group_teams").insert(
     teamIds.map((teamId) => ({
       group_id: groupId,
       team_id: teamId,

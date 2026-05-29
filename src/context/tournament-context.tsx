@@ -11,7 +11,7 @@ import {
 } from "react";
 import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, VolleyballSet, Sponsor, PhaseConfig } from "@/types";
 import { fillPlayoffBracket, fillPhase2Groups } from "@/data/helpers";
-import { fetchTournaments, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, addTournamentTeams, removeTeamFromTournament as dbRemoveTeamFromTournament, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup } from "@/lib/db/tournaments";
+import { fetchTournaments, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, deleteTournament as dbDeleteTournament, addTournamentTeams, removeTeamFromTournament as dbRemoveTeamFromTournament, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup } from "@/lib/db/tournaments";
 import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam, updateTeamPlayers as dbUpdateTeamPlayers } from "@/lib/db/teams";
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
@@ -30,6 +30,7 @@ interface TournamentContextType {
   removeMatchFromTournament: (tournamentId: string, matchId: string) => Promise<void>;
   removeTeamFromTournament: (tournamentId: string, teamId: string) => Promise<void>;
   disqualifyTeam: (tournamentId: string, teamId: string) => Promise<void>;
+  removeTournament: (tournamentId: string) => Promise<boolean>;
   updateMatchDetails: (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "round" | "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => Promise<void>;
   updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs" | "disqualifiedTeamIds">>) => Promise<void>;
   updatePlayoffConfig: (tournamentId: string, advancePerGroup: number, totalAdvancing: number) => Promise<void>;
@@ -307,6 +308,14 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       })
     );
   }, [tournaments]);
+
+  const removeTournament = useCallback(async (tournamentId: string) => {
+    const ok = await dbDeleteTournament(tournamentId);
+    if (ok) {
+      setTournaments((prev) => prev.filter((t) => t.id !== tournamentId));
+    }
+    return ok;
+  }, []);
 
   const updateMatchDetails = useCallback(
     async (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "round" | "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => {
@@ -665,6 +674,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       removeMatchFromTournament,
       removeTeamFromTournament: removeTeamFromTournamentFn,
       disqualifyTeam,
+      removeTournament,
       updateMatchDetails,
       updateTournamentProps,
       updatePlayoffConfig,
@@ -692,6 +702,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       removeMatchFromTournament,
       removeTeamFromTournamentFn,
       disqualifyTeam,
+      removeTournament,
       updateMatchDetails,
       updateTournamentProps,
       updatePlayoffConfig,
