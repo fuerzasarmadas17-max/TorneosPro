@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Table,
   TableBody,
@@ -10,10 +11,20 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tournament, getSportCategory } from "@/types";
 import { useTournamentStats, CardEntry } from "@/hooks/use-tournament-stats";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useTournaments } from "@/context/tournament-context";
+
+const TOP_PREVIEW = 5;
+const TOP_MODAL = 15;
 
 const fmt = (v: number) => v.toFixed(3).replace(/^0/, "");
 
@@ -25,6 +36,8 @@ interface TournamentStatsProps {
 export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
   const { leaderboards, hasStats, cardEntries, baseballPlayerStats } = useTournamentStats(tournament);
   const { getTeamById, updateEventPaid } = useTournaments();
+  // Which leaderboard is being shown expanded in the dialog (top 15).
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const isBaseball = getSportCategory(tournament.sport) === "baseball";
   const showBaseballTable = isBaseball && baseballPlayerStats.length > 0;
 
@@ -237,8 +250,18 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
               if (lb.teamLeaders.length === 0) return null;
               return (
                 <Card key={lb.statKey}>
-                  <CardHeader className="pb-3">
+                  <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
                     <CardTitle className="text-base">{lb.pluralLabel}</CardTitle>
+                    {lb.teamLeaders.length > TOP_PREVIEW && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => setExpandedKey(lb.statKey)}
+                      >
+                        Ver más
+                      </Button>
+                    )}
                   </CardHeader>
                   <CardContent>
                     <Table>
@@ -253,7 +276,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {lb.teamLeaders.map((entry, index) => {
+                        {lb.teamLeaders.slice(0, TOP_PREVIEW).map((entry, index) => {
                           const team = getTeamById(entry.teamId);
                           return (
                             <TableRow key={entry.teamId}>
@@ -282,8 +305,18 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
             if (lb.leaders.length === 0) return null;
             return (
               <Card key={lb.statKey}>
-                <CardHeader className="pb-3">
+                <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
                   <CardTitle className="text-base">{lb.pluralLabel}</CardTitle>
+                  {lb.leaders.length > TOP_PREVIEW && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setExpandedKey(lb.statKey)}
+                    >
+                      Ver más
+                    </Button>
+                  )}
                 </CardHeader>
                 <CardContent>
                   <Table>
@@ -298,7 +331,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {lb.leaders.map((entry, index) => {
+                      {lb.leaders.slice(0, TOP_PREVIEW).map((entry, index) => {
                         const team = getTeamById(entry.teamId);
                         return (
                           <TableRow
@@ -327,6 +360,98 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
           })}
         </div>
       )}
+
+      {/* Top 15 modal (one shared modal; content depends on which leaderboard
+          was clicked via "Ver más"). */}
+      <Dialog
+        open={expandedKey !== null}
+        onOpenChange={(o) => !o && setExpandedKey(null)}
+      >
+        <DialogContent className="max-w-xl">
+          {(() => {
+            const lb = nonCardLeaderboards.find((l) => l.statKey === expandedKey);
+            if (!lb) return null;
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle>{lb.pluralLabel}</DialogTitle>
+                </DialogHeader>
+                <ScrollArea className="max-h-[70vh]">
+                  {lb.computed ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-10">#</TableHead>
+                          <TableHead>Equipo</TableHead>
+                          <TableHead className="text-center w-12">PJ</TableHead>
+                          <TableHead className="text-center w-12">
+                            {lb.label}
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {lb.teamLeaders.slice(0, TOP_MODAL).map((entry, index) => {
+                          const team = getTeamById(entry.teamId);
+                          return (
+                            <TableRow key={entry.teamId}>
+                              <TableCell className="font-medium">
+                                {index + 1}
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {team?.name || entry.teamId}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {entry.matchesPlayed}
+                              </TableCell>
+                              <TableCell className="text-center font-bold">
+                                {entry.value}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-10">#</TableHead>
+                          <TableHead>Jugador</TableHead>
+                          <TableHead>Equipo</TableHead>
+                          <TableHead className="text-center w-14">
+                            {lb.label}
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {lb.leaders.slice(0, TOP_MODAL).map((entry, index) => {
+                          const team = getTeamById(entry.teamId);
+                          return (
+                            <TableRow key={`${entry.playerName}-${entry.teamId}`}>
+                              <TableCell className="font-medium">
+                                {index + 1}
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {entry.playerName}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {team?.name || entry.teamId}
+                              </TableCell>
+                              <TableCell className="text-center font-bold">
+                                {entry.count}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
+                </ScrollArea>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
