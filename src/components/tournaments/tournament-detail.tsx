@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BracketView } from "@/components/brackets/bracket-view";
@@ -16,6 +16,9 @@ import { TournamentStats } from "@/components/standings/tournament-stats";
 import { TeamRosterDialog } from "@/components/tournaments/team-roster-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -39,7 +42,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Download, Settings, MoreVertical, Trash2, Ban } from "lucide-react";
+import { Download, Settings, MoreVertical, Trash2, Ban, ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
@@ -340,6 +343,7 @@ export function TournamentDetail({
   const { updateTournamentProps } = useTournaments();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const sport = getSportInfo(tournament.sport);
   const sportCategory = getSportCategory(tournament.sport);
   const showStats = (tournament.enabledStats?.length ?? 0) > 0;
@@ -375,14 +379,6 @@ export function TournamentDetail({
     return tabs;
   })();
 
-  const toggleTab = (tab: string) => {
-    const current = tournament.visibleTabs || [];
-    const next = current.includes(tab)
-      ? current.filter((t) => t !== tab)
-      : [...current, tab];
-    updateTournamentProps(tournament.id, { visibleTabs: next });
-  };
-
   // Combine org sponsors + tournament sponsors (no duplicates by id)
   const allSponsors = (() => {
     const combined = [...(orgSponsors || []), ...(tournament.sponsors || [])];
@@ -397,7 +393,8 @@ export function TournamentDetail({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="space-y-2">
+      <div className="flex items-start justify-between gap-3">
+       <div className="space-y-2 min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">
             {sport?.emoji} {sport?.label}
@@ -428,7 +425,32 @@ export function TournamentDetail({
           {tournament.endDate && <span>Fin: {tournament.endDate}</span>}
         </div>
         {isAdmin && <AdminActions tournament={tournament} />}
+       </div>
+
+       {canEdit && (
+         <Button
+           variant="outline"
+           size="sm"
+           className="shrink-0"
+           onClick={() => setSettingsOpen(true)}
+         >
+           <Settings className="h-4 w-4 mr-2" />
+           Configuracion
+         </Button>
+       )}
       </div>
+
+      {canEdit && (
+        <ConfigurationDialog
+          key={tournament.id}
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          tournament={tournament}
+          configurableTabs={configurableTabs}
+          visibleTabs={tournament.visibleTabs}
+          onUpdate={(updates) => updateTournamentProps(tournament.id, updates)}
+        />
+      )}
 
       {/* Sponsors Banner */}
       {allSponsors.length > 0 && <SponsorBanner sponsors={allSponsors} />}
@@ -471,7 +493,6 @@ export function TournamentDetail({
               {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
               {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
             </TabsList>
-            {canEdit && <TabsSettingsButton configurableTabs={configurableTabs} visibleTabs={tournament.visibleTabs} onToggle={toggleTab} />}
           </div>
           {tournament.phaseConfigs.map((pc) => {
             if (pc.phase > 1 && !isTabVisible(`phase${pc.phase}`)) return null;
@@ -519,7 +540,6 @@ export function TournamentDetail({
               {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
               {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
             </TabsList>
-            {canEdit && <TabsSettingsButton configurableTabs={configurableTabs} visibleTabs={tournament.visibleTabs} onToggle={toggleTab} />}
           </div>
           <TabsContent value="groups" className="mt-4">
             <GroupStageView tournament={tournament} />
@@ -560,7 +580,6 @@ export function TournamentDetail({
               {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
               {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
             </TabsList>
-            {canEdit && <TabsSettingsButton configurableTabs={configurableTabs} visibleTabs={tournament.visibleTabs} onToggle={toggleTab} />}
           </div>
           <TabsContent value="bracket" className="mt-4">
             <BracketView tournament={tournament} canEdit={canEdit} />
@@ -596,7 +615,6 @@ export function TournamentDetail({
               {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
               {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
             </TabsList>
-            {canEdit && <TabsSettingsButton configurableTabs={configurableTabs} visibleTabs={tournament.visibleTabs} onToggle={toggleTab} />}
           </div>
           <TabsContent value="groups" className="mt-4">
             <GroupStageView tournament={tournament} />
@@ -632,7 +650,6 @@ export function TournamentDetail({
               {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
               {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
             </TabsList>
-            {canEdit && <TabsSettingsButton configurableTabs={configurableTabs} visibleTabs={tournament.visibleTabs} onToggle={toggleTab} />}
           </div>
           <TabsContent value="standings" className="mt-4">
             {sportCategory === "baseball" ? (
@@ -671,47 +688,406 @@ export function TournamentDetail({
   );
 }
 
-function TabsSettingsButton({
+type ConfigSection = "info" | "visibility" | "format" | "groups";
+
+const SECTION_TITLES: Record<ConfigSection, string> = {
+  info: "Información",
+  visibility: "Visibilidad pública",
+  format: "Formato y reglas",
+  groups: "Grupos y fases",
+};
+
+function ConfigurationDialog({
+  open,
+  onOpenChange,
+  tournament,
   configurableTabs,
   visibleTabs,
-  onToggle,
+  onUpdate,
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  tournament: Tournament;
   configurableTabs: { key: string; label: string }[];
   visibleTabs?: string[];
-  onToggle: (tab: string) => void;
+  onUpdate: (
+    updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "visibleTabs">>
+  ) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  // The parent passes `key={tournament.id}` so this component remounts and
+  // re-initializes from fresh props when the tournament changes.
+  const [section, setSection] = useState<ConfigSection | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [success, setSuccess] = useState(false);
 
-  const isChecked = (key: string) =>
-    visibleTabs?.includes(key) ?? false;
+  // Drafts per section — only the active section's draft matters at a time.
+  const [name, setName] = useState(tournament.name);
+  const [description, setDescription] = useState(tournament.description ?? "");
+  const [startDate, setStartDate] = useState(tournament.startDate);
+  const [endDate, setEndDate] = useState(tournament.endDate ?? "");
+  const [visibilityDraft, setVisibilityDraft] = useState<string[]>(visibleTabs ?? []);
+  const [bestOf, setBestOf] = useState<3 | 5>(tournament.bestOf ?? 3);
+
+  const sport = getSportInfo(tournament.sport);
+
+  const groupsByPhase = (() => {
+    const map = new Map<number, typeof tournament.groups>();
+    for (const g of tournament.groups ?? []) {
+      const arr = map.get(g.phase ?? 1) ?? [];
+      arr.push(g);
+      map.set(g.phase ?? 1, arr);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => a - b);
+  })();
+
+  // Whether the active section has anything to save. Format is editable only
+  // when bestOf applies (volleyball); otherwise it's purely informational.
+  const isReadOnlySection =
+    section === "groups" ||
+    (section === "format" && tournament.sport !== "volleyball");
+
+  const handleClose = () => {
+    onOpenChange(false);
+    // Reset internal step state when the dialog closes; the form drafts get
+    // reset on next mount thanks to the parent's key prop.
+    setSection(null);
+    setConfirming(false);
+    setSuccess(false);
+  };
+
+  // Auto-dismiss the success step after 5 seconds. If the user closes the
+  // dialog manually before that, the cleanup clears the pending timer.
+  useEffect(() => {
+    if (!success) return;
+    const t = setTimeout(() => handleClose(), 5000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [success]);
+
+  const handleConfirm = () => {
+    if (section === "info") {
+      const updates: Parameters<typeof onUpdate>[0] = {};
+      const trimmedName = name.trim();
+      if (trimmedName && trimmedName !== tournament.name) updates.name = trimmedName;
+      const trimmedDesc = description.trim();
+      if (trimmedDesc !== (tournament.description ?? "")) updates.description = trimmedDesc || undefined;
+      if (startDate && startDate !== tournament.startDate) updates.startDate = startDate;
+      if (endDate !== (tournament.endDate ?? "")) updates.endDate = endDate || undefined;
+      if (Object.keys(updates).length > 0) onUpdate(updates);
+    } else if (section === "visibility") {
+      onUpdate({ visibleTabs: visibilityDraft });
+    } else if (section === "format") {
+      const updates: Parameters<typeof onUpdate>[0] = {};
+      if (tournament.sport === "volleyball" && bestOf !== (tournament.bestOf ?? 3)) {
+        updates.bestOf = bestOf;
+      }
+      if (Object.keys(updates).length > 0) onUpdate(updates);
+    }
+    setConfirming(false);
+    setSuccess(true);
+  };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-          <Settings className="h-4 w-4" />
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-xs">
-        <DialogHeader>
-          <DialogTitle>Tabs visibles</DialogTitle>
-          <DialogDescription>
-            Elige que tabs pueden ver los usuarios
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          {configurableTabs.map((tab) => (
-            <label key={tab.key} className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isChecked(tab.key)}
-                onChange={() => onToggle(tab.key)}
-                className="h-4 w-4 rounded border-border"
-              />
-              <span className="text-sm">{tab.label}</span>
-            </label>
-          ))}
-        </div>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) handleClose();
+        else onOpenChange(true);
+      }}
+    >
+      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
+        {/* STEP 4 — success (auto-closes after 5s) */}
+        {success && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="sr-only">Cambios guardados</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col items-center gap-3 py-6 text-center">
+              <CheckCircle2 className="h-12 w-12 text-green-600" />
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold">Cambios guardados</h2>
+                <p className="text-sm text-muted-foreground">
+                  Este aviso se cierra automáticamente en unos segundos.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={handleClose}
+              >
+                Cerrar ahora
+              </Button>
+            </div>
+          </>
+        )}
+
+        {/* STEP 3 — confirmation */}
+        {!success && confirming && (
+          <>
+            <DialogHeader>
+              <DialogTitle>¿Confirmás los cambios?</DialogTitle>
+              <DialogDescription>
+                Se van a guardar los cambios en <strong>{section ? SECTION_TITLES[section] : ""}</strong>.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setConfirming(false)}
+              >
+                Cancelar
+              </Button>
+              <Button className="flex-1" onClick={handleConfirm}>
+                Confirmar
+              </Button>
+            </div>
+          </>
+        )}
+
+        {/* STEP 1 — section picker */}
+        {!success && !confirming && section === null && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Configuración del torneo</DialogTitle>
+              <DialogDescription>
+                Elegí qué sección querés revisar o modificar.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              {(["info", "visibility", "format", "groups"] as ConfigSection[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSection(key)}
+                  className="w-full text-left rounded-lg border bg-card p-3 hover:bg-accent/40 transition-colors flex items-center justify-between gap-3"
+                >
+                  <div>
+                    <div className="text-sm font-medium">{SECTION_TITLES[key]}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {key === "info" && "Nombre, descripción, fechas."}
+                      {key === "visibility" && "Qué pestañas ven los usuarios públicos."}
+                      {key === "format" && "Doble vuelta, sets de vóley."}
+                      {key === "groups" && "Resumen de cómo está armado el torneo (solo lectura)."}
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* STEP 2 — section editor */}
+        {!success && !confirming && section !== null && (
+          <>
+            <DialogHeader>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 -ml-1"
+                  onClick={() => setSection(null)}
+                  aria-label="Volver"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <DialogTitle className="text-base">{SECTION_TITLES[section]}</DialogTitle>
+              </div>
+            </DialogHeader>
+
+            {/* Información */}
+            {section === "info" && (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="cfg-name">Nombre</Label>
+                  <Input
+                    id="cfg-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cfg-desc">Descripción</Label>
+                  <Textarea
+                    id="cfg-desc"
+                    value={description}
+                    rows={2}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cfg-start">Fecha de inicio</Label>
+                    <Input
+                      id="cfg-start"
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cfg-end">Fecha de fin (opcional)</Label>
+                    <Input
+                      id="cfg-end"
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Visibilidad pública */}
+            {section === "visibility" && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Elegí qué pestañas ven los usuarios públicos del torneo.
+                </p>
+                {configurableTabs.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Este torneo no tiene pestañas configurables.
+                  </p>
+                )}
+                {configurableTabs.map((tab) => {
+                  const checked = visibilityDraft.includes(tab.key);
+                  return (
+                    <label
+                      key={tab.key}
+                      className="flex items-center gap-3 cursor-pointer rounded-md border p-2.5"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setVisibilityDraft((prev) =>
+                            checked
+                              ? prev.filter((k) => k !== tab.key)
+                              : [...prev, tab.key]
+                          )
+                        }
+                        className="h-4 w-4 rounded border-border"
+                      />
+                      <span className="text-sm">{tab.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Formato y reglas */}
+            {section === "format" && (
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Deporte</span>
+                  <span>{sport?.emoji} {sport?.label}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Formato</span>
+                  <span>
+                    {(() => {
+                      const phases = tournament.phaseConfigs?.length ?? 0;
+                      if (tournament.format === "group-playoff" && phases > 1) {
+                        return `${phases} fases de grupos + Playoffs`;
+                      }
+                      return formatLabels[tournament.format];
+                    })()}
+                  </span>
+                </div>
+                {(tournament.format === "round-robin" || tournament.format === "group-playoff") && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Doble vuelta (ida y vuelta)</span>
+                    <span>{tournament.doubleRoundRobin ? "Sí" : "No"}</span>
+                  </div>
+                )}
+                {tournament.sport === "volleyball" && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Sets</span>
+                    <select
+                      className="text-sm border rounded px-2 py-1 bg-background"
+                      value={bestOf}
+                      onChange={(e) => setBestOf(parseInt(e.target.value, 10) as 3 | 5)}
+                    >
+                      <option value={3}>Mejor de 3</option>
+                      <option value={5}>Mejor de 5</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Grupos y fases (read-only) */}
+            {section === "groups" && (
+              <div className="space-y-3">
+                {groupsByPhase.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Este torneo no usa grupos.
+                  </p>
+                ) : (
+                  groupsByPhase.map(([phase, groups]) => {
+                    const pc = tournament.phaseConfigs?.find((c) => c.phase === phase);
+                    return (
+                      <div key={phase} className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">
+                            {tournament.phaseConfigs?.length ? `Fase ${phase}` : "Fase única"}
+                          </span>
+                          {pc?.advancePerGroup !== undefined && (
+                            <span className="text-xs text-muted-foreground">
+                              Avanzan {pc.advancePerGroup} de cada grupo
+                            </span>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          {groups?.map((g) => (
+                            <div
+                              key={g.id}
+                              className="flex items-center justify-between text-xs"
+                            >
+                              <span>{g.name}</span>
+                              <span className="text-muted-foreground">
+                                {g.teamIds.length} {g.teamIds.length === 1 ? "equipo" : "equipos"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                {tournament.playoffConfig && (
+                  <div className="rounded-lg border bg-muted/30 p-3 text-xs flex items-center justify-between">
+                    <span className="font-medium">Playoffs</span>
+                    <span className="text-muted-foreground">
+                      {tournament.playoffConfig.totalAdvancing} clasificados
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setSection(null)}
+              >
+                Atrás
+              </Button>
+              {isReadOnlySection ? (
+                <Button className="flex-1" onClick={handleClose}>
+                  Cerrar
+                </Button>
+              ) : (
+                <Button className="flex-1" onClick={() => setConfirming(true)}>
+                  Guardar
+                </Button>
+              )}
+            </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
