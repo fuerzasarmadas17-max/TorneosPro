@@ -498,7 +498,7 @@ export function TournamentDetail({
             if (pc.phase > 1 && !isTabVisible(`phase${pc.phase}`)) return null;
             return (
               <TabsContent key={`phase${pc.phase}`} value={`phase${pc.phase}`} className="mt-4">
-                <GroupStageView tournament={tournament} phase={pc.phase} />
+                <GroupStageView tournament={tournament} phase={pc.phase} canEdit={canEdit} />
               </TabsContent>
             );
           })}
@@ -542,7 +542,7 @@ export function TournamentDetail({
             </TabsList>
           </div>
           <TabsContent value="groups" className="mt-4">
-            <GroupStageView tournament={tournament} />
+            <GroupStageView tournament={tournament} canEdit={canEdit} />
           </TabsContent>
           {isTabVisible("playoffs") && (
             <TabsContent value="playoffs" className="mt-4">
@@ -617,7 +617,7 @@ export function TournamentDetail({
             </TabsList>
           </div>
           <TabsContent value="groups" className="mt-4">
-            <GroupStageView tournament={tournament} />
+            <GroupStageView tournament={tournament} canEdit={canEdit} />
           </TabsContent>
           {isTabVisible("schedule") && (
             <TabsContent value="schedule" className="mt-4">

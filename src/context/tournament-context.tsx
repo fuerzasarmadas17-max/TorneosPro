@@ -11,7 +11,7 @@ import {
 } from "react";
 import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, VolleyballSet, Sponsor, PhaseConfig } from "@/types";
 import { fillPlayoffBracket, fillPhase2Groups } from "@/data/helpers";
-import { fetchTournaments, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, deleteTournament as dbDeleteTournament, addTournamentTeams, removeTeamFromTournament as dbRemoveTeamFromTournament, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup } from "@/lib/db/tournaments";
+import { fetchTournaments, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, deleteTournament as dbDeleteTournament, addTournamentTeams, removeTeamFromTournament as dbRemoveTeamFromTournament, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup, updateGroupName as dbUpdateGroupName } from "@/lib/db/tournaments";
 import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam, updateTeamPlayers as dbUpdateTeamPlayers } from "@/lib/db/teams";
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
@@ -34,6 +34,7 @@ interface TournamentContextType {
   updateMatchDetails: (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "round" | "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => Promise<void>;
   updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs" | "disqualifiedTeamIds">>) => Promise<void>;
   updatePlayoffConfig: (tournamentId: string, advancePerGroup: number, totalAdvancing: number) => Promise<void>;
+  renameGroup: (tournamentId: string, groupId: string, name: string) => Promise<void>;
   updateMatch: (
     tournamentId: string,
     matchId: string,
@@ -390,6 +391,24 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const renameGroup = useCallback(
+    async (tournamentId: string, groupId: string, name: string) => {
+      const ok = await dbUpdateGroupName(groupId, name);
+      if (!ok) return;
+      // Optimistic update of just the matched group in the matched tournament.
+      setTournaments((prev) =>
+        prev.map((t) => {
+          if (t.id !== tournamentId) return t;
+          return {
+            ...t,
+            groups: t.groups?.map((g) => (g.id === groupId ? { ...g, name } : g)),
+          };
+        })
+      );
+    },
+    []
+  );
+
   const updateTeamPlayers = useCallback(async (teamId: string, players: Player[]) => {
     await dbUpdateTeamPlayers(teamId, players);
     // Reload teams to get new player IDs
@@ -683,6 +702,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       updateMatchDetails,
       updateTournamentProps,
       updatePlayoffConfig,
+      renameGroup,
       updateTeamPlayers,
       updateTeam,
       updateEventPaid,
@@ -711,6 +731,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       updateMatchDetails,
       updateTournamentProps,
       updatePlayoffConfig,
+      renameGroup,
       updateTeamPlayers,
       updateTeam,
       updateEventPaid,

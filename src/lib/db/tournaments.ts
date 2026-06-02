@@ -257,6 +257,18 @@ export async function insertMatchesForPhase(
   return idMapping;
 }
 
+export async function updateGroupName(
+  groupId: string,
+  name: string,
+  client: SupabaseClient = supabase
+): Promise<boolean> {
+  const { error } = await client
+    .from("tournament_groups")
+    .update({ name })
+    .eq("id", groupId);
+  return !error;
+}
+
 export async function assignTeamsToGroup(
   groupId: string,
   teamIds: string[],
