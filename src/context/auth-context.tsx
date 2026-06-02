@@ -224,11 +224,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // email link, or a regular logged-in user changing their password.
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) {
-      if (error.message.toLowerCase().includes("session")) {
-        return { success: false, error: "El enlace expiró, pedí uno nuevo" };
-      }
-      if (error.message.toLowerCase().includes("same")) {
+      // Prefer the structured `code` field (Supabase >= 2.x AuthApiError) — it's
+      // stable across locales and SDK message tweaks. Fall back to message
+      // substring matching for older errors that don't expose a code.
+      const code = error.code ?? "";
+      const msg = error.message.toLowerCase();
+      if (code === "same_password" || msg.includes("different from the old")) {
         return { success: false, error: "La nueva contraseña debe ser distinta a la actual" };
+      }
+      if (code === "weak_password" || msg.includes("weak") || msg.includes("at least")) {
+        return { success: false, error: "La contraseña es muy débil, probá una más larga o compleja" };
+      }
+      if (code === "over_request_rate_limit") {
+        return { success: false, error: "Demasiados intentos, esperá un momento e intentá de nuevo" };
+      }
+      if (code === "auth_session_missing" || msg.includes("session")) {
+        return { success: false, error: "El enlace expiró, pedí uno nuevo" };
       }
       return { success: false, error: "No pudimos actualizar la contraseña" };
     }
