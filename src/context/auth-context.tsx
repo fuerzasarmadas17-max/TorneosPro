@@ -19,6 +19,8 @@ interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string; needsEmailConfirmation?: boolean }>;
   logout: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
+  updatePassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
   updateOrganizationProfile: (profile: OrganizationProfile) => Promise<{ success: boolean; error?: string }>;
   getAllUsers: () => Promise<SafeUser[]>;
   toggleUserActive: (userId: string) => Promise<void>;
@@ -198,6 +200,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    // Build the redirect URL the same way wompi-redirect.ts does — env override
+    // for tunneled dev (ngrok), real origin in prod.
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") ||
+      (typeof window !== "undefined" ? window.location.origin : "");
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${appUrl}/reset-password`,
+    });
+    // Don't reveal whether the email exists — same response either way.
+    // Errors here are only surfaced for transport-level failures (network down,
+    // misconfigured Supabase project), which the user can act on.
+    if (error && !error.message.toLowerCase().includes("user")) {
+      return { success: false, error: "No pudimos enviar el correo, intenta de nuevo" };
+    }
+    return { success: true };
+  }, []);
+
+  const updatePassword = useCallback(async (newPassword: string) => {
+    // Requires an active session — either a fresh recovery session from the
+    // email link, or a regular logged-in user changing their password.
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      if (error.message.toLowerCase().includes("session")) {
+        return { success: false, error: "El enlace expiró, pedí uno nuevo" };
+      }
+      if (error.message.toLowerCase().includes("same")) {
+        return { success: false, error: "La nueva contraseña debe ser distinta a la actual" };
+      }
+      return { success: false, error: "No pudimos actualizar la contraseña" };
+    }
+    return { success: true };
+  }, []);
 
   const logout = useCallback(async () => {
     setAuthState({ user: null, isAuthenticated: false });
@@ -382,6 +418,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         logout,
+        requestPasswordReset,
+        updatePassword,
         updateOrganizationProfile,
         getAllUsers,
         toggleUserActive,
