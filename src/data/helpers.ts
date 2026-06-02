@@ -1,5 +1,32 @@
 import { Match, MatchPhase, StandingsEntry, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, User } from "@/types";
 
+// --- Per-group advancement helpers ---
+
+/**
+ * Resolve the effective per-group advancement map for a phase or playoff
+ * config. Returns the explicit `perGroup` map when present, otherwise expands
+ * the legacy uniform `advancePerGroup` to every group id passed in.
+ *
+ * Use this anywhere advancement counts are needed instead of reading
+ * `config.advancePerGroup` directly — it transparently handles both old
+ * tournaments (uniform) and new ones (per-group).
+ */
+export function getEffectivePerGroup(
+  config: { advancePerGroup: number; perGroup?: Record<string, number> },
+  groupIds: string[]
+): Record<string, number> {
+  if (config.perGroup && Object.keys(config.perGroup).length > 0) {
+    // Fill in any group ids missing from the stored map with the legacy
+    // uniform value, so callers can rely on every id being present.
+    const result: Record<string, number> = { ...config.perGroup };
+    for (const id of groupIds) {
+      if (result[id] == null) result[id] = config.advancePerGroup;
+    }
+    return result;
+  }
+  return Object.fromEntries(groupIds.map((id) => [id, config.advancePerGroup]));
+}
+
 // --- Utility ---
 
 export function shuffleArray<T>(arr: T[]): T[] {

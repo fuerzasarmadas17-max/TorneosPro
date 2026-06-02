@@ -242,13 +242,30 @@ export interface TournamentGroup {
 
 export interface PhaseConfig {
   phase: number;
+  /**
+   * Legacy uniform advancement count. New tournaments populate `perGroup`
+   * instead and the read layer expands this value to a uniform map when only
+   * the legacy field is present. Kept for back-compat with stored data.
+   */
   advancePerGroup: number;
+  /**
+   * Per-group advancement count, keyed by group id. Allows uneven cupos
+   * (e.g. Grupo A → 2, Grupo B → 3). When present, takes precedence over
+   * `advancePerGroup`.
+   */
+  perGroup?: Record<string, number>;
   nextGroupCount?: number;
   complete?: boolean;
 }
 
 export interface PlayoffConfig {
+  /**
+   * Legacy uniform advancement count. Read layer expands to `perGroup` when
+   * only this field exists. Kept for back-compat with stored data.
+   */
   advancePerGroup: number;
+  /** Per-group advancement count to the elimination bracket. */
+  perGroup?: Record<string, number>;
   totalAdvancing: number;
 }
 

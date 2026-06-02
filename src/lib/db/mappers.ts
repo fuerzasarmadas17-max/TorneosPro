@@ -206,8 +206,17 @@ export function mapTournamentGroup(row: Record<string, unknown>): TournamentGrou
 }
 
 export function mapPlayoffConfig(row: Record<string, unknown>): PlayoffConfig {
+  // New shape: advance_per_group_json holds { groupId: count } for uneven
+  // cupos. When null, fall back to the legacy uniform advance_per_group.
+  const perGroupRaw = row.advance_per_group_json;
+  const perGroup =
+    perGroupRaw && typeof perGroupRaw === "object" && !Array.isArray(perGroupRaw)
+      ? (perGroupRaw as Record<string, number>)
+      : undefined;
+
   return {
     advancePerGroup: row.advance_per_group as number,
+    perGroup,
     totalAdvancing: row.total_advancing as number,
   };
 }

@@ -222,7 +222,10 @@ CREATE TABLE tournament_group_teams (
 CREATE TABLE playoff_configs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tournament_id UUID NOT NULL UNIQUE REFERENCES tournaments(id) ON DELETE CASCADE,
+  -- Legacy uniform value. Read code falls back to this when *_json is null.
   advance_per_group INT NOT NULL,
+  -- Per-group advancement, keyed by tournament_groups.id. When present, wins.
+  advance_per_group_json JSONB,
   total_advancing INT NOT NULL
 );
 
