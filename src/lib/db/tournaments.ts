@@ -328,3 +328,67 @@ export async function assignTeamsToGroup(
   );
   return !error;
 }
+
+/**
+ * Atomically replace team assignments for every group in a given phase.
+ * Used by the "Configurar Fase X" dialog so that a save fully reflects the
+ * organizer's choices and previous (auto) assignments are wiped first.
+ *
+ * `assignments` maps groupId → teamIds. Groups not present in the map keep
+ * their existing rows (use this to update only some groups).
+ */
+export async function assignTeamsToPhaseGroups(
+  tournamentId: string,
+  phase: number,
+  assignments: Record<string, string[]>,
+  client: SupabaseClient = supabase
+): Promise<boolean> {
+  // Look up the group ids for the given phase. The query is scoped by
+  // tournament_id so we can't accidentally affect another tournament.
+  const { data: groupRows, error: lookupErr } = await client
+    .from("tournament_groups")
+    .select("id")
+    .eq("tournament_id", tournamentId)
+    .eq("phase", phase);
+  if (lookupErr || !groupRows) return false;
+  const phaseGroupIds = groupRows.map((r) => r.id as string);
+  const editedIds = Object.keys(assignments).filter((id) => phaseGroupIds.includes(id));
+  if (editedIds.length === 0) return true;
+
+  // Wipe existing assignments for the edited groups, then insert new ones.
+  await client
+    .from("tournament_group_teams")
+    .delete()
+    .in("group_id", editedIds);
+
+  const rows = editedIds.flatMap((groupId) =>
+    assignments[groupId].map((teamId) => ({ group_id: groupId, team_id: teamId }))
+  );
+  if (rows.length === 0) return true;
+  const { error: insertErr } = await client.from("tournament_group_teams").insert(rows);
+  return !insertErr;
+}
+
+/**
+ * Assign teams to specific playoff bracket slots. The bracket matches must
+ * already exist (created during initial setup). `slotAssignments[matchId]`
+ * provides { homeTeamId, awayTeamId } for round-1 matches.
+ *
+ * Empty values are written as null to clear any previous assignment.
+ */
+export async function assignTeamsToBracketSlots(
+  slotAssignments: Record<string, { homeTeamId: string | null; awayTeamId: string | null }>,
+  client: SupabaseClient = supabase
+): Promise<boolean> {
+  for (const [matchId, { homeTeamId, awayTeamId }] of Object.entries(slotAssignments)) {
+    const { error } = await client
+      .from("matches")
+      .update({
+        home_team_id: homeTeamId,
+        away_team_id: awayTeamId,
+      })
+      .eq("id", matchId);
+    if (error) return false;
+  }
+  return true;
+}

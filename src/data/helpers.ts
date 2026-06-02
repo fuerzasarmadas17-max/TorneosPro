@@ -27,6 +27,72 @@ export function getEffectivePerGroup(
   return Object.fromEntries(groupIds.map((id) => [id, config.advancePerGroup]));
 }
 
+/**
+ * Compute the ranked list of teams classified from a finished group phase.
+ * Returns one entry per advancing team in the canonical seeding order:
+ * all 1st-place finishers, then all 2nd-place, etc., interleaved across
+ * groups (1°A, 1°B, 2°A, 2°B, ...). Each entry carries enough metadata to
+ * present the user with a row like "1° Grupo A — Equipo X" in the
+ * configuration dialog.
+ *
+ * Honors perGroup cupos: a group with cupo=2 only contributes its top 2.
+ */
+export interface ClassifiedTeam {
+  teamId: string;
+  fromGroupId: string;
+  fromGroupName: string;
+  /** 1-based position within the source group (1 = winner). */
+  position: number;
+}
+
+export function getClassifiedTeamsRanked(
+  tournament: Tournament,
+  fromPhase: number
+): ClassifiedTeam[] {
+  const phaseGroups = (tournament.groups ?? []).filter((g) => g.phase === fromPhase);
+  if (phaseGroups.length === 0) return [];
+
+  // Source of truth for cupos: phaseConfig if available, otherwise
+  // playoffConfig (last-phase case), otherwise default 2 per group.
+  const pc = tournament.phaseConfigs?.find((c) => c.phase === fromPhase);
+  const isLastPhase = !tournament.phaseConfigs?.some((c) => c.phase > fromPhase);
+  const config = isLastPhase
+    ? (tournament.playoffConfig ?? pc)
+    : pc;
+  const perGroup = config
+    ? getEffectivePerGroup(config, phaseGroups.map((g) => g.id))
+    : Object.fromEntries(phaseGroups.map((g) => [g.id, 2]));
+
+  // Rank teams in each source group.
+  const rankedByGroup = phaseGroups.map((group) => {
+    const groupMatches = tournament.matches.filter(
+      (m) => m.phase === "group" && m.groupId === group.id
+    );
+    return {
+      group,
+      ranked: rankTeamsInGroup(group.teamIds, groupMatches),
+    };
+  });
+
+  // Interleave by seed position so the output reads 1°A, 1°B, ..., 2°A, 2°B, ...
+  const maxSeed = Math.max(0, ...phaseGroups.map((g) => perGroup[g.id] ?? 0));
+  const out: ClassifiedTeam[] = [];
+  for (let seed = 0; seed < maxSeed; seed++) {
+    for (const { group, ranked } of rankedByGroup) {
+      const cupo = perGroup[group.id] ?? 0;
+      if (seed < cupo && ranked[seed]) {
+        out.push({
+          teamId: ranked[seed],
+          fromGroupId: group.id,
+          fromGroupName: group.name,
+          position: seed + 1,
+        });
+      }
+    }
+  }
+  return out;
+}
+
 // --- Utility ---
 
 export function shuffleArray<T>(arr: T[]): T[] {
