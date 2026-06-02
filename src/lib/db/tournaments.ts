@@ -36,14 +36,52 @@ export async function fetchTournamentById(
   return mapTournament(data as Record<string, unknown>);
 }
 
+/**
+ * Re-key a perGroup map ({ groupId: count }) using a temp→real id map.
+ * Returns undefined if input is undefined or empty so callers can write NULL
+ * to the JSONB column when nothing meaningful exists.
+ */
+function translatePerGroupIds(
+  perGroup: Record<string, number> | undefined,
+  tempToReal: Record<string, string>
+): Record<string, number> | undefined {
+  if (!perGroup || Object.keys(perGroup).length === 0) return undefined;
+  const out: Record<string, number> = {};
+  for (const [tempId, count] of Object.entries(perGroup)) {
+    out[tempToReal[tempId] ?? tempId] = count;
+  }
+  return out;
+}
+
 export async function createTournament(
   tournament: Tournament,
   groupTeamMap?: Record<string, string[]>,
   client: SupabaseClient = supabase
 ): Promise<string | null> {
   void groupTeamMap;
-  // Insert tournament
-  const dbData = toDbTournament(tournament);
+
+  // Pre-generate real UUIDs for groups so phase_configs.perGroup and
+  // playoffConfig.perGroup (which reference these ids) can be persisted
+  // correctly on the first insert — no need for a follow-up UPDATE.
+  const tempToReal: Record<string, string> = {};
+  const groupsWithRealIds = (tournament.groups ?? []).map((g) => {
+    const realId = crypto.randomUUID();
+    tempToReal[g.id] = realId;
+    return { ...g, id: realId };
+  });
+
+  // Translate phase_configs.perGroup before serializing the tournament row.
+  const translatedPhaseConfigs = tournament.phaseConfigs?.map((pc) => ({
+    ...pc,
+    perGroup: translatePerGroupIds(pc.perGroup, tempToReal),
+  }));
+
+  // Insert tournament with the translated phaseConfigs (perGroup keyed by
+  // the real UUIDs we just generated).
+  const dbData = toDbTournament({
+    ...tournament,
+    phaseConfigs: translatedPhaseConfigs,
+  });
   const { data: inserted, error } = await client
     .from("tournaments")
     .insert(dbData)
@@ -63,23 +101,22 @@ export async function createTournament(
     );
   }
 
-  // Insert groups
-  if (tournament.groups && tournament.groups.length > 0) {
-    for (const group of tournament.groups) {
-      const { data: groupRow } = await client
-        .from("tournament_groups")
-        .insert({
-          tournament_id: tournamentId,
-          name: group.name,
-          phase: group.phase ?? 1,
-        })
-        .select("id")
-        .single();
+  // Insert groups using the pre-generated UUIDs (overriding the column's
+  // DEFAULT gen_random_uuid()) so phase_configs/playoff_configs references
+  // stay valid.
+  if (groupsWithRealIds.length > 0) {
+    for (const group of groupsWithRealIds) {
+      await client.from("tournament_groups").insert({
+        id: group.id,
+        tournament_id: tournamentId,
+        name: group.name,
+        phase: group.phase ?? 1,
+      });
 
-      if (groupRow && group.teamIds.length > 0) {
+      if (group.teamIds.length > 0) {
         await client.from("tournament_group_teams").insert(
           group.teamIds.map((teamId) => ({
-            group_id: groupRow.id,
+            group_id: group.id,
             team_id: teamId,
           }))
         );
@@ -87,11 +124,14 @@ export async function createTournament(
     }
   }
 
-  // Insert playoff config
+  // Insert playoff config — both legacy uniform value and the new per-group
+  // JSON. The mapper prefers JSON when present and falls back to the int.
   if (tournament.playoffConfig) {
+    const perGroupReal = translatePerGroupIds(tournament.playoffConfig.perGroup, tempToReal);
     await client.from("playoff_configs").insert({
       tournament_id: tournamentId,
       advance_per_group: tournament.playoffConfig.advancePerGroup,
+      advance_per_group_json: perGroupReal ?? null,
       total_advancing: tournament.playoffConfig.totalAdvancing,
     });
   }
@@ -180,12 +220,17 @@ export async function removeTeamFromTournament(
 export async function updatePlayoffConfig(
   tournamentId: string,
   advancePerGroup: number,
-  totalAdvancing: number
+  totalAdvancing: number,
+  perGroup?: Record<string, number>
 ): Promise<boolean> {
   const { error } = await supabase
     .from("playoff_configs")
     .update({
       advance_per_group: advancePerGroup,
+      // Explicitly write NULL when no per-group map is provided so the row
+      // reverts to the legacy uniform behavior. Without this, a previous
+      // per-group config would silently persist.
+      advance_per_group_json: perGroup && Object.keys(perGroup).length > 0 ? perGroup : null,
       total_advancing: totalAdvancing,
     })
     .eq("tournament_id", tournamentId);

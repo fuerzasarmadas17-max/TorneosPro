@@ -33,7 +33,12 @@ interface TournamentContextType {
   removeTournament: (tournamentId: string) => Promise<boolean>;
   updateMatchDetails: (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "round" | "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => Promise<void>;
   updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "doubleRoundRobin" | "groupStageComplete" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs" | "disqualifiedTeamIds">>) => Promise<void>;
-  updatePlayoffConfig: (tournamentId: string, advancePerGroup: number, totalAdvancing: number) => Promise<void>;
+  updatePlayoffConfig: (
+    tournamentId: string,
+    advancePerGroup: number,
+    totalAdvancing: number,
+    perGroup?: Record<string, number>
+  ) => Promise<void>;
   renameGroup: (tournamentId: string, groupId: string, name: string) => Promise<void>;
   updateMatch: (
     tournamentId: string,
@@ -378,12 +383,17 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   );
 
   const updatePlayoffConfig = useCallback(
-    async (tournamentId: string, advancePerGroup: number, totalAdvancing: number) => {
-      await dbUpdatePlayoffConfig(tournamentId, advancePerGroup, totalAdvancing);
+    async (
+      tournamentId: string,
+      advancePerGroup: number,
+      totalAdvancing: number,
+      perGroup?: Record<string, number>
+    ) => {
+      await dbUpdatePlayoffConfig(tournamentId, advancePerGroup, totalAdvancing, perGroup);
       setTournaments((prev) =>
         prev.map((t) =>
           t.id === tournamentId
-            ? { ...t, playoffConfig: { advancePerGroup, totalAdvancing } }
+            ? { ...t, playoffConfig: { advancePerGroup, totalAdvancing, perGroup } }
             : t
         )
       );

@@ -699,11 +699,18 @@ export function fillPhase2Groups(
     return rankTeamsInGroup(group.teamIds, groupMatches);
   });
 
-  // Collect advancing teams (interleave by seed position)
+  // Collect advancing teams (interleave by seed position). Each group can
+  // have a different cupo via phaseConfig.perGroup; groups with smaller
+  // cupos simply stop contributing earlier. When perGroup is absent the
+  // helper expands the legacy uniform advancePerGroup to every group, so the
+  // behavior for old tournaments is identical to before.
+  const perGroup = getEffectivePerGroup(phaseConfig, phase1Groups.map((g) => g.id));
+  const maxSeed = Math.max(0, ...phase1Groups.map((g) => perGroup[g.id] ?? 0));
   const advancingTeams: string[] = [];
-  for (let seed = 0; seed < phaseConfig.advancePerGroup; seed++) {
+  for (let seed = 0; seed < maxSeed; seed++) {
     for (let g = 0; g < rankedByGroup.length; g++) {
-      if (rankedByGroup[g][seed]) {
+      const count = perGroup[phase1Groups[g].id] ?? 0;
+      if (seed < count && rankedByGroup[g][seed]) {
         advancingTeams.push(rankedByGroup[g][seed]);
       }
     }
