@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTournaments } from "@/context/tournament-context";
+import { PhaseConfigDialog } from "@/components/tournaments/phase-config-dialog";
 import { toast } from "sonner";
 import { Settings2 } from "lucide-react";
 
@@ -18,6 +19,7 @@ interface PlayoffBracketViewProps {
 export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewProps) {
   const { updatePlayoffConfig } = useTournaments();
   const [editing, setEditing] = useState(false);
+  const [bracketConfigOpen, setBracketConfigOpen] = useState(false);
   const [advanceCount, setAdvanceCount] = useState(
     String(tournament.playoffConfig?.totalAdvancing || "")
   );
@@ -26,6 +28,21 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
     ...tournament,
     matches: tournament.matches.filter((m) => m.phase === "playoff"),
   };
+
+  // The "last group phase" — fromPhase for getClassifiedTeamsRanked. For
+  // single-phase tournaments this is 1; for multi-phase it's the highest
+  // phase number in phaseConfigs.
+  const lastGroupPhase = tournament.phaseConfigs?.length
+    ? Math.max(...tournament.phaseConfigs.map((c) => c.phase))
+    : 1;
+
+  // A round-1 bracket is "unconfigured" when every match has neither home nor
+  // away set. As soon as the organizer assigns one team via the dialog it
+  // becomes configured. Used to gate the configure button.
+  const bracketMatches = playoffTournament.matches.filter((m) => m.round === 1);
+  const bracketUnconfigured =
+    bracketMatches.length > 0 &&
+    bracketMatches.every((m) => !m.homeTeamId && !m.awayTeamId);
 
   const handleSave = async () => {
     const value = parseInt(advanceCount);
@@ -56,13 +73,46 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
     setEditing(false);
   };
 
+  // Group stage finished, bracket created but no teams assigned yet — the
+  // organizer needs to map classified teams to bracket slots via the dialog.
+  if (tournament.groupStageComplete && bracketUnconfigured) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col items-center gap-3 py-12 text-center">
+          <div>
+            <p className="text-base font-medium">Playoffs pendientes de configuración</p>
+            <p className="text-sm text-muted-foreground">
+              La fase de grupos terminó. Asigná los clasificados a los lugares del bracket.
+            </p>
+          </div>
+          {canEdit ? (
+            <Button onClick={() => setBracketConfigOpen(true)}>
+              Configurar playoffs
+            </Button>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Esperando que el organizador arme el bracket.
+            </p>
+          )}
+        </div>
+        <PhaseConfigDialog
+          open={bracketConfigOpen}
+          onOpenChange={setBracketConfigOpen}
+          tournament={tournament}
+          fromPhase={lastGroupPhase}
+          mode="bracket"
+        />
+      </div>
+    );
+  }
+
   if (!tournament.groupStageComplete) {
     return (
       <div className="space-y-6">
         <div className="text-center py-12 text-muted-foreground">
           <p className="text-lg font-medium mb-2">Playoffs pendientes</p>
           <p className="text-sm">
-            El bracket de playoffs se generara automaticamente cuando finalice la fase de grupos.
+            Una vez termine la fase de grupos vas a poder armar el bracket de playoffs.
           </p>
         </div>
 

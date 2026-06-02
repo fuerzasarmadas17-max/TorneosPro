@@ -10,6 +10,7 @@ import { BaseballStandingsTable } from "@/components/standings/baseball-standing
 import { BasketballStandingsTable } from "@/components/standings/basketball-standings-table";
 import { VolleyballStandingsTable } from "@/components/standings/volleyball-standings-table";
 import { GroupStageView } from "@/components/standings/group-stage-view";
+import { PhaseConfigDialog } from "@/components/tournaments/phase-config-dialog";
 import { MatchSchedule } from "@/components/standings/match-schedule";
 import { DateOrganizer } from "@/components/standings/date-organizer";
 import { TournamentStats } from "@/components/standings/tournament-stats";
@@ -532,7 +533,11 @@ export function TournamentDetail({
             if (pc.phase > 1 && !isTabVisible(`phase${pc.phase}`)) return null;
             return (
               <TabsContent key={`phase${pc.phase}`} value={`phase${pc.phase}`} className="mt-4">
-                <GroupStageView tournament={tournament} phase={pc.phase} canEdit={canEdit} />
+                <PhaseTabContent
+                  tournament={tournament}
+                  phase={pc.phase}
+                  canEdit={canEdit}
+                />
               </TabsContent>
             );
           })}
@@ -1185,5 +1190,123 @@ function ConfigurationDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Tab content for one phase of a multi-phase group-playoff tournament.
+ * Decides whether to show:
+ *  - the existing GroupStageView (phase has matches → normal view),
+ *  - a "Generar partidos" button (phase has teams but no matches yet), or
+ *  - a "Configurar Fase X" button (phase still empty, previous phase finished).
+ */
+function PhaseTabContent({
+  tournament,
+  phase,
+  canEdit,
+}: {
+  tournament: Tournament;
+  phase: number;
+  canEdit: boolean;
+}) {
+  const { generatePhaseMatches } = useTournaments();
+  const [configOpen, setConfigOpen] = useState(false);
+  const [generating, setGenerating] = useState(false);
+
+  const phaseGroups = (tournament.groups ?? []).filter((g) => g.phase === phase);
+  const phaseGroupIds = new Set(phaseGroups.map((g) => g.id));
+  const phaseMatches = tournament.matches.filter(
+    (m) => m.phase === "group" && m.groupId && phaseGroupIds.has(m.groupId)
+  );
+
+  const hasTeams = phaseGroups.some((g) => g.teamIds.length > 0);
+  const hasMatches = phaseMatches.length > 0;
+
+  // Previous phase completion gates the "Configurar Fase X" button. For phase
+  // 1 there's no previous phase; show config only when explicit empty (which
+  // shouldn't happen for phase 1 since the wizard always seeds it).
+  const previousPhase = phase - 1;
+  const previousPhaseConfig = tournament.phaseConfigs?.find(
+    (c) => c.phase === previousPhase
+  );
+  const previousComplete = phase === 1 ? true : !!previousPhaseConfig?.complete;
+
+  // STATE 1 — Phase is fully set up and has matches: normal standings view.
+  if (hasMatches) {
+    return <GroupStageView tournament={tournament} phase={phase} canEdit={canEdit} />;
+  }
+
+  // STATE 2 — Teams assigned but no fixture yet: offer to generate matches.
+  if (hasTeams) {
+    if (!canEdit) {
+      return (
+        <p className="text-sm text-muted-foreground text-center py-8">
+          Esperando que el organizador genere los partidos de la fase {phase}.
+        </p>
+      );
+    }
+    return (
+      <div className="flex flex-col items-center gap-3 py-12 text-center">
+        <div>
+          <p className="text-base font-medium">Fase {phase} lista para generar partidos</p>
+          <p className="text-sm text-muted-foreground">
+            Los equipos ya están asignados a los grupos. Generá el fixture
+            todos-contra-todos automáticamente.
+          </p>
+        </div>
+        <Button
+          disabled={generating}
+          onClick={async () => {
+            setGenerating(true);
+            const ok = await generatePhaseMatches(tournament.id, phase);
+            setGenerating(false);
+            if (ok) toast.success(`Partidos de fase ${phase} generados`);
+            else toast.error("No pudimos generar los partidos");
+          }}
+        >
+          {generating ? "Generando..." : `Generar partidos de fase ${phase}`}
+        </Button>
+      </div>
+    );
+  }
+
+  // STATE 3 — Phase still empty: show the configure button if the previous
+  // phase has finished. Otherwise wait for it to finish.
+  if (!previousComplete) {
+    return (
+      <p className="text-sm text-muted-foreground text-center py-8">
+        Esperando que termine la fase {previousPhase}.
+      </p>
+    );
+  }
+
+  if (!canEdit) {
+    return (
+      <p className="text-sm text-muted-foreground text-center py-8">
+        Esperando que el organizador configure la fase {phase}.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-3 py-12 text-center">
+      <div>
+        <p className="text-base font-medium">Fase {phase} pendiente de configuración</p>
+        <p className="text-sm text-muted-foreground">
+          La fase {previousPhase} terminó. Asigná los clasificados a los grupos
+          de la fase {phase}.
+        </p>
+      </div>
+      <Button onClick={() => setConfigOpen(true)}>
+        Configurar fase {phase}
+      </Button>
+      <PhaseConfigDialog
+        open={configOpen}
+        onOpenChange={setConfigOpen}
+        tournament={tournament}
+        fromPhase={previousPhase}
+        mode="groups"
+      />
+    </div>
   );
 }
