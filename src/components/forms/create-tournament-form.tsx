@@ -35,8 +35,13 @@ import { supabase } from "@/lib/supabase";
 const INDIVIDUAL_SPORTS: Sport[] = ["tenis", "padel", "ping-pong"];
 
 interface GroupEntry {
+  /** Stable client-side id. Becomes the "temp id" passed to createTournament,
+   *  which the DB layer translates to a real UUID. */
+  id: string;
   name: string;
 }
+
+const phase2GroupId = (i: number) => `temp-phase2-group-${i}`;
 
 const GROUP_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
@@ -69,13 +74,46 @@ export function CreateTournamentForm() {
   const [startDate, setStartDate] = useState("");
   const [teamCount, setTeamCount] = useState<string>("");
   const [groups, setGroups] = useState<GroupEntry[]>([]);
-  const [advanceCount, setAdvanceCount] = useState<string>("2");
+  // Per-group advancement counts keyed by group id (stable client-side uuid for
+  // phase 1, or `temp-phase2-group-${i}` for phase 2). Read-time helpers fall
+  // back to a uniform default when a key is missing — this lets the user start
+  // with all groups equal and only override the ones that need to differ.
+  const [advance1Map, setAdvance1Map] = useState<Record<string, string>>({});
+  const [advance2Map, setAdvance2Map] = useState<Record<string, string>>({});
   const [enabledStats, setEnabledStats] = useState<MatchEventType[]>([]);
   const [bestOf, setBestOf] = useState<3 | 5>(3);
   const [hasPhase2, setHasPhase2] = useState(false);
-  const [phase1AdvancePerGroup, setPhase1AdvancePerGroup] = useState("2");
   const [phase2GroupCount, setPhase2GroupCount] = useState("2");
-  const [phase2AdvancePerGroup, setPhase2AdvancePerGroup] = useState("2");
+
+  // Default cupo that fills any group whose value isn't explicitly set.
+  const DEFAULT_ADVANCE = "2";
+  const readAdvance1 = (groupId: string) => advance1Map[groupId] ?? DEFAULT_ADVANCE;
+  const readAdvance2 = (groupId: string) => advance2Map[groupId] ?? DEFAULT_ADVANCE;
+  const setAdvance1 = (groupId: string, val: string) =>
+    setAdvance1Map((m) => ({ ...m, [groupId]: val }));
+  const setAdvance2 = (groupId: string, val: string) =>
+    setAdvance2Map((m) => ({ ...m, [groupId]: val }));
+  const applyAdvance1ToAll = (val: string) =>
+    setAdvance1Map(Object.fromEntries(groups.map((g) => [g.id, val])));
+  const applyAdvance2ToAll = (val: string) => {
+    const p2 = parseInt(phase2GroupCount) || 0;
+    setAdvance2Map(
+      Object.fromEntries(Array.from({ length: p2 }, (_, i) => [phase2GroupId(i), val]))
+    );
+  };
+
+  // Totals derived from the per-group maps. When a key is missing the default
+  // (2) is used, so the totals reflect what would be submitted right now.
+  const advance1Total = groups.reduce(
+    (sum, g) => sum + (parseInt(readAdvance1(g.id)) || 0),
+    0
+  );
+  const advance2Total = (() => {
+    const p2 = parseInt(phase2GroupCount) || 0;
+    let sum = 0;
+    for (let i = 0; i < p2; i++) sum += parseInt(readAdvance2(phase2GroupId(i))) || 0;
+    return sum;
+  })();
   const [scope, setScope] = useState<TournamentScope | "">("");
   const [department, setDepartment] = useState("");
   const [municipality, setMunicipality] = useState("");
@@ -104,11 +142,21 @@ export function CreateTournamentForm() {
 
   const addGroup = () => {
     const letter = GROUP_LETTERS[groups.length] || `${groups.length + 1}`;
-    setGroups([...groups, { name: `Grupo ${letter}` }]);
+    setGroups([...groups, { id: crypto.randomUUID(), name: `Grupo ${letter}` }]);
   };
 
   const removeGroup = (index: number) => {
+    const removed = groups[index];
     setGroups(groups.filter((_, i) => i !== index));
+    if (removed) {
+      // Drop the per-group cupo entry for the removed group so the map doesn't
+      // leak stale ids if the user adds/removes groups multiple times.
+      setAdvance1Map((m) => {
+        const next = { ...m };
+        delete next[removed.id];
+        return next;
+      });
+    }
   };
 
   // Per-step validation — reuses the exact same checks/messages as the final
@@ -146,10 +194,36 @@ export function CreateTournamentForm() {
         if (perGroup < 2) {
           return `No hay suficientes ${participantLabel.toLowerCase()} para ${groups.length} grupos (minimo 2 por grupo)`;
         }
-        if (format === "group-playoff") {
-          const advance = parseInt(advanceCount);
-          if (isNaN(advance) || advance < 2) return "Deben clasificar al menos 2";
-          if (advance >= count) return "Los que clasifican deben ser menos que el total";
+        if (format === "group-playoff" && !hasPhase2) {
+          // Validate per-group cupos for single-phase format.
+          for (const g of groups) {
+            const n = parseInt(readAdvance1(g.id));
+            if (isNaN(n) || n < 1) return `Cupo invalido en ${g.name}`;
+          }
+          if (advance1Total < 2) return "Deben clasificar al menos 2 en total";
+          if (advance1Total >= count) {
+            return "Los que clasifican deben ser menos que el total";
+          }
+        }
+        if (format === "group-playoff" && hasPhase2) {
+          // Phase 1: each group needs a valid cupo.
+          for (const g of groups) {
+            const n = parseInt(readAdvance1(g.id));
+            if (isNaN(n) || n < 1) return `Cupo invalido en ${g.name} (fase 1)`;
+          }
+          if (advance1Total < 2) return "En fase 1 deben clasificar al menos 2 en total";
+          // Phase 2: each phase-2 group needs a valid cupo, and the count must
+          // be enough to receive the phase 1 advancers.
+          const p2 = parseInt(phase2GroupCount) || 0;
+          if (p2 < 1) return "Fase 2 necesita al menos 1 grupo";
+          if (advance1Total < p2 * 2) {
+            return `Fase 2 necesita al menos 2 ${participantLabel.toLowerCase()} por grupo`;
+          }
+          for (let i = 0; i < p2; i++) {
+            const n = parseInt(readAdvance2(phase2GroupId(i)));
+            if (isNaN(n) || n < 1) return `Cupo invalido en grupo de fase 2`;
+          }
+          if (advance2Total < 2) return "A playoffs deben pasar al menos 2";
         }
       }
       return null;
@@ -193,6 +267,23 @@ export function CreateTournamentForm() {
   // Build tournament data for the payment record (used by webhook recovery)
   const buildTournamentData = (): Record<string, unknown> => {
     const count = parseInt(teamCount);
+    const p2Count = parseInt(phase2GroupCount) || 0;
+
+    // Per-group cupos keyed by index (group position). The server side
+    // (fulfill.ts) re-keys these by its own temp group ids when rebuilding
+    // the tournament. Legacy uniform fields are also sent so older payments
+    // can still be fulfilled if the payload format changes again.
+    const advance1ByIdx: Record<number, number> = {};
+    groups.forEach((g, i) => {
+      advance1ByIdx[i] = parseInt(readAdvance1(g.id)) || 0;
+    });
+    const advance2ByIdx: Record<number, number> = {};
+    for (let i = 0; i < p2Count; i++) {
+      advance2ByIdx[i] = parseInt(readAdvance2(phase2GroupId(i))) || 0;
+    }
+    const legacy1 = groups.length > 0 ? Math.round(advance1Total / groups.length) : 0;
+    const legacy2 = p2Count > 0 ? Math.round(advance2Total / p2Count) : 0;
+
     return {
       name: name.trim(),
       sport,
@@ -204,11 +295,15 @@ export function CreateTournamentForm() {
       enabledStats: enabledStats.length > 0 ? enabledStats : null,
       bestOf: sport === "volleyball" ? bestOf : null,
       groups: groups.map((g) => ({ name: g.name })),
-      advanceCount: format === "group-playoff" ? parseInt(advanceCount) : null,
+      // New: per-group cupos by index.
+      advance1ByIdx: format === "group-playoff" ? advance1ByIdx : null,
+      advance2ByIdx: format === "group-playoff" && hasPhase2 ? advance2ByIdx : null,
+      // Legacy uniform fields (kept for back-compat with in-flight payments).
+      advanceCount: format === "group-playoff" ? (hasPhase2 ? legacy2 : legacy1) : null,
       hasPhase2,
-      phase1AdvancePerGroup: hasPhase2 ? parseInt(phase1AdvancePerGroup) : null,
-      phase2GroupCount: hasPhase2 ? parseInt(phase2GroupCount) : null,
-      phase2AdvancePerGroup: hasPhase2 ? parseInt(phase2AdvancePerGroup) : null,
+      phase1AdvancePerGroup: hasPhase2 ? legacy1 : null,
+      phase2GroupCount: hasPhase2 ? p2Count : null,
+      phase2AdvancePerGroup: hasPhase2 ? legacy2 : null,
       price: priceInfo?.price ?? null,
       tier: priceInfo?.tier ?? null,
       scope: scope || null,
@@ -286,10 +381,12 @@ export function CreateTournamentForm() {
       let playoffConfig: PlayoffConfig | undefined;
       let phaseConfigs: PhaseConfig[] | undefined;
 
-      // Build groups: auto-distribute teams evenly
+      // Build groups: keep the stable client-side id from the wizard so the
+      // perGroup maps below reference the same ids the DB layer will translate
+      // to real UUIDs in createTournament().
       if (hasGroups) {
-        tournamentGroups = groups.map((g, gIdx) => ({
-          id: `temp-group-${gIdx}`,
+        tournamentGroups = groups.map((g) => ({
+          id: g.id,
           name: g.name,
           teamIds: [],
           phase: 1,
@@ -299,34 +396,49 @@ export function CreateTournamentForm() {
         }
       }
 
+      // Build the perGroup map for phase 1 (also used as the playoff perGroup
+      // when there's no phase 2). Legacy advancePerGroup is kept as the average
+      // for clients that still read the uniform field.
+      const perGroup1: Record<string, number> = Object.fromEntries(
+        groups.map((g) => [g.id, parseInt(readAdvance1(g.id)) || 0])
+      );
+      const legacy1 = groups.length > 0 ? Math.round(advance1Total / groups.length) : 0;
+
       if (format === "group-playoff") {
         if (hasPhase2) {
-          // Multi-phase: Phase 1 groups + Phase 2 empty groups + playoff bracket
           const p2GroupCount = parseInt(phase2GroupCount);
-          const p2Advance = parseInt(phase2AdvancePerGroup);
 
-          // Create Phase 2 empty groups (continue letter naming)
+          // Create Phase 2 empty groups using the same id convention the
+          // perGroup map uses (`temp-phase2-group-${i}`).
           const phase2Groups: TournamentGroup[] = Array.from({ length: p2GroupCount }, (_, i) => ({
-            id: `temp-phase2-group-${i}`,
+            id: phase2GroupId(i),
             name: `Grupo ${GROUP_LETTERS[groups.length + i] || `${groups.length + i + 1}`}`,
             teamIds: [],
             phase: 2,
           }));
           tournamentGroups = [...(tournamentGroups || []), ...phase2Groups];
 
+          const perGroup2: Record<string, number> = Object.fromEntries(
+            phase2Groups.map((g) => [g.id, parseInt(readAdvance2(g.id)) || 0])
+          );
+          const legacy2 = p2GroupCount > 0 ? Math.round(advance2Total / p2GroupCount) : 0;
+
           phaseConfigs = [
-            { phase: 1, advancePerGroup: parseInt(phase1AdvancePerGroup), nextGroupCount: p2GroupCount },
-            { phase: 2, advancePerGroup: p2Advance },
+            { phase: 1, advancePerGroup: legacy1, perGroup: perGroup1, nextGroupCount: p2GroupCount },
+            { phase: 2, advancePerGroup: legacy2, perGroup: perGroup2 },
           ];
 
           playoffConfig = {
-            advancePerGroup: p2Advance,
-            totalAdvancing: p2Advance * p2GroupCount,
+            advancePerGroup: legacy2,
+            perGroup: perGroup2,
+            totalAdvancing: advance2Total,
           };
         } else {
+          // Single-phase group-playoff: phase 1 cupos go straight to playoffs.
           playoffConfig = {
-            advancePerGroup: parseInt(advanceCount),
-            totalAdvancing: parseInt(advanceCount),
+            advancePerGroup: legacy1,
+            perGroup: perGroup1,
+            totalAdvancing: advance1Total,
           };
         }
       }
@@ -494,7 +606,8 @@ export function CreateTournamentForm() {
                       if (f === "elimination") {
                         setGroups([]);
                         setHasPhase2(false);
-                        setAdvanceCount("2");
+                        setAdvance1Map({});
+                        setAdvance2Map({});
                       }
                     }}
                   >
@@ -619,23 +732,39 @@ export function CreateTournamentForm() {
 
                   {groups.length >= 1 && format === "group-playoff" && !hasPhase2 && (
                     <div className="space-y-2">
-                      <Label>Equipos que clasifican a playoffs</Label>
-                      <Input
-                        type="number"
-                        min={2}
-                        max={(parseInt(teamCount) || 2) - 1}
-                        value={advanceCount}
-                        onChange={(e) => setAdvanceCount(e.target.value)}
-                      />
-                      {advanceCount && !isNaN(parseInt(advanceCount)) && (
+                      <div className="flex items-center justify-between">
+                        <Label>Cupos a playoffs por grupo</Label>
+                        <button
+                          type="button"
+                          className="text-xs text-primary hover:underline"
+                          onClick={() => applyAdvance1ToAll(DEFAULT_ADVANCE)}
+                        >
+                          Aplicar {DEFAULT_ADVANCE} a todos
+                        </button>
+                      </div>
+                      <div className="space-y-1.5 rounded-md border p-3">
+                        {groups.map((g) => (
+                          <div key={g.id} className="flex items-center justify-between gap-2">
+                            <span className="text-sm">{g.name}</span>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={(parseInt(teamCount) || 2) - 1}
+                              value={readAdvance1(g.id)}
+                              onChange={(e) => setAdvance1(g.id, e.target.value)}
+                              className="w-16 h-8 text-center text-sm"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      {advance1Total > 0 && (
                         <p className="text-xs text-muted-foreground">
-                          {parseInt(advanceCount)} {participantLabel.toLowerCase()} pasan a playoffs
+                          Total: {advance1Total} {participantLabel.toLowerCase()} pasan a playoffs
                           {(() => {
-                            const num = parseInt(advanceCount);
                             let p = 1;
-                            while (p < num) p *= 2;
-                            return p !== num
-                              ? ` (${p - num} bye${p - num > 1 ? "s" : ""} para los mejor clasificados)`
+                            while (p < advance1Total) p *= 2;
+                            return p !== advance1Total
+                              ? ` (${p - advance1Total} bye${p - advance1Total > 1 ? "s" : ""} para los mejor clasificados)`
                               : "";
                           })()}
                         </p>
@@ -646,12 +775,10 @@ export function CreateTournamentForm() {
                   {/* Multi-phase: visual flow diagram */}
                   {groups.length >= 1 && format === "group-playoff" && hasPhase2 && (() => {
                     const label = participantLabel.toLowerCase();
-                    const p1Advance = parseInt(phase1AdvancePerGroup) || 0;
-                    const p1Total = p1Advance * groups.length;
+                    const p1Total = advance1Total;
                     const p2Groups = parseInt(phase2GroupCount) || 1;
                     const p2PerGroup = Math.floor(p1Total / p2Groups);
-                    const p2Advance = parseInt(phase2AdvancePerGroup) || 0;
-                    const playoffTotal = p2Advance * p2Groups;
+                    const playoffTotal = advance2Total;
                     let bracket = 1;
                     while (bracket < playoffTotal) bracket *= 2;
                     const byes = bracket - playoffTotal;
@@ -688,19 +815,36 @@ export function CreateTournamentForm() {
                               ? "Todos los equipos juegan entre si."
                               : "Todos contra todos dentro de cada grupo."}
                           </p>
-                          <div className="flex items-center gap-2 pt-1">
-                            <span className="text-sm">Los mejores</span>
-                            <Input
-                              type="number"
-                              min={1}
-                              max={Math.floor((parseInt(teamCount) || 2) / Math.max(groups.length, 1))}
-                              value={phase1AdvancePerGroup}
-                              onChange={(e) => setPhase1AdvancePerGroup(e.target.value)}
-                              className="w-14 h-8 text-center text-sm"
-                            />
-                            <span className="text-sm">
-                              {groups.length === 1 ? "avanzan" : "de cada grupo avanzan"}
-                            </span>
+                          <div className="space-y-1.5 pt-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">
+                                {groups.length === 1
+                                  ? "Cuántos avanzan a fase 2"
+                                  : "Cupos a fase 2 por grupo"}
+                              </span>
+                              {groups.length > 1 && (
+                                <button
+                                  type="button"
+                                  className="text-xs text-primary hover:underline"
+                                  onClick={() => applyAdvance1ToAll(DEFAULT_ADVANCE)}
+                                >
+                                  Aplicar {DEFAULT_ADVANCE} a todos
+                                </button>
+                              )}
+                            </div>
+                            {groups.map((g) => (
+                              <div key={g.id} className="flex items-center justify-between gap-2">
+                                <span className="text-sm">{g.name}</span>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  max={Math.floor((parseInt(teamCount) || 2) / Math.max(groups.length, 1))}
+                                  value={readAdvance1(g.id)}
+                                  onChange={(e) => setAdvance1(g.id, e.target.value)}
+                                  className="w-14 h-8 text-center text-sm"
+                                />
+                              </div>
+                            ))}
                           </div>
                         </div>
 
@@ -732,19 +876,40 @@ export function CreateTournamentForm() {
                               ? `Los ${p1Total} ${label} clasificados juegan todos entre si en una sola tabla.`
                               : `Se arman ${p2Groups} grupos nuevos de ${p2PerGroup} ${label} cada uno. Vuelven a jugar todos contra todos.`}
                           </p>
-                          <div className="flex items-center gap-2 pt-1">
-                            <span className="text-sm">Los mejores</span>
-                            <Input
-                              type="number"
-                              min={1}
-                              max={p2PerGroup || 1}
-                              value={phase2AdvancePerGroup}
-                              onChange={(e) => setPhase2AdvancePerGroup(e.target.value)}
-                              className="w-14 h-8 text-center text-sm"
-                            />
-                            <span className="text-sm">
-                              {p2Groups === 1 ? "avanzan" : "de cada grupo avanzan"}
-                            </span>
+                          <div className="space-y-1.5 pt-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">
+                                {p2Groups === 1
+                                  ? "Cuántos avanzan a playoffs"
+                                  : "Cupos a playoffs por grupo"}
+                              </span>
+                              {p2Groups > 1 && (
+                                <button
+                                  type="button"
+                                  className="text-xs text-primary hover:underline"
+                                  onClick={() => applyAdvance2ToAll(DEFAULT_ADVANCE)}
+                                >
+                                  Aplicar {DEFAULT_ADVANCE} a todos
+                                </button>
+                              )}
+                            </div>
+                            {Array.from({ length: p2Groups }, (_, i) => {
+                              const id = phase2GroupId(i);
+                              const groupName = `Grupo ${GROUP_LETTERS[groups.length + i] || `${groups.length + i + 1}`}`;
+                              return (
+                                <div key={id} className="flex items-center justify-between gap-2">
+                                  <span className="text-sm">{groupName}</span>
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    max={p2PerGroup || 1}
+                                    value={readAdvance2(id)}
+                                    onChange={(e) => setAdvance2(id, e.target.value)}
+                                    className="w-14 h-8 text-center text-sm"
+                                  />
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
 
@@ -922,7 +1087,7 @@ export function CreateTournamentForm() {
                   <SummaryRow label="Grupos" value={`${groups.length}`} />
                 )}
                 {format === "group-playoff" && !hasPhase2 && (
-                  <SummaryRow label="Clasifican" value={`${advanceCount} ${participantLabel.toLowerCase()}`} />
+                  <SummaryRow label="Clasifican" value={`${advance1Total} ${participantLabel.toLowerCase()}`} />
                 )}
                 {format === "group-playoff" && hasPhase2 && (
                   <SummaryRow label="Estructura" value="Fase 1 → Fase 2 → Playoffs" />

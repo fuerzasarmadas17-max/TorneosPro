@@ -88,10 +88,39 @@ export async function fulfillTournamentPayment(
     }
   }
 
+  // Translate the per-group cupos sent by the wizard (keyed by index) into the
+  // tournament-side perGroup map (keyed by the temp ids we just assigned).
+  // The wizard's stable client uuids aren't useful here because we rebuild
+  // groups server-side; indices give us a stable mapping.
+  const readIdxMap = (raw: unknown): Record<number, number> | undefined => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+    return raw as Record<number, number>;
+  };
+  const advance1ByIdx = readIdxMap(data.advance1ByIdx);
+  const advance2ByIdx = readIdxMap(data.advance2ByIdx);
+
   if (format === "group-playoff") {
+    // Phase 1 perGroup map (used by both single-phase and multi-phase setups).
+    const perGroup1: Record<string, number> | undefined = tournamentGroups
+      ? Object.fromEntries(
+          tournamentGroups.map((g, idx) => {
+            const fromIdxMap = advance1ByIdx?.[idx];
+            const fromLegacy = data.hasPhase2
+              ? Number(data.phase1AdvancePerGroup)
+              : Number(data.advanceCount);
+            return [g.id, Number(fromIdxMap ?? fromLegacy) || 1];
+          })
+        )
+      : undefined;
+    const advance1Total = perGroup1
+      ? Object.values(perGroup1).reduce((s, n) => s + n, 0)
+      : 0;
+    const legacy1 = perGroup1 && Object.keys(perGroup1).length > 0
+      ? Math.round(advance1Total / Object.keys(perGroup1).length)
+      : 1;
+
     if (data.hasPhase2) {
       const p2GroupCount = Number(data.phase2GroupCount) || 1;
-      const p2Advance = Number(data.phase2AdvancePerGroup) || 1;
       const phase2Groups: TournamentGroup[] = Array.from(
         { length: p2GroupCount },
         (_, i) => ({
@@ -103,22 +132,36 @@ export async function fulfillTournamentPayment(
       );
       tournamentGroups = [...(tournamentGroups || []), ...phase2Groups];
 
+      const perGroup2: Record<string, number> = Object.fromEntries(
+        phase2Groups.map((g, idx) => [
+          g.id,
+          Number(advance2ByIdx?.[idx] ?? data.phase2AdvancePerGroup) || 1,
+        ])
+      );
+      const advance2Total = Object.values(perGroup2).reduce((s, n) => s + n, 0);
+      const legacy2 = p2GroupCount > 0 ? Math.round(advance2Total / p2GroupCount) : 1;
+
       phaseConfigs = [
         {
           phase: 1,
-          advancePerGroup: Number(data.phase1AdvancePerGroup) || 1,
+          advancePerGroup: legacy1,
+          perGroup: perGroup1,
           nextGroupCount: p2GroupCount,
         },
-        { phase: 2, advancePerGroup: p2Advance },
+        { phase: 2, advancePerGroup: legacy2, perGroup: perGroup2 },
       ];
 
       playoffConfig = {
-        advancePerGroup: p2Advance,
-        totalAdvancing: p2Advance * p2GroupCount,
+        advancePerGroup: legacy2,
+        perGroup: perGroup2,
+        totalAdvancing: advance2Total,
       };
     } else {
-      const advance = Number(data.advanceCount) || 2;
-      playoffConfig = { advancePerGroup: advance, totalAdvancing: advance };
+      playoffConfig = {
+        advancePerGroup: legacy1,
+        perGroup: perGroup1,
+        totalAdvancing: advance1Total,
+      };
     }
   }
 

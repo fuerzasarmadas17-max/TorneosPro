@@ -340,7 +340,7 @@ export function TournamentDetail({
   orgSponsors,
   isAuthenticated = false,
 }: TournamentDetailProps) {
-  const { updateTournamentProps } = useTournaments();
+  const { updateTournamentProps, updatePlayoffConfig } = useTournaments();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -449,6 +449,40 @@ export function TournamentDetail({
           configurableTabs={configurableTabs}
           visibleTabs={tournament.visibleTabs}
           onUpdate={(updates) => updateTournamentProps(tournament.id, updates)}
+          onUpdatePerGroup={(perGroupByPhase) => {
+            // The user edited per-group cupos. Two writes are needed:
+            // (1) phaseConfigs gets the updated perGroup for every edited phase
+            // so fillPhase2Groups uses the right counts for intermediate phases.
+            // (2) For the last phase (the one feeding the playoff bracket), the
+            // same perGroup is also written to playoff_configs.
+            const lastPhase = Math.max(
+              ...(tournament.groups?.map((g) => g.phase ?? 1) ?? [1])
+            );
+            const updatedPhaseConfigs = (tournament.phaseConfigs ?? []).map((pc) => {
+              const updated = perGroupByPhase[pc.phase];
+              if (!updated) return pc;
+              const avg = Math.max(
+                1,
+                Math.round(
+                  Object.values(updated).reduce((s, n) => s + n, 0) /
+                    Object.keys(updated).length
+                )
+              );
+              return { ...pc, perGroup: updated, advancePerGroup: avg };
+            });
+            if (updatedPhaseConfigs.length > 0) {
+              updateTournamentProps(tournament.id, { phaseConfigs: updatedPhaseConfigs });
+            }
+            const lastPerGroup = perGroupByPhase[lastPhase];
+            if (lastPerGroup && tournament.playoffConfig) {
+              const total = Object.values(lastPerGroup).reduce((s, n) => s + n, 0);
+              const avg = Math.max(
+                1,
+                Math.round(total / Object.keys(lastPerGroup).length)
+              );
+              updatePlayoffConfig(tournament.id, avg, total, lastPerGroup);
+            }
+          }}
         />
       )}
 
@@ -704,6 +738,7 @@ function ConfigurationDialog({
   configurableTabs,
   visibleTabs,
   onUpdate,
+  onUpdatePerGroup,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -711,8 +746,11 @@ function ConfigurationDialog({
   configurableTabs: { key: string; label: string }[];
   visibleTabs?: string[];
   onUpdate: (
-    updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "visibleTabs">>
+    updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "visibleTabs" | "phaseConfigs">>
   ) => void;
+  /** Persist per-group cupos: updates both the matching phaseConfig and the
+   *  playoff_configs row when the edited phase is the last one. */
+  onUpdatePerGroup: (perGroupByPhase: Record<number, Record<string, number>>) => void;
 }) {
   // The parent passes `key={tournament.id}` so this component remounts and
   // re-initializes from fresh props when the tournament changes.
@@ -728,6 +766,38 @@ function ConfigurationDialog({
   const [visibilityDraft, setVisibilityDraft] = useState<string[]>(visibleTabs ?? []);
   const [bestOf, setBestOf] = useState<3 | 5>(tournament.bestOf ?? 3);
 
+  // Per-group cupos draft, keyed by phase number → groupId → count (as string
+  // for input bindings). Seeded from the saved perGroup map when present, or
+  // from the legacy uniform advancePerGroup otherwise.
+  const [cuposDraft, setCuposDraft] = useState<Record<number, Record<string, string>>>(() => {
+    const out: Record<number, Record<string, string>> = {};
+    const byPhase = new Map<number, typeof tournament.groups>();
+    for (const g of tournament.groups ?? []) {
+      const arr = byPhase.get(g.phase ?? 1) ?? [];
+      arr.push(g);
+      byPhase.set(g.phase ?? 1, arr);
+    }
+    for (const [phase, gs] of byPhase) {
+      // For the last phase, the saved perGroup lives in playoffConfig; for
+      // intermediate phases it's in the matching phaseConfig.
+      const isLast = !tournament.phaseConfigs?.some((c) => c.phase > phase);
+      const pc = tournament.phaseConfigs?.find((c) => c.phase === phase);
+      const saved = isLast
+        ? (tournament.playoffConfig?.perGroup ?? pc?.perGroup)
+        : pc?.perGroup;
+      const legacy = isLast
+        ? (tournament.playoffConfig?.advancePerGroup ?? pc?.advancePerGroup ?? 2)
+        : (pc?.advancePerGroup ?? 2);
+      const row: Record<string, string> = {};
+      for (const g of gs ?? []) {
+        const val = saved?.[g.id] ?? legacy;
+        row[g.id] = String(val);
+      }
+      out[phase] = row;
+    }
+    return out;
+  });
+
   const sport = getSportInfo(tournament.sport);
 
   const groupsByPhase = (() => {
@@ -742,8 +812,10 @@ function ConfigurationDialog({
 
   // Whether the active section has anything to save. Format is editable only
   // when bestOf applies (volleyball); otherwise it's purely informational.
+  // Groups section is editable when the tournament uses groups (cupos).
+  const hasGroups = (tournament.groups?.length ?? 0) > 0;
   const isReadOnlySection =
-    section === "groups" ||
+    (section === "groups" && !hasGroups) ||
     (section === "format" && tournament.sport !== "volleyball");
 
   const handleClose = () => {
@@ -782,6 +854,19 @@ function ConfigurationDialog({
         updates.bestOf = bestOf;
       }
       if (Object.keys(updates).length > 0) onUpdate(updates);
+    } else if (section === "groups") {
+      // Parse the per-phase draft to numbers and forward to the parent. The
+      // parent handler decides which writes to make (phaseConfigs vs playoff).
+      const numericByPhase: Record<number, Record<string, number>> = {};
+      for (const [phase, row] of Object.entries(cuposDraft)) {
+        const entries: Record<string, number> = {};
+        for (const [gid, str] of Object.entries(row)) {
+          const n = parseInt(str);
+          if (!isNaN(n) && n > 0) entries[gid] = n;
+        }
+        if (Object.keys(entries).length > 0) numericByPhase[Number(phase)] = entries;
+      }
+      if (Object.keys(numericByPhase).length > 0) onUpdatePerGroup(numericByPhase);
     }
     setConfirming(false);
     setSuccess(true);
@@ -1018,7 +1103,7 @@ function ConfigurationDialog({
               </div>
             )}
 
-            {/* Grupos y fases (read-only) */}
+            {/* Grupos y fases (editable: cupos por grupo) */}
             {section === "groups" && (
               <div className="space-y-3">
                 {groupsByPhase.length === 0 ? (
@@ -1027,43 +1112,53 @@ function ConfigurationDialog({
                   </p>
                 ) : (
                   groupsByPhase.map(([phase, groups]) => {
-                    const pc = tournament.phaseConfigs?.find((c) => c.phase === phase);
+                    const phaseDraft = cuposDraft[phase] ?? {};
+                    const phaseTotal = Object.values(phaseDraft).reduce(
+                      (s, str) => s + (parseInt(str) || 0),
+                      0
+                    );
+                    const isLast = !tournament.phaseConfigs?.some((c) => c.phase > phase);
                     return (
                       <div key={phase} className="rounded-lg border bg-muted/30 p-3 space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium">
                             {tournament.phaseConfigs?.length ? `Fase ${phase}` : "Fase única"}
                           </span>
-                          {pc?.advancePerGroup !== undefined && (
-                            <span className="text-xs text-muted-foreground">
-                              Avanzan {pc.advancePerGroup} de cada grupo
-                            </span>
-                          )}
+                          <span className="text-xs text-muted-foreground">
+                            Total: {phaseTotal} {isLast ? "a playoffs" : "a fase siguiente"}
+                          </span>
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                           {groups?.map((g) => (
                             <div
                               key={g.id}
-                              className="flex items-center justify-between text-xs"
+                              className="flex items-center justify-between gap-2"
                             >
-                              <span>{g.name}</span>
-                              <span className="text-muted-foreground">
-                                {g.teamIds.length} {g.teamIds.length === 1 ? "equipo" : "equipos"}
-                              </span>
+                              <div className="flex flex-col">
+                                <span className="text-sm">{g.name}</span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {g.teamIds.length} {g.teamIds.length === 1 ? "equipo" : "equipos"}
+                                </span>
+                              </div>
+                              <Input
+                                type="number"
+                                min={1}
+                                value={phaseDraft[g.id] ?? ""}
+                                onChange={(e) =>
+                                  setCuposDraft((prev) => ({
+                                    ...prev,
+                                    [phase]: { ...(prev[phase] ?? {}), [g.id]: e.target.value },
+                                  }))
+                                }
+                                className="w-14 h-8 text-center text-sm"
+                                aria-label={`Cupo de ${g.name}`}
+                              />
                             </div>
                           ))}
                         </div>
                       </div>
                     );
                   })
-                )}
-                {tournament.playoffConfig && (
-                  <div className="rounded-lg border bg-muted/30 p-3 text-xs flex items-center justify-between">
-                    <span className="font-medium">Playoffs</span>
-                    <span className="text-muted-foreground">
-                      {tournament.playoffConfig.totalAdvancing} clasificados
-                    </span>
-                  </div>
                 )}
               </div>
             )}

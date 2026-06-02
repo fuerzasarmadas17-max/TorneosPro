@@ -38,10 +38,20 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
       return;
     }
 
-    const groupCount = tournament.groups?.length || 1;
-    const perGroup = Math.floor(value / groupCount);
+    // Distribute the total evenly across groups; surplus slots go to the
+    // first groups (so 8 across 3 → {3,3,2}). This keeps sum(perGroup) ===
+    // totalAdvancing — the bracket size and per-group advancement rule stay
+    // in sync. The Configuration dialog lets the user refine per group.
+    const groups = tournament.groups ?? [];
+    const groupCount = groups.length || 1;
+    const base = Math.floor(value / groupCount);
+    const remainder = value % groupCount;
+    const perGroup: Record<string, number> = {};
+    groups.forEach((g, i) => {
+      perGroup[g.id] = base + (i < remainder ? 1 : 0);
+    });
 
-    await updatePlayoffConfig(tournament.id, perGroup, value);
+    await updatePlayoffConfig(tournament.id, base, value, perGroup);
     toast.success(`Playoffs actualizados: ${value} equipos clasifican`);
     setEditing(false);
   };
