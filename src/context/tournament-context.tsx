@@ -53,8 +53,16 @@ interface TournamentContextType {
     tournamentId: string,
     slotAssignments: Record<string, { homeTeamId: string | null; awayTeamId: string | null }>
   ) => Promise<boolean>;
-  /** Generate round-robin matches for an already-populated phase's groups. */
-  generatePhaseMatches: (tournamentId: string, phase: number) => Promise<boolean>;
+  /** Generate round-robin matches for an already-populated phase's groups.
+   *  `doubleRoundRobin` controls "ida y vuelta" (each pair plays twice). When
+   *  omitted, falls back to the tournament-level flag (default false). The
+   *  chosen value is persisted at the tournament level so subsequent phases
+   *  and pending-matchup checks stay consistent. */
+  generatePhaseMatches: (
+    tournamentId: string,
+    phase: number,
+    doubleRoundRobin?: boolean
+  ) => Promise<boolean>;
   updateMatch: (
     tournamentId: string,
     matchId: string,
@@ -473,7 +481,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   );
 
   const generatePhaseMatches = useCallback(
-    async (tournamentId: string, phase: number) => {
+    async (tournamentId: string, phase: number, doubleRoundRobin?: boolean) => {
       // Build round-robin matches per group in the given phase, then persist.
       // Re-uses generateRoundRobinCircle so the fixture matches what the
       // wizard would have generated for the first phase.
@@ -482,11 +490,11 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       const phaseGroups = (tournament.groups ?? []).filter((g) => g.phase === phase);
       if (phaseGroups.length === 0) return false;
 
+      const drr = doubleRoundRobin ?? tournament.doubleRoundRobin ?? false;
       const allNew: Match[] = [];
       // Start match numbering after the highest existing matchNumber so the
       // ids stay unique across already-generated phases.
       let counter = Math.max(0, ...tournament.matches.map((m) => m.matchNumber)) + 1;
-      const doubleRoundRobin = tournament.doubleRoundRobin;
       for (const group of phaseGroups) {
         if (group.teamIds.length < 2) continue;
         const { matches, nextMatchCounter } = generateRoundRobinCircle(
@@ -496,7 +504,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
             phase: "group",
             groupId: group.id,
             matchCounterStart: counter,
-            doubleRoundRobin,
+            doubleRoundRobin: drr,
           }
         );
         allNew.push(...matches);
@@ -506,8 +514,22 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       const idMapping = await insertMatchesForPhase(allNew, tournamentId);
       // Swap temp ids for DB-generated ids before patching local state.
       const persisted = allNew.map((m) => ({ ...m, id: idMapping[m.id] ?? m.id }));
+      // Persist the chosen "ida y vuelta" at the tournament level so other
+      // views (pending-matchups detection, future phase generation) stay
+      // consistent. Mirrors what match-schedule.tsx already does.
+      if (doubleRoundRobin !== undefined && doubleRoundRobin !== tournament.doubleRoundRobin) {
+        await dbUpdateTournament(tournamentId, { doubleRoundRobin: drr });
+      }
       setTournaments((prev) =>
-        prev.map((t) => (t.id === tournamentId ? { ...t, matches: [...t.matches, ...persisted] } : t))
+        prev.map((t) =>
+          t.id === tournamentId
+            ? {
+                ...t,
+                matches: [...t.matches, ...persisted],
+                doubleRoundRobin: drr,
+              }
+            : t
+        )
       );
       return true;
     },

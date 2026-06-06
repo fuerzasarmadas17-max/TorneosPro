@@ -1212,6 +1212,7 @@ function PhaseTabContent({
   const { generatePhaseMatches } = useTournaments();
   const [configOpen, setConfigOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [idaVueltaOpen, setIdaVueltaOpen] = useState(false);
 
   const phaseGroups = (tournament.groups ?? []).filter((g) => g.phase === phase);
   const phaseGroupIds = new Set(phaseGroups.map((g) => g.id));
@@ -1221,6 +1222,39 @@ function PhaseTabContent({
 
   const hasTeams = phaseGroups.some((g) => g.teamIds.length > 0);
   const hasMatches = phaseMatches.length > 0;
+
+  // Mirror the existing match-schedule flow: paid tournaments get the
+  // Ida vs Ida-y-Vuelta picker; free ones default to "ida" (false) because
+  // double round-robin is gated to the paid plan there too.
+  const runGenerate = async (doubleRoundRobin: boolean) => {
+    setIdaVueltaOpen(false);
+    setGenerating(true);
+    const ok = await generatePhaseMatches(tournament.id, phase, doubleRoundRobin);
+    setGenerating(false);
+    if (ok) toast.success(`Partidos de fase ${phase} generados`);
+    else toast.error("No pudimos generar los partidos");
+  };
+
+  const onGenerateClick = () => {
+    if (tournament.plan === "paid") {
+      setIdaVueltaOpen(true);
+    } else {
+      runGenerate(false);
+    }
+  };
+
+  // Jornada counts shown in the dialog so the organizer sees how many fechas
+  // each option produces. Uses the smallest group's team count (worst case)
+  // and adjusts for an even/odd team count the same way the generator does.
+  const smallestGroupSize = phaseGroups.reduce(
+    (min, g) => (g.teamIds.length > 0 && g.teamIds.length < min ? g.teamIds.length : min),
+    Infinity
+  );
+  const teamsForJornadas = isFinite(smallestGroupSize) ? smallestGroupSize : 0;
+  const jornadasIda = teamsForJornadas > 1
+    ? (teamsForJornadas % 2 === 0 ? teamsForJornadas - 1 : teamsForJornadas)
+    : 0;
+  const jornadasIdaVuelta = jornadasIda * 2;
 
   // Previous phase completion gates the "Configurar Fase X" button. For phase
   // 1 there's no previous phase; show config only when explicit empty (which
@@ -1254,18 +1288,47 @@ function PhaseTabContent({
             todos-contra-todos automáticamente.
           </p>
         </div>
-        <Button
-          disabled={generating}
-          onClick={async () => {
-            setGenerating(true);
-            const ok = await generatePhaseMatches(tournament.id, phase);
-            setGenerating(false);
-            if (ok) toast.success(`Partidos de fase ${phase} generados`);
-            else toast.error("No pudimos generar los partidos");
-          }}
-        >
+        <Button disabled={generating} onClick={onGenerateClick}>
           {generating ? "Generando..." : `Generar partidos de fase ${phase}`}
         </Button>
+        <Dialog open={idaVueltaOpen} onOpenChange={setIdaVueltaOpen}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Tipo de calendario</DialogTitle>
+              <DialogDescription>
+                Elegí el formato para los partidos de la fase {phase}.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-3">
+              <Button
+                variant="outline"
+                onClick={() => runGenerate(false)}
+                className="justify-start h-auto py-3"
+              >
+                <div className="text-left">
+                  <div className="font-medium">Ida</div>
+                  <div className="text-xs text-muted-foreground font-normal">
+                    Cada equipo se enfrenta una vez
+                    {jornadasIda > 0 ? ` (${jornadasIda} jornadas)` : ""}
+                  </div>
+                </div>
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => runGenerate(true)}
+                className="justify-start h-auto py-3"
+              >
+                <div className="text-left">
+                  <div className="font-medium">Ida y Vuelta</div>
+                  <div className="text-xs text-muted-foreground font-normal">
+                    Cada equipo se enfrenta dos veces
+                    {jornadasIdaVuelta > 0 ? ` (${jornadasIdaVuelta} jornadas)` : ""}
+                  </div>
+                </div>
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
