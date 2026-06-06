@@ -106,7 +106,7 @@ function getPlayableMatches(tournament: Tournament): Match[] {
  * group-phase number (1, 2, …) if the match belongs to a group; 99 for
  * playoff / bracket matches.
  */
-function getMatchPhaseKey(match: Match, tournament: Tournament): number {
+export function getMatchPhaseKey(match: Match, tournament: Tournament): number {
   if (match.phase === "group" && match.groupId) {
     const g = tournament.groups?.find((g) => g.id === match.groupId);
     return g?.phase ?? 1;

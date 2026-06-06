@@ -1,11 +1,12 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { fetchTournamentById, updateTournament, insertMatchesForPhase, assignTeamsToGroup } from "@/lib/db/tournaments";
 import { updateMatchResult, updateMatchDetails } from "@/lib/db/matches";
-import { fillPlayoffBracket, fillPhase2Groups } from "@/data/helpers";
+import { fillPlayoffBracket, fillPhase2Groups, getFinalSeriesChampion } from "@/data/helpers";
 import { Tournament, Match, PhaseConfig } from "@/types";
 import {
   generateRandomResult,
   getCurrentPhaseMatches,
+  getMatchPhaseKey,
   getNextJornadaMatches,
   shouldForceWinner,
 } from "@/lib/admin/auto-advance";
@@ -33,10 +34,38 @@ export async function advanceTournament(
     throw new Error("Tournament not found");
   }
 
-  const targets =
+  let targets =
     mode === "jornada"
       ? getNextJornadaMatches(tournament)
       : getCurrentPhaseMatches(tournament);
+
+  if (targets.length === 0) return { matchesAffected: 0 };
+
+  // Quick fix (Pieza F follow-up): if completing these targets would close
+  // the current phase, hold back the last match so the organizer completes
+  // it manually via the UI. Applies to BOTH group phases (the manual
+  // completion triggers the new "fase completada" modal that hands off to
+  // the playoffs configurator) AND playoff bracket rounds (so the admin can
+  // play the last bracket match by hand).
+  //
+  // Snapshot to a const so the .filter closure keeps the non-null narrowing
+  // (tournament is a `let` and gets reassigned later in the loop below).
+  const tSnap = tournament;
+  const phaseKey = getMatchPhaseKey(targets[0], tSnap);
+  const remainingInPhase = tSnap.matches.filter(
+    (m) =>
+      m.status !== "completed" &&
+      m.homeTeamId &&
+      m.awayTeamId &&
+      getMatchPhaseKey(m, tSnap) === phaseKey
+  ).length;
+  const wouldClosePhase = targets.length >= remainingInPhase;
+  if (wouldClosePhase) {
+    // Leave the last match for the human. If there's only one match total
+    // and we'd skip it, targets becomes [] — server returns
+    // matchesAffected=0 and the UI prompts the admin to play it manually.
+    targets = targets.slice(0, -1);
+  }
 
   if (targets.length === 0) return { matchesAffected: 0 };
 
@@ -139,10 +168,19 @@ async function applyCascadeAfterMatchUpdate(
     updatedTournament = await processSinglePhaseCascade(t);
   }
 
-  // 4. Tournament status.
+  // 4. Tournament status. For group-playoff / elimination, "completed" is
+  // gated on the final SERIES having a champion (Pieza I helper handles
+  // single / double_leg / best-of-N). Mirrors tournament-context.tsx cascade.
   const matches = updatedTournament.matches;
-  const allCompleted =
-    matches.length > 0 && matches.every((m) => m.status === "completed");
+  let allCompleted: boolean;
+  if (
+    updatedTournament.format === "group-playoff" ||
+    updatedTournament.format === "elimination"
+  ) {
+    allCompleted = getFinalSeriesChampion(updatedTournament) != null;
+  } else {
+    allCompleted = matches.length > 0 && matches.every((m) => m.status === "completed");
+  }
   const anyStarted = matches.some(
     (m) =>
       m.status === "completed" ||

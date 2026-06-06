@@ -1,5 +1,62 @@
 import { Match, MatchPhase, StandingsEntry, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, User } from "@/types";
 
+/**
+ * Pieza I: identify the winner of the final series, if any.
+ *
+ * - "single" / no format set: champion = winnerId of the only final match.
+ * - "double_leg": champion = winnerId of the vuelta (already an aggregate
+ *   winner thanks to Pieza G's aggregate-winner fix).
+ * - "best_of_5" / "best_of_7": count wins per team across all final series
+ *   matches; champion is the first team to win ceil(N/2).
+ *
+ * Returns null when the series is still open (no team has clinched yet).
+ */
+export function getFinalSeriesChampion(tournament: Tournament): string | null {
+  const playoff = tournament.matches.filter(
+    (m) =>
+      m.phase === "playoff" || (!m.phase && tournament.format === "elimination")
+  );
+  if (playoff.length === 0) return null;
+  const maxRound = Math.max(...playoff.map((m) => m.round));
+  const lastRound = playoff
+    .filter((m) => m.round === maxRound)
+    .sort((a, b) => a.matchNumber - b.matchNumber);
+
+  // Best-of-N: count wins per team across the series.
+  if (
+    tournament.playoffFinalFormat === "best_of_5" ||
+    tournament.playoffFinalFormat === "best_of_7"
+  ) {
+    const target =
+      tournament.playoffFinalFormat === "best_of_5" ? 3 : 4;
+    const wins: Record<string, number> = {};
+    for (const m of lastRound) {
+      if (m.status === "completed" && m.winnerId) {
+        wins[m.winnerId] = (wins[m.winnerId] ?? 0) + 1;
+      }
+    }
+    for (const [teamId, count] of Object.entries(wins)) {
+      if (count >= target) return teamId;
+    }
+    return null;
+  }
+
+  // Double-leg final: champion is whoever has aggregate winner on the
+  // vuelta (the last completed match of the pair).
+  if (tournament.playoffFinalFormat === "double_leg" ||
+      // Implicit double_leg when only the bracket-wide flag is set and
+      // no explicit final format chosen.
+      (!tournament.playoffFinalFormat && tournament.playoffDoubleLeg)) {
+    const finalMatch = lastRound[lastRound.length - 1];
+    return finalMatch?.status === "completed" ? finalMatch.winnerId ?? null : null;
+  }
+
+  // Single (default for everything else): champion = winnerId of the
+  // single final match.
+  const finalMatch = lastRound[0];
+  return finalMatch?.status === "completed" ? finalMatch?.winnerId ?? null : null;
+}
+
 // --- Per-group advancement helpers ---
 
 /**
