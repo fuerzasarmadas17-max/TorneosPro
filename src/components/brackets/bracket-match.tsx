@@ -11,9 +11,14 @@ interface BracketMatchProps {
   vueltaMatch?: Match;
   canEdit: boolean;
   tournament?: Tournament;
+  /** Pieza I: when set, the card renders the whole best-of-N series with
+   *  a game-by-game line and a running series score. */
+  seriesMatches?: Match[];
+  /** Wins to clinch the series (3 for best-of-5, 4 for best-of-7). */
+  seriesTarget?: number;
 }
 
-export function BracketMatch({ match, vueltaMatch, canEdit, tournament }: BracketMatchProps) {
+export function BracketMatch({ match, vueltaMatch, canEdit, tournament, seriesMatches, seriesTarget }: BracketMatchProps) {
   const { getTeamById, updateMatchDetails } = useTournaments();
 
   const homeTeam = match.homeTeamId ? getTeamById(match.homeTeamId) ?? null : null;
@@ -50,6 +55,116 @@ export function BracketMatch({ match, vueltaMatch, canEdit, tournament }: Bracke
       updateMatchDetails(tournament.id, match.id, { awayTeamId: teamId });
     }
   };
+
+  // Pieza I: best-of-N series render. View-only card. Two team rows on the
+  // left with their game-by-game scores laid out as columns to the right —
+  // one column per game — so the whole series reads horizontally instead of
+  // stacking five rows.
+  if (seriesMatches && seriesMatches.length > 0) {
+    const homeTeamId = match.homeTeamId;
+    const awayTeamId = match.awayTeamId;
+    let homeWins = 0;
+    let awayWins = 0;
+    for (const g of seriesMatches) {
+      if (g.status !== "completed" || !g.winnerId) continue;
+      if (g.winnerId === homeTeamId) homeWins++;
+      else if (g.winnerId === awayTeamId) awayWins++;
+    }
+    const seriesOver =
+      seriesTarget != null &&
+      (homeWins >= seriesTarget || awayWins >= seriesTarget);
+    const seriesWinnerId = seriesOver
+      ? homeWins > awayWins
+        ? homeTeamId
+        : awayTeamId
+      : null;
+
+    // Width grows with the number of games so all columns fit without
+    // squashing the team names.
+    const cardWidth = 220 + Math.max(0, seriesMatches.length - 3) * 28;
+
+    return (
+      <Card
+        className={cn(
+          "overflow-hidden text-sm",
+          seriesOver && "border-muted"
+        )}
+        style={{ width: cardWidth }}
+      >
+        <div className="flex items-center justify-between px-3 py-1 bg-muted/50 text-[10px] text-muted-foreground font-medium">
+          <span>Serie · {seriesMatches.length} juegos</span>
+          <span className="tabular-nums">
+            {homeWins} – {awayWins}
+          </span>
+        </div>
+        <div className="grid grid-cols-[1fr_auto] divide-y">
+          {/* Home row */}
+          <div
+            className={cn(
+              "flex items-center px-3 py-1.5 truncate",
+              seriesWinnerId === homeTeamId && "bg-primary/5 font-semibold"
+            )}
+          >
+            {homeTeam?.name || "TBD"}
+          </div>
+          <div
+            className={cn(
+              "flex divide-x border-l text-xs",
+              seriesWinnerId === homeTeamId && "bg-primary/5 font-semibold"
+            )}
+          >
+            {seriesMatches.map((g) => (
+              <span
+                key={`h-${g.id}`}
+                className="w-7 px-1 py-1.5 tabular-nums text-center"
+              >
+                {g.status === "completed" && g.homeScore != null
+                  ? g.homeScore
+                  : "–"}
+              </span>
+            ))}
+          </div>
+          {/* Away row */}
+          <div
+            className={cn(
+              "flex items-center px-3 py-1.5 truncate",
+              seriesWinnerId === awayTeamId && "bg-primary/5 font-semibold"
+            )}
+          >
+            {awayTeam?.name || "TBD"}
+          </div>
+          <div
+            className={cn(
+              "flex divide-x border-l text-xs",
+              seriesWinnerId === awayTeamId && "bg-primary/5 font-semibold"
+            )}
+          >
+            {seriesMatches.map((g) => (
+              <span
+                key={`a-${g.id}`}
+                className="w-7 px-1 py-1.5 tabular-nums text-center"
+              >
+                {g.status === "completed" && g.awayScore != null
+                  ? g.awayScore
+                  : "–"}
+              </span>
+            ))}
+          </div>
+        </div>
+        {/* Game labels footer for orientation */}
+        <div className="grid grid-cols-[1fr_auto] border-t bg-muted/20">
+          <div className="px-3 py-1 text-[10px] text-muted-foreground" />
+          <div className="flex divide-x border-l text-[10px] text-muted-foreground">
+            {seriesMatches.map((_, i) => (
+              <span key={`l-${i}`} className="w-7 px-1 py-1 text-center">
+                G{i + 1}
+              </span>
+            ))}
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   // Double-leg: show both ida and vuelta scores
   if (vueltaMatch) {
@@ -119,6 +234,32 @@ export function BracketMatch({ match, vueltaMatch, canEdit, tournament }: Bracke
       );
     }
     return content;
+  }
+
+  // Bye render: round-1 match with exactly one team set. The lone team
+  // auto-advances to the next round (configureBracketSlots resolved it on
+  // save). We render a dedicated card so both the organizer and public
+  // viewers see who passed directly instead of seeing a "TBD" placeholder.
+  const isByeMatch =
+    match.round === 1 &&
+    ((!!match.homeTeamId && !match.awayTeamId) ||
+      (!match.homeTeamId && !!match.awayTeamId));
+  if (isByeMatch) {
+    const advancingTeam = match.homeTeamId ? homeTeam : awayTeam;
+    return (
+      <Card className="w-[200px] overflow-hidden text-sm border-dashed border-amber-500/40 bg-amber-500/[0.03]">
+        <div className="bg-amber-500/10 px-3 py-1 text-[10px] uppercase text-amber-700 font-semibold tracking-wide flex items-center justify-between">
+          <span>Pase directo</span>
+          <span>Bye</span>
+        </div>
+        <div className="flex items-center justify-between px-3 py-2 font-medium">
+          <span className="truncate mr-2">{advancingTeam?.name || "TBD"}</span>
+        </div>
+        <div className="px-3 py-1.5 text-[10px] text-muted-foreground border-t">
+          Avanza directo a la siguiente ronda
+        </div>
+      </Card>
+    );
   }
 
   // Single-leg rendering (original)

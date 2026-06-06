@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tournament, Match } from "@/types";
 import { useTournaments } from "@/context/tournament-context";
+import { getRoundLabel } from "@/data/helpers";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CalendarIcon, Clock, MapPin, Check, ArrowRight, Filter } from "lucide-react";
 import { toast } from "sonner";
@@ -49,14 +50,39 @@ function normalizeTime(raw: string): string {
 
 interface DateOrganizerProps {
   tournament: Tournament;
+  /** When set, only show unscheduled matches that belong to this phase
+   *  (group-stage matches whose groupId resolves to this phase number).
+   *  Used by the Pieza E completion modal to scope dates to a specific
+   *  phase. Omit for the global behavior. */
+  phaseFilter?: number;
 }
 
-export function DateOrganizer({ tournament }: DateOrganizerProps) {
+export function DateOrganizer({ tournament, phaseFilter }: DateOrganizerProps) {
   const { updateMatchDetails, getTeamById } = useTournaments();
   const [activeSection, setActiveSection] = useState("");
   const [teamFilter, setTeamFilter] = useState<string>("all");
 
-  const allUnscheduled = tournament.matches.filter((m) => m.status === "unscheduled");
+  // Pre-build groupId→phase map so the phaseFilter predicate is cheap.
+  const groupIdToPhase = new Map<string, number>();
+  if (tournament.groups) {
+    for (const g of tournament.groups) {
+      groupIdToPhase.set(g.id, g.phase ?? 1);
+    }
+  }
+
+  const matchBelongsToPhase = (m: Match) => {
+    if (phaseFilter === undefined) return true;
+    if (m.phase === "group" && m.groupId) {
+      return (groupIdToPhase.get(m.groupId) ?? 1) === phaseFilter;
+    }
+    // Non-group matches aren't tied to a phase number — they're excluded
+    // when a phaseFilter is requested.
+    return false;
+  };
+
+  const allUnscheduled = tournament.matches.filter(
+    (m) => m.status === "unscheduled" && matchBelongsToPhase(m)
+  );
   if (allUnscheduled.length === 0) return null;
 
   // Team filter: lets the organizer quickly see which crossings are still
@@ -75,6 +101,7 @@ export function DateOrganizer({ tournament }: DateOrganizerProps) {
   const sections: { key: string; label: string; matches: Match[] }[] = [];
 
   const groupPhaseMatches = unscheduled.filter((m) => m.phase === "group");
+  const playoffPhaseMatches = unscheduled.filter((m) => m.phase === "playoff");
   const regularMatches = unscheduled.filter((m) => !m.phase);
 
   if (regularMatches.length > 0) {
@@ -138,6 +165,39 @@ export function DateOrganizer({ tournament }: DateOrganizerProps) {
           matches,
         });
       }
+    }
+  }
+
+  // Playoff bracket rounds (Cuartos / Semifinal / Final). Labels come from
+  // getRoundLabel based on the total bracket rounds, using ALL playoff
+  // matches (not just unscheduled) so the label stays stable as games get
+  // scheduled and drop out of this list. For double-leg the raw round
+  // count is doubled (ida + vuelta), so we collapse pairs and prefix the
+  // label with "Ida " / "Vuelta ".
+  if (playoffPhaseMatches.length > 0) {
+    const allPlayoff = tournament.matches.filter((m) => m.phase === "playoff");
+    const totalRawRounds = allPlayoff.length > 0
+      ? Math.max(...allPlayoff.map((m) => m.round))
+      : 1;
+    const isDoubleLeg = !!tournament.playoffDoubleLeg;
+    const totalBracketRounds = isDoubleLeg
+      ? Math.ceil(totalRawRounds / 2)
+      : totalRawRounds;
+
+    const rounds = new Map<number, Match[]>();
+    for (const m of playoffPhaseMatches) {
+      const arr = rounds.get(m.round) || [];
+      arr.push(m);
+      rounds.set(m.round, arr);
+    }
+    for (const [round, matches] of Array.from(rounds.entries()).sort(([a], [b]) => a - b)) {
+      const bracketRound = isDoubleLeg ? Math.ceil(round / 2) : round;
+      const leg = isDoubleLeg ? (round % 2 === 1 ? "Ida — " : "Vuelta — ") : "";
+      sections.push({
+        key: `po-r${round}`,
+        label: `${leg}${getRoundLabel(bracketRound, totalBracketRounds)}`,
+        matches,
+      });
     }
   }
 

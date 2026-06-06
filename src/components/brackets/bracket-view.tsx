@@ -24,6 +24,8 @@ export function BracketView({ tournament, canEdit }: BracketViewProps) {
             canEdit={canEdit}
             tournament={tournament}
             isDoubleLeg={round.isDoubleLeg}
+            isSeries={round.isSeries}
+            seriesTarget={round.seriesTarget}
           />
         ))}
       </div>
