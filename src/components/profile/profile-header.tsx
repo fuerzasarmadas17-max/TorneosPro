@@ -15,22 +15,48 @@ interface ProfileHeaderProps {
   profile: OrganizationProfile;
 }
 
+/**
+ * Resolve whatever the user typed for a social field into an absolute URL.
+ * Accepts three shapes — in this order of precedence:
+ *   1. Full URL with protocol ("https://facebook.com/foo") → used as-is.
+ *   2. Bare domain ("facebook.com/foo", "www.x.com/foo") → https:// prepended.
+ *   3. Plain handle ("foo" or "@foo") → concatenated with the platform base.
+ *
+ * Previously the builder always took option 3, so pasting a full URL produced
+ * "https://facebook.com/https://facebook.com/foo" and the social site showed
+ * a not-found error. Detecting cases 1 and 2 fixes the "redirection error".
+ */
+function normalizeSocialUrl(value: string, handleBaseUrl: string): string {
+  const v = value.trim();
+  if (!v) return "";
+  if (/^https?:\/\//i.test(v)) return v;
+  // Looks like a bare domain (has a dot followed by a TLD-ish suffix).
+  if (/^[\w-]+(\.[\w-]+)+(\/|$)/.test(v)) return `https://${v}`;
+  // Otherwise treat as a handle: strip leading @ and append to the base.
+  return `${handleBaseUrl}${v.replace(/^@/, "")}`;
+}
+
 const socialConfig = {
-  website: { icon: Globe, label: "Sitio Web", buildUrl: (v: string) => v },
+  website: {
+    icon: Globe,
+    label: "Sitio Web",
+    // No "handle" semantics for website — only the URL forms apply.
+    buildUrl: (v: string) => normalizeSocialUrl(v, "https://"),
+  },
   facebook: {
     icon: Facebook,
     label: "Facebook",
-    buildUrl: (v: string) => `https://facebook.com/${v.replace("@", "")}`,
+    buildUrl: (v: string) => normalizeSocialUrl(v, "https://facebook.com/"),
   },
   instagram: {
     icon: Instagram,
     label: "Instagram",
-    buildUrl: (v: string) => `https://instagram.com/${v.replace("@", "")}`,
+    buildUrl: (v: string) => normalizeSocialUrl(v, "https://instagram.com/"),
   },
   twitter: {
     icon: Twitter,
     label: "Twitter",
-    buildUrl: (v: string) => `https://x.com/${v.replace("@", "")}`,
+    buildUrl: (v: string) => normalizeSocialUrl(v, "https://x.com/"),
   },
 } as const;
 

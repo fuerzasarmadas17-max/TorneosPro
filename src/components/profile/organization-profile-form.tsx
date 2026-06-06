@@ -312,7 +312,7 @@ export function OrganizationProfileForm() {
                   },
                 })
               }
-              placeholder="usuario"
+              placeholder="usuario o URL completa"
             />
           </div>
           <div className="space-y-2">
@@ -331,7 +331,7 @@ export function OrganizationProfileForm() {
                   },
                 })
               }
-              placeholder="@usuario"
+              placeholder="@usuario o URL completa"
             />
           </div>
           <div className="space-y-2">
@@ -350,7 +350,7 @@ export function OrganizationProfileForm() {
                   },
                 })
               }
-              placeholder="@usuario"
+              placeholder="@usuario o URL completa"
             />
           </div>
         </div>
