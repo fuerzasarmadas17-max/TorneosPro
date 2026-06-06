@@ -153,6 +153,10 @@ CREATE TABLE tournaments (
   start_date DATE NOT NULL,
   end_date DATE,
   group_stage_complete BOOLEAN NOT NULL DEFAULT false,
+  group_stage_notified BOOLEAN, -- single-phase: organizer ack'd the "fase completada" modal
+  playoff_double_leg BOOLEAN, -- Pieza G: bracket is two legs (ida y vuelta)
+  playoff_fixture_generated BOOLEAN, -- Pieza G: organizer hit "Generar fixture" on playoffs
+  playoff_final_format TEXT, -- Pieza I: 'single' | 'double_leg' | 'best_of_5' | 'best_of_7'
   double_round_robin BOOLEAN NOT NULL DEFAULT false,
   max_players_per_team INT,
   best_of SMALLINT CHECK (best_of IN (3, 5)),

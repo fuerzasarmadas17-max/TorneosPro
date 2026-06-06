@@ -303,6 +303,18 @@ export interface Tournament {
   groups?: TournamentGroup[];
   playoffConfig?: PlayoffConfig;
   groupStageComplete?: boolean;
+  /** Playoff bracket: if true, every matchup is decided over two legs (ida y
+   *  vuelta). Independent of `doubleRoundRobin` (which applies to the group
+   *  stage). Set from the "Crear enfrentamientos" screen. */
+  playoffDoubleLeg?: boolean;
+  /** Format of the final series. Decided when both finalists are known (Pieza I
+   *  modal). When undefined, the final follows the bracket-wide format:
+   *  playoffDoubleLeg → "double_leg", else "single". */
+  playoffFinalFormat?: "single" | "double_leg" | "best_of_5" | "best_of_7";
+  /** Once the organizer clicks "Generar fixture" in playoffs, this flips to
+   *  true and the UI switches from the matchup builder to the regular
+   *  bracket view. Drives the State A → B → C transition in PlayoffBracketView. */
+  playoffFixtureGenerated?: boolean;
   doubleRoundRobin?: boolean;
   enabledStats?: MatchEventType[];
   maxPlayersPerTeam?: number;

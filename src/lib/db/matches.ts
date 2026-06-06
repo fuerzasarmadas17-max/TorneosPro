@@ -128,6 +128,7 @@ export async function updateMatchDetails(
       | "homeScore"
       | "awayScore"
       | "winnerId"
+      | "nextMatchId"
     >
   >,
   client: SupabaseClient = supabase
