@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BracketView } from "@/components/brackets/bracket-view";
@@ -11,6 +11,9 @@ import { BasketballStandingsTable } from "@/components/standings/basketball-stan
 import { VolleyballStandingsTable } from "@/components/standings/volleyball-standings-table";
 import { GroupStageView } from "@/components/standings/group-stage-view";
 import { PhaseConfigDialog } from "@/components/tournaments/phase-config-dialog";
+import { PhaseCompletionModal } from "@/components/tournaments/phase-completion-modal";
+import { TournamentChampionModal } from "@/components/tournaments/tournament-champion-modal";
+import { PlayoffFinalConfigDialog } from "@/components/tournaments/playoff-final-config-dialog";
 import { MatchSchedule } from "@/components/standings/match-schedule";
 import { DateOrganizer } from "@/components/standings/date-organizer";
 import { TournamentStats } from "@/components/standings/tournament-stats";
@@ -345,6 +348,121 @@ export function TournamentDetail({
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Pieza F: one-shot "fase completada" modal. We snapshot which phases are
+  // already complete at mount time and only fire the modal when a NEW phase
+  // transitions to complete during this session. Reloading the page resets
+  // the snapshot, so a phase that completed in a previous session won't
+  // re-trigger.
+  const phasesSeenAsComplete = useRef<Set<number>>(new Set());
+  const initialized = useRef(false);
+  const [showCompletionFor, setShowCompletionFor] = useState<number | null>(null);
+
+  // Helper: compute the set of complete phase numbers at any given moment.
+  const computeCompletePhases = (): Set<number> => {
+    const out = new Set<number>();
+    if (tournament.phaseConfigs?.length) {
+      for (const pc of tournament.phaseConfigs) {
+        if (pc.complete) out.add(pc.phase);
+      }
+    } else if (
+      tournament.format === "group-playoff" &&
+      tournament.groupStageComplete
+    ) {
+      out.add(1);
+    }
+    return out;
+  };
+
+  useEffect(() => {
+    const current = computeCompletePhases();
+    if (!initialized.current) {
+      // First render: seed the "seen" set with what's already complete.
+      // Anything in here when the user lands won't fire the modal.
+      phasesSeenAsComplete.current = current;
+      initialized.current = true;
+      return;
+    }
+    if (!canEdit) return;
+    // Any phase in `current` that isn't in our memo is a fresh completion.
+    for (const phase of current) {
+      if (!phasesSeenAsComplete.current.has(phase)) {
+        phasesSeenAsComplete.current.add(phase);
+        setShowCompletionFor(phase);
+        break; // only one modal at a time
+      }
+    }
+    // Prune: if a phase un-completed (edited backwards), drop it so it can
+    // re-trigger when it completes again. Matches "first-time only per
+    // load" semantics — page reload resets everything.
+    for (const phase of Array.from(phasesSeenAsComplete.current)) {
+      if (!current.has(phase)) phasesSeenAsComplete.current.delete(phase);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournament.phaseConfigs, tournament.groupStageComplete, canEdit]);
+
+  // Pieza I: configure-final modal. Fires once both finalists are known AND
+  // the organizer hasn't picked a format yet. Detection compares team
+  // assignment on the highest-round bracket match before/after this render
+  // — we track "had teams" to detect the moment they're set. One-shot per
+  // session like the rest of the modals.
+  const finalBecameKnownRef = useRef<boolean>(false);
+  const [showFinalConfig, setShowFinalConfig] = useState(false);
+  useEffect(() => {
+    if (!canEdit) return;
+    if (tournament.format !== "group-playoff" && tournament.format !== "elimination") return;
+    if (tournament.playoffFinalFormat) return; // already configured
+    const playoff = tournament.matches.filter(
+      (m) => m.phase === "playoff" || (!m.phase && tournament.format === "elimination")
+    );
+    if (playoff.length === 0) return;
+    // For double-leg brackets the finalists live on the IDA (round maxRound-1),
+    // not the vuelta (maxRound). The vuelta keeps null teams until configured.
+    const maxRound = Math.max(...playoff.map((m) => m.round));
+    const isDoubleLeg =
+      (tournament.format === "elimination" && tournament.doubleRoundRobin) ||
+      (tournament.format === "group-playoff" && tournament.playoffDoubleLeg);
+    const idaRound = isDoubleLeg ? maxRound - 1 : maxRound;
+    const idaFirst = playoff
+      .filter((m) => m.round === idaRound)
+      .sort((a, b) => a.matchNumber - b.matchNumber)[0];
+    const finalistsKnown = !!idaFirst?.homeTeamId && !!idaFirst?.awayTeamId;
+    if (finalistsKnown && !finalBecameKnownRef.current) {
+      finalBecameKnownRef.current = true;
+      setShowFinalConfig(true);
+    }
+    if (!finalistsKnown) {
+      // Reset so a future "finals re-determined" still fires.
+      finalBecameKnownRef.current = false;
+    }
+  }, [tournament.matches, tournament.format, tournament.playoffFinalFormat, canEdit]);
+
+  // Pieza H: champion celebration modal. Fires when tournament.status flips
+  // from any other value to "completed" during the session. Same one-shot
+  // semantics as the phase-completion modal — already-completed tournaments
+  // on mount don't re-trigger.
+  const seenCompletedRef = useRef<boolean>(tournament.status === "completed");
+  const [showChampion, setShowChampion] = useState(false);
+  useEffect(() => {
+    if (tournament.status !== "completed") return;
+    if (seenCompletedRef.current) return;
+    seenCompletedRef.current = true;
+    setShowChampion(true);
+  }, [tournament.status]);
+
+  // Controlled Tabs so the modal's "Ir a fase X" / "Ir a Playoffs" button can
+  // switch tabs programmatically. Default depends on format.
+  const defaultTab =
+    tournament.format === "group-playoff" && tournament.phaseConfigs?.length
+      ? "phase1"
+      : tournament.format === "group-playoff"
+      ? "groups"
+      : tournament.format === "elimination"
+      ? "bracket"
+      : (tournament.groups?.length ?? 0) > 0
+      ? "groups"
+      : "standings";
+  const [activeTab, setActiveTab] = useState(defaultTab);
   const sport = getSportInfo(tournament.sport);
   const sportCategory = getSportCategory(tournament.sport);
   const showStats = (tournament.enabledStats?.length ?? 0) > 0;
@@ -487,6 +605,35 @@ export function TournamentDetail({
         />
       )}
 
+      {/* Pieza F: one-shot completion modal. Pops up the moment a new phase
+          transitions to complete during this session, points the organizer at
+          the next tab. No persistence — reload starts fresh. */}
+      {showCompletionFor !== null && (
+        <PhaseCompletionModal
+          open
+          onOpenChange={(o) => !o && setShowCompletionFor(null)}
+          tournament={tournament}
+          finishedPhase={showCompletionFor}
+          onGoToNext={(tab) => setActiveTab(tab)}
+        />
+      )}
+
+      {/* Pieza H: champion celebration modal. Fires when the tournament
+          transitions to "completed" during this session. */}
+      <TournamentChampionModal
+        open={showChampion}
+        onOpenChange={setShowChampion}
+        tournament={tournament}
+      />
+
+      {/* Pieza I: prompt to choose the final's format (single / ida y vuelta /
+          best-of-5 / best-of-7) once both finalists are known. */}
+      <PlayoffFinalConfigDialog
+        open={showFinalConfig}
+        onOpenChange={setShowFinalConfig}
+        tournament={tournament}
+      />
+
       {/* Sponsors Banner */}
       {allSponsors.length > 0 && <SponsorBanner sponsors={allSponsors} />}
 
@@ -507,7 +654,7 @@ export function TournamentDetail({
       {/* Content */}
       {tournament.format === "group-playoff" && tournament.phaseConfigs?.length ? (
         /* Multi-phase group-playoff */
-        <Tabs defaultValue="phase1">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="flex items-center gap-2">
             <TabsList>
               {tournament.phaseConfigs.map((pc) => {
@@ -569,7 +716,7 @@ export function TournamentDetail({
         </Tabs>
       ) : tournament.format === "group-playoff" ? (
         /* Single-phase group-playoff */
-        <Tabs defaultValue="groups">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="flex items-center gap-2">
             <TabsList>
               <TabsTrigger value="groups">Grupos</TabsTrigger>
@@ -1270,27 +1417,55 @@ function PhaseTabContent({
     return <GroupStageView tournament={tournament} phase={phase} canEdit={canEdit} />;
   }
 
-  // STATE 2 — Teams assigned but no fixture yet: offer to generate matches.
+  // STATE 2 — Teams assigned but no fixture yet: show both "Editar
+  // configuración" (to move teams between groups) and "Generar fixture".
   if (hasTeams) {
     if (!canEdit) {
       return (
         <p className="text-sm text-muted-foreground text-center py-8">
-          Esperando que el organizador genere los partidos de la fase {phase}.
+          Esperando que el organizador genere las fechas de la fase {phase}.
         </p>
       );
     }
     return (
-      <div className="flex flex-col items-center gap-3 py-12 text-center">
-        <div>
-          <p className="text-base font-medium">Fase {phase} lista para generar partidos</p>
-          <p className="text-sm text-muted-foreground">
-            Los equipos ya están asignados a los grupos. Generá el fixture
-            todos-contra-todos automáticamente.
-          </p>
+      <div className="space-y-4 py-6">
+        {/* Visual summary of the current assignment so the organizer sees
+            what they're about to schedule before generating. */}
+        <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+          <p className="text-sm font-medium">Grupos de la fase {phase}</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {phaseGroups.map((g) => (
+              <div key={g.id} className="rounded-md border bg-background p-2.5 space-y-1">
+                <div className="text-xs font-semibold">{g.name}</div>
+                <div className="text-[11px] text-muted-foreground">
+                  {g.teamIds.length} {g.teamIds.length === 1 ? "equipo" : "equipos"}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <Button disabled={generating} onClick={onGenerateClick}>
-          {generating ? "Generando..." : `Generar partidos de fase ${phase}`}
-        </Button>
+
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+          <Button variant="outline" onClick={() => setConfigOpen(true)}>
+            Editar configuración
+          </Button>
+          <Button disabled={generating} onClick={onGenerateClick}>
+            {generating ? "Generando..." : `Generar fixture`}
+          </Button>
+        </div>
+
+        {/* For phase 1 the dialog opens in "initial assignment" mode
+            (fromPhase=0) — the source is the tournament's team list, not a
+            previous phase's classified teams. From phase 2 onwards the
+            source is phase N-1's classification. */}
+        <PhaseConfigDialog
+          open={configOpen}
+          onOpenChange={setConfigOpen}
+          tournament={tournament}
+          fromPhase={phase - 1}
+          mode="groups"
+        />
+
         <Dialog open={idaVueltaOpen} onOpenChange={setIdaVueltaOpen}>
           <DialogContent className="sm:max-w-sm">
             <DialogHeader>

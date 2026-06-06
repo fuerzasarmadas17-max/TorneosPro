@@ -20,7 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 
 interface Destination {
@@ -72,10 +71,28 @@ export function PhaseConfigDialog({
   const { configurePhaseGroups, configureBracketSlots } = useTournaments();
   const nameOf = useTeamNameLookup(tournament);
 
-  const classified = useMemo<ClassifiedTeam[]>(
-    () => getClassifiedTeamsRanked(tournament, fromPhase),
-    [tournament, fromPhase]
-  );
+  // fromPhase === 0 means "edit the initial phase 1 assignment" — there's no
+  // previous phase to classify from, so the team list is simply the
+  // tournament's participants. Their current group (if any) is used as the
+  // meta label so the organizer sees where each one sits today.
+  const classified = useMemo<ClassifiedTeam[]>(() => {
+    if (fromPhase === 0) {
+      const teamGroupName = new Map<string, string>();
+      for (const g of tournament.groups ?? []) {
+        if ((g.phase ?? 1) !== 1) continue;
+        for (const teamId of g.teamIds) teamGroupName.set(teamId, g.name);
+      }
+      return tournament.teamIds.map((teamId) => ({
+        teamId,
+        fromGroupId: "",
+        fromGroupName: teamGroupName.get(teamId) ?? "Sin asignar",
+        // position=0 signals "initial assignment" so the UI hides the "1° de…"
+        // prefix and just shows the group name as a meta.
+        position: 0,
+      }));
+    }
+    return getClassifiedTeamsRanked(tournament, fromPhase);
+  }, [tournament, fromPhase]);
 
   // Destinations depend on mode.
   // - "groups": every tournament_groups row in (fromPhase + 1).
@@ -98,19 +115,46 @@ export function PhaseConfigDialog({
     return dests;
   }, [tournament, fromPhase, mode]);
 
-  // Default assignments. Groups: round-robin (1°A→Grp A, 1°B→Grp B, 2°A→Grp B,
-  // 2°B→Grp A …). Bracket: sequential into slots in order. The organizer can
-  // change everything before saving.
+  // Default assignments. If destinations already hold teams (re-edit case),
+  // pre-fill with the current assignment so the organizer just tweaks. When
+  // empty (first time), use the auto layout — round-robin for groups,
+  // sequential seeds for the bracket.
   const [assignments, setAssignments] = useState<Record<string, string>>(() => {
     const out: Record<string, string> = {};
     if (destinations.length === 0) return out;
+
     if (mode === "groups") {
+      // Re-edit: walk existing tournament_group_teams for the destination groups
+      // and put each classified team where it currently sits.
+      const destIds = new Set(destinations.map((d) => d.id));
+      const preexisting: Record<string, string> = {};
+      for (const g of tournament.groups ?? []) {
+        if (!destIds.has(g.id)) continue;
+        for (const teamId of g.teamIds) preexisting[teamId] = g.id;
+      }
+      const hasPreexisting = Object.keys(preexisting).length > 0;
       classified.forEach((c, i) => {
-        out[c.teamId] = destinations[i % destinations.length].id;
+        out[c.teamId] = hasPreexisting
+          ? preexisting[c.teamId] ?? destinations[i % destinations.length].id
+          : destinations[i % destinations.length].id;
       });
     } else {
+      // Bracket: walk round-1 matches and infer which slot each classified
+      // team currently occupies.
+      const preexisting: Record<string, string> = {};
+      for (const m of tournament.matches.filter(
+        (x) => x.phase === "playoff" && x.round === 1
+      )) {
+        if (m.homeTeamId) preexisting[m.homeTeamId] = `${m.id}:home`;
+        if (m.awayTeamId) preexisting[m.awayTeamId] = `${m.id}:away`;
+      }
+      const hasPreexisting = Object.keys(preexisting).length > 0;
       classified.forEach((c, i) => {
-        if (i < destinations.length) out[c.teamId] = destinations[i].id;
+        if (hasPreexisting) {
+          out[c.teamId] = preexisting[c.teamId] ?? destinations[i]?.id ?? "";
+        } else if (i < destinations.length) {
+          out[c.teamId] = destinations[i].id;
+        }
       });
     }
     return out;
@@ -189,8 +233,12 @@ export function PhaseConfigDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
-        <DialogHeader>
+      {/* Layout: fixed header + scrollable middle + sticky footer. The
+          DialogContent default is `display: grid`, we explicitly flip it to
+          flex-col so the middle can claim flex-1 and shrink (min-h-0) when
+          the team list overflows. */}
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden !flex flex-col p-0 gap-0">
+        <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
           <DialogTitle>
             {mode === "groups"
               ? `Configurar Fase ${fromPhase + 1}`
@@ -198,15 +246,19 @@ export function PhaseConfigDialog({
           </DialogTitle>
           <DialogDescription>
             {mode === "groups"
-              ? "Asigná cada clasificado al grupo de la siguiente fase. Por defecto se distribuyen en orden de clasificación; podés ajustar cualquier equipo."
+              ? fromPhase === 0
+                ? "Asigná cada equipo al grupo donde va a jugar la fase 1."
+                : "Asigná cada clasificado al grupo de la siguiente fase. Por defecto se distribuyen en orden de clasificación; podés ajustar cualquier equipo."
               : "Asigná cada clasificado a un lugar del bracket. Por defecto se asignan en orden; podés intercambiar."}
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-2">
           {classified.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">
-              Todavía no hay clasificados. Cerrá los partidos pendientes de la fase {fromPhase}.
+              {fromPhase === 0
+                ? "Este torneo no tiene equipos cargados todavía."
+                : `Todavía no hay clasificados. Cerrá los partidos pendientes de la fase ${fromPhase}.`}
             </p>
           ) : (
             <div className="space-y-2 py-2">
@@ -218,7 +270,9 @@ export function PhaseConfigDialog({
                   <div className="min-w-0">
                     <div className="text-sm font-medium truncate">{nameOf(c.teamId)}</div>
                     <div className="text-[11px] text-muted-foreground">
-                      {c.position}° de {c.fromGroupName}
+                      {c.position > 0
+                        ? `${c.position}° de ${c.fromGroupName}`
+                        : c.fromGroupName}
                     </div>
                   </div>
                   <Select
@@ -245,9 +299,9 @@ export function PhaseConfigDialog({
               ))}
             </div>
           )}
-        </ScrollArea>
+        </div>
 
-        <DialogFooter className="gap-2">
+        <DialogFooter className="gap-2 px-6 py-4 border-t shrink-0 bg-background">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
