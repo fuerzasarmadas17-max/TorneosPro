@@ -33,7 +33,7 @@ interface TournamentContextType {
   disqualifyTeam: (tournamentId: string, teamId: string) => Promise<void>;
   removeTournament: (tournamentId: string) => Promise<boolean>;
   updateMatchDetails: (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "round" | "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => Promise<void>;
-  updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "doubleRoundRobin" | "groupStageComplete" | "playoffDoubleLeg" | "playoffFixtureGenerated" | "playoffFinalFormat" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs" | "disqualifiedTeamIds">>) => Promise<void>;
+  updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "doubleRoundRobin" | "groupStageComplete" | "playoffDoubleLeg" | "playoffFixtureGenerated" | "playoffFinalFormat" | "championPhotoUrl" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs" | "disqualifiedTeamIds">>) => Promise<void>;
   updatePlayoffConfig: (
     tournamentId: string,
     advancePerGroup: number,
@@ -391,7 +391,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   );
 
   const updateTournamentProps = useCallback(
-    async (tournamentId: string, updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "doubleRoundRobin" | "groupStageComplete" | "playoffDoubleLeg" | "playoffFixtureGenerated" | "playoffFinalFormat" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs" | "disqualifiedTeamIds">>) => {
+    async (tournamentId: string, updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "doubleRoundRobin" | "groupStageComplete" | "playoffDoubleLeg" | "playoffFixtureGenerated" | "playoffFinalFormat" | "championPhotoUrl" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs" | "disqualifiedTeamIds">>) => {
       // Update tournament fields in DB
       const dbUpdates: Partial<Tournament> = {};
       if (updates.name !== undefined) dbUpdates.name = updates.name;
@@ -404,6 +404,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       if (updates.playoffDoubleLeg !== undefined) dbUpdates.playoffDoubleLeg = updates.playoffDoubleLeg;
       if (updates.playoffFixtureGenerated !== undefined) dbUpdates.playoffFixtureGenerated = updates.playoffFixtureGenerated;
       if (updates.playoffFinalFormat !== undefined) dbUpdates.playoffFinalFormat = updates.playoffFinalFormat;
+      if (updates.championPhotoUrl !== undefined) dbUpdates.championPhotoUrl = updates.championPhotoUrl;
       if (updates.tier !== undefined) dbUpdates.tier = updates.tier;
       if (updates.price !== undefined) dbUpdates.price = updates.price;
       if (updates.plan !== undefined) dbUpdates.plan = updates.plan;
@@ -860,6 +861,56 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         expanded[vueltaIdx].nextMatchId = expanded[targetIda].id;
       }
 
+      // Bye resolution after double-leg regen. The original single-leg bye
+      // auto-completes get wiped when this function deletes and recreates
+      // the bracket. Walk the new matches and re-resolve any bye pair (both
+      // the ida with one team set and its mirrored vuelta) — mark them
+      // completed with the lone team as winner. For vueltas with a
+      // nextMatchId, also propagate the winner to the next round's ida slot.
+      //
+      // Gated on "no feeder" so later rounds with one slot waiting for a
+      // R1 winner (e.g. semis already populated by a bye but missing the
+      // play-in winner) don't get auto-completed.
+      for (const m of expanded) {
+        const isOnlyOneTeam =
+          (!!m.homeTeamId && !m.awayTeamId) ||
+          (!m.homeTeamId && !!m.awayTeamId);
+        if (!isOnlyOneTeam) continue;
+        const hasFeeder = expanded.some((x) => x.nextMatchId === m.id);
+        if (hasFeeder) continue;
+        const winnerId = (m.homeTeamId ?? m.awayTeamId)!;
+        m.status = "completed";
+        m.homeScore = 0;
+        m.awayScore = 0;
+        m.winnerId = winnerId;
+      }
+      // Propagate vuelta bye winners to the next round's ida slot AND mirror
+      // to the paired vuelta (same matchup, sides swapped) so the next round's
+      // vuelta isn't left with null teams.
+      for (const m of expanded) {
+        if (m.status !== "completed" || !m.winnerId || !m.nextMatchId) continue;
+        const next = expanded.find((x) => x.id === m.nextMatchId);
+        if (!next) continue;
+        const feeders = expanded.filter((x) => x.nextMatchId === next.id);
+        const idx = feeders.findIndex((f) => f.id === m.id);
+        if (idx === 0) next.homeTeamId = m.winnerId;
+        else next.awayTeamId = m.winnerId;
+
+        // Mirror to the paired vuelta of `next` (= round+1, same position).
+        const idaRoundMatches = expanded
+          .filter((x) => x.round === next.round)
+          .sort((a, b) => a.matchNumber - b.matchNumber);
+        const pairPosition = idaRoundMatches.findIndex((x) => x.id === next.id);
+        const vueltaRoundMatches = expanded
+          .filter((x) => x.round === next.round + 1)
+          .sort((a, b) => a.matchNumber - b.matchNumber);
+        const pairedVuelta = vueltaRoundMatches[pairPosition];
+        if (pairedVuelta) {
+          if (idx === 0) pairedVuelta.awayTeamId = m.winnerId;
+          else pairedVuelta.homeTeamId = m.winnerId;
+        }
+      }
+
       // Persist new matches and flip the flag.
       const idMapping = await insertMatchesForPhase(expanded, tournamentId);
       // Re-key both id AND nextMatchId so the in-memory bracket links stay
@@ -1196,6 +1247,51 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                   homeTeamId: nextMatch.homeTeamId,
                   awayTeamId: nextMatch.awayTeamId,
                 });
+
+                // Double-leg mirror: nextMatch is the IDA of the next bracket
+                // round. Its paired VUELTA (at nextMatch.round + 1, same
+                // position when both rounds are sorted by matchNumber) is the
+                // same matchup with sides swapped, so the winner that filled
+                // ida.home must also fill vuelta.away (and vice versa). Without
+                // this the vuelta of semis/final keeps null teams and the user
+                // can never play it.
+                const isDoubleLegBracket =
+                  (t.format === "elimination" && t.doubleRoundRobin) ||
+                  (t.format === "group-playoff" && t.playoffDoubleLeg);
+                if (isDoubleLegBracket && completedMatch.phase === "playoff") {
+                  const idaRoundMatches = updatedMatches
+                    .filter(
+                      (m) => m.phase === "playoff" && m.round === nextMatch.round
+                    )
+                    .sort((a, b) => a.matchNumber - b.matchNumber);
+                  const pairPosition = idaRoundMatches.findIndex(
+                    (m) => m.id === nextMatch.id
+                  );
+                  const vueltaRoundMatches = updatedMatches
+                    .filter(
+                      (m) =>
+                        m.phase === "playoff" && m.round === nextMatch.round + 1
+                    )
+                    .sort((a, b) => a.matchNumber - b.matchNumber);
+                  const pairedVuelta = vueltaRoundMatches[pairPosition];
+                  if (pairedVuelta) {
+                    const vueltaIdx = updatedMatches.findIndex(
+                      (m) => m.id === pairedVuelta.id
+                    );
+                    if (vueltaIdx !== -1) {
+                      // Sides are swapped in the vuelta relative to the ida.
+                      const mirroredUpdates =
+                        feederIndex === 0
+                          ? { awayTeamId: completedMatch.winnerId }
+                          : { homeTeamId: completedMatch.winnerId };
+                      updatedMatches[vueltaIdx] = {
+                        ...updatedMatches[vueltaIdx],
+                        ...mirroredUpdates,
+                      };
+                      dbUpdateMatchDetails(pairedVuelta.id, mirroredUpdates);
+                    }
+                  }
+                }
               }
             }
           }

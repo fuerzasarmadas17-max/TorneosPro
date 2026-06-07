@@ -7,104 +7,128 @@ export interface BracketRound {
   roundLabel: string;
   matches: Match[];
   isDoubleLeg?: boolean;
-  /** Pieza I: best-of-N final series. When set, BracketRound renders a
-   *  single card showing all `matches` as games of the series with a
-   *  running scoreboard. `seriesTarget` is the wins needed to clinch
-   *  (3 for best-of-5, 4 for best-of-7). */
+  /** Pieza I + tennis-style render: the final round renders as a single card
+   *  showing both finalists and the game-by-game scores like a tennis match.
+   *  Triggered for any chosen `playoffFinalFormat` (single / double_leg /
+   *  best_of_5 / best_of_7). `seriesTarget` is the wins needed to clinch (1
+   *  for single/double_leg, 3 for best-of-5, 4 for best-of-7). `seriesFormat`
+   *  lets the renderer pick the right header label (Global / Serie / Final). */
   isSeries?: boolean;
   seriesTarget?: number;
+  seriesFormat?: Tournament["playoffFinalFormat"];
 }
 
 export function useBracket(tournament: Tournament): BracketRound[] {
   return useMemo(() => {
     if (tournament.matches.length === 0) return [];
-    const totalRounds = Math.max(...tournament.matches.map((m) => m.round));
     const rounds: BracketRound[] = [];
 
-    // Pieza I: best-of-N final. The configurePlayoffFinal materializer puts
-    // all N series matches in the SAME (highest) round and they all share
-    // the same matchup teams. We detect that here so the renderer can group
-    // them as one card.
-    const isBestOfNFinal =
-      tournament.playoffFinalFormat === "best_of_5" ||
-      tournament.playoffFinalFormat === "best_of_7";
-    const finalSeriesTarget =
-      tournament.playoffFinalFormat === "best_of_5"
-        ? 3
-        : tournament.playoffFinalFormat === "best_of_7"
-          ? 4
-          : 0;
+    // Identify the final series. When playoffFinalFormat is set, the
+    // configurePlayoffFinal materializer placed N matches at the highest
+    // playoff round (or, for elimination format with doubleRoundRobin, the
+    // highest match round). Those N matches collapse into one tennis-style
+    // card; the regular per-round processing skips that last round so it
+    // doesn't render twice.
+    const playoffMatches = tournament.matches.filter(
+      (m) => m.phase === "playoff"
+    );
+    const eliminationFinalApplies =
+      tournament.format === "elimination" && !!tournament.playoffFinalFormat;
+    const finalMatches = (() => {
+      if (!tournament.playoffFinalFormat) return [] as Match[];
+      const pool =
+        playoffMatches.length > 0 ? playoffMatches : tournament.matches;
+      if (pool.length === 0) return [] as Match[];
+      const maxRound = Math.max(...pool.map((m) => m.round));
+      return pool
+        .filter((m) => m.round === maxRound)
+        .sort((a, b) => a.matchNumber - b.matchNumber);
+    })();
+    const finalMatchIds = new Set(finalMatches.map((m) => m.id));
+    const hasFinalSeries = finalMatches.length > 0;
+    const finalSeriesTarget = (() => {
+      if (!hasFinalSeries) return 0;
+      switch (tournament.playoffFinalFormat) {
+        case "best_of_5":
+          return 3;
+        case "best_of_7":
+          return 4;
+        default:
+          // single & double_leg: one "win" decides (game / aggregate).
+          return 1;
+      }
+    })();
+
+    // Matches considered for the rest of the bracket (everything that is
+    // NOT part of the final series).
+    const nonFinalMatches = tournament.matches.filter(
+      (m) => !finalMatchIds.has(m.id)
+    );
+    const totalRounds =
+      nonFinalMatches.length > 0
+        ? Math.max(...nonFinalMatches.map((m) => m.round))
+        : 0;
 
     // Same pairing logic for both shapes of double-leg bracket:
     //  - elimination format with doubleRoundRobin
     //  - group-playoff format with playoffDoubleLeg (Pieza G)
-    // In both, raw matches are stored as round 1=ida r1, round 2=vuelta r1,
-    // round 3=ida r2, etc. We collapse each pair into a single visual round
-    // so BracketMatch can render "Ida X-Y / Vuelta X-Y · Global Z" in one card.
     const isDoubleLegBracket =
       (tournament.format === "elimination" && tournament.doubleRoundRobin) ||
       (tournament.format === "group-playoff" && tournament.playoffDoubleLeg);
 
-    if (isDoubleLegBracket) {
-      // Double-leg: group paired rounds (1+2, 3+4, 5+6...) into bracket rounds
-      // Final exception: if a best-of-N final overrides the last bracket
-      // round, that round is rendered as a series instead of an ida/vuelta
-      // pair. configurePlayoffFinal places all N final matches in the same
-      // raw round, so we detect by counting.
-      const bracketRoundCount = Math.ceil(totalRounds / 2);
-      for (let r = 0; r < bracketRoundCount; r++) {
-        const idaRound = r * 2 + 1;
-        const vueltaRound = r * 2 + 2;
-        const idaMatches = tournament.matches
-          .filter((m) => m.round === idaRound)
-          .sort((a, b) => a.matchNumber - b.matchNumber);
-        const vueltaMatches = tournament.matches
-          .filter((m) => m.round === vueltaRound)
-          .sort((a, b) => a.matchNumber - b.matchNumber);
-
-        const isLastBracketRound = r === bracketRoundCount - 1;
-        if (isLastBracketRound && isBestOfNFinal && idaMatches.length > 2) {
-          // Best-of-N final overrode the pair: all series matches are in
-          // idaRound. Render as one series card.
+    if (totalRounds > 0) {
+      if (isDoubleLegBracket) {
+        // Round count for the non-final part. Round numbers come straight
+        // from the bracket positions (cuartos/semis/final from the label
+        // helper), so we use a forecasted total that includes the final
+        // when it exists — otherwise non-final rounds get wrong labels.
+        const labeledTotal = hasFinalSeries
+          ? Math.ceil((totalRounds + 1) / 2) + (eliminationFinalApplies ? 0 : 0)
+          : Math.ceil(totalRounds / 2);
+        const nonFinalPairCount = Math.ceil(totalRounds / 2);
+        for (let r = 0; r < nonFinalPairCount; r++) {
+          const idaRound = r * 2 + 1;
+          const vueltaRound = r * 2 + 2;
+          const idaMatches = nonFinalMatches
+            .filter((m) => m.round === idaRound)
+            .sort((a, b) => a.matchNumber - b.matchNumber);
+          const vueltaMatches = nonFinalMatches
+            .filter((m) => m.round === vueltaRound)
+            .sort((a, b) => a.matchNumber - b.matchNumber);
+          if (idaMatches.length === 0 && vueltaMatches.length === 0) continue;
           rounds.push({
             roundNumber: r + 1,
-            roundLabel: getRoundLabel(r + 1, bracketRoundCount),
-            matches: idaMatches,
-            isSeries: true,
-            seriesTarget: finalSeriesTarget,
-          });
-        } else {
-          rounds.push({
-            roundNumber: r + 1,
-            roundLabel: getRoundLabel(r + 1, bracketRoundCount),
+            roundLabel: getRoundLabel(r + 1, labeledTotal),
             matches: [...idaMatches, ...vueltaMatches],
             isDoubleLeg: true,
           });
         }
-      }
-    } else {
-      for (let r = 1; r <= totalRounds; r++) {
-        const roundMatches = tournament.matches
-          .filter((m) => m.round === r)
-          .sort((a, b) => a.matchNumber - b.matchNumber);
-
-        const isLast = r === totalRounds;
-        if (isLast && isBestOfNFinal && roundMatches.length > 1) {
+      } else {
+        const labeledTotal = hasFinalSeries ? totalRounds + 1 : totalRounds;
+        for (let r = 1; r <= totalRounds; r++) {
+          const roundMatches = nonFinalMatches
+            .filter((m) => m.round === r)
+            .sort((a, b) => a.matchNumber - b.matchNumber);
+          if (roundMatches.length === 0) continue;
           rounds.push({
             roundNumber: r,
-            roundLabel: getRoundLabel(r, totalRounds),
-            matches: roundMatches,
-            isSeries: true,
-            seriesTarget: finalSeriesTarget,
-          });
-        } else {
-          rounds.push({
-            roundNumber: r,
-            roundLabel: getRoundLabel(r, totalRounds),
+            roundLabel: getRoundLabel(r, labeledTotal),
             matches: roundMatches,
           });
         }
       }
+    }
+
+    if (hasFinalSeries) {
+      const finalRoundNumber = rounds.length + 1;
+      rounds.push({
+        roundNumber: finalRoundNumber,
+        roundLabel: getRoundLabel(finalRoundNumber, finalRoundNumber),
+        matches: finalMatches,
+        isSeries: true,
+        seriesTarget: finalSeriesTarget,
+        seriesFormat: tournament.playoffFinalFormat,
+      });
     }
 
     return rounds;

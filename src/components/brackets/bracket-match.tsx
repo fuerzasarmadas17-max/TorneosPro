@@ -11,14 +11,18 @@ interface BracketMatchProps {
   vueltaMatch?: Match;
   canEdit: boolean;
   tournament?: Tournament;
-  /** Pieza I: when set, the card renders the whole best-of-N series with
-   *  a game-by-game line and a running series score. */
+  /** Tennis-style final series. When set, the card renders both finalists
+   *  with the per-game scores as columns (like tennis sets). */
   seriesMatches?: Match[];
-  /** Wins to clinch the series (3 for best-of-5, 4 for best-of-7). */
+  /** Wins to clinch the series (1 for single/double-leg, 3 for best-of-5,
+   *  4 for best-of-7). */
   seriesTarget?: number;
+  /** Drives the summary header label and the win-counting rule. */
+  seriesFormat?: Tournament["playoffFinalFormat"];
 }
 
-export function BracketMatch({ match, vueltaMatch, canEdit, tournament, seriesMatches, seriesTarget }: BracketMatchProps) {
+export function BracketMatch({ match, vueltaMatch, canEdit, tournament, seriesMatches, seriesTarget, seriesFormat }: BracketMatchProps) {
+  void seriesTarget; // currently informational; rule comes from format
   const { getTeamById, updateMatchDetails } = useTournaments();
 
   const homeTeam = match.homeTeamId ? getTeamById(match.homeTeamId) ?? null : null;
@@ -56,28 +60,79 @@ export function BracketMatch({ match, vueltaMatch, canEdit, tournament, seriesMa
     }
   };
 
-  // Pieza I: best-of-N series render. View-only card. Two team rows on the
-  // left with their game-by-game scores laid out as columns to the right —
-  // one column per game — so the whole series reads horizontally instead of
-  // stacking five rows.
+  // Tennis-style final series render. One card with two team rows on the
+  // left and per-game scores as columns on the right — works uniformly for
+  // single / double_leg / best_of_5 / best_of_7. For double_leg the games
+  // have swapped sides, so we map each score to a "canonical home/away"
+  // anchored on the first game so the team rows stay coherent.
   if (seriesMatches && seriesMatches.length > 0) {
-    const homeTeamId = match.homeTeamId;
-    const awayTeamId = match.awayTeamId;
+    const canonicalHomeId = match.homeTeamId;
+    const canonicalAwayId = match.awayTeamId;
+
+    type LegScores = { homeScore: number | null; awayScore: number | null };
+    const legScores = (g: Match): LegScores => {
+      // Identify which side of the game corresponds to canonical home/away.
+      // If the game's home matches canonical home: same orientation.
+      // If the game's home matches canonical away: sides are swapped (vuelta).
+      if (g.homeTeamId === canonicalHomeId) {
+        return { homeScore: g.homeScore, awayScore: g.awayScore };
+      }
+      if (g.awayTeamId === canonicalHomeId) {
+        return { homeScore: g.awayScore, awayScore: g.homeScore };
+      }
+      // Teams don't line up — bail out with the raw scores so the card
+      // still renders something useful.
+      return { homeScore: g.homeScore, awayScore: g.awayScore };
+    };
+
     let homeWins = 0;
     let awayWins = 0;
+    let homeAggregate = 0;
+    let awayAggregate = 0;
     for (const g of seriesMatches) {
+      const { homeScore: hs, awayScore: as_ } = legScores(g);
+      if (hs != null) homeAggregate += hs;
+      if (as_ != null) awayAggregate += as_;
       if (g.status !== "completed" || !g.winnerId) continue;
-      if (g.winnerId === homeTeamId) homeWins++;
-      else if (g.winnerId === awayTeamId) awayWins++;
+      if (g.winnerId === canonicalHomeId) homeWins++;
+      else if (g.winnerId === canonicalAwayId) awayWins++;
     }
-    const seriesOver =
-      seriesTarget != null &&
-      (homeWins >= seriesTarget || awayWins >= seriesTarget);
-    const seriesWinnerId = seriesOver
-      ? homeWins > awayWins
-        ? homeTeamId
-        : awayTeamId
-      : null;
+
+    // Format-specific winner detection: best-of-N counts wins to a target;
+    // double_leg uses aggregate; single uses the only game's winnerId.
+    let seriesWinnerId: string | null = null;
+    if (seriesFormat === "best_of_5" || seriesFormat === "best_of_7") {
+      const target = seriesFormat === "best_of_5" ? 3 : 4;
+      if (homeWins >= target) seriesWinnerId = canonicalHomeId;
+      else if (awayWins >= target) seriesWinnerId = canonicalAwayId;
+    } else if (seriesFormat === "double_leg") {
+      const bothComplete = seriesMatches.every((g) => g.status === "completed");
+      if (bothComplete) {
+        if (homeAggregate > awayAggregate) seriesWinnerId = canonicalHomeId;
+        else if (awayAggregate > homeAggregate) seriesWinnerId = canonicalAwayId;
+      }
+    } else {
+      // single
+      const only = seriesMatches[0];
+      if (only?.status === "completed" && only.winnerId) {
+        seriesWinnerId = only.winnerId;
+      }
+    }
+
+    const headerLeft =
+      seriesFormat === "best_of_5"
+        ? "Final · Mejor de 5"
+        : seriesFormat === "best_of_7"
+          ? "Final · Mejor de 7"
+          : seriesFormat === "double_leg"
+            ? "Final · Ida y Vuelta"
+            : "Final · Partido único";
+    const headerRight =
+      seriesFormat === "best_of_5" || seriesFormat === "best_of_7"
+        ? `Serie ${homeWins}–${awayWins}`
+        : seriesFormat === "double_leg"
+          ? `Global ${homeAggregate}–${awayAggregate}`
+          : null;
 
     // Width grows with the number of games so all columns fit without
     // squashing the team names.
@@ -87,22 +142,22 @@ export function BracketMatch({ match, vueltaMatch, canEdit, tournament, seriesMa
       <Card
         className={cn(
           "overflow-hidden text-sm",
-          seriesOver && "border-muted"
+          seriesWinnerId && "border-muted"
         )}
         style={{ width: cardWidth }}
       >
         <div className="flex items-center justify-between px-3 py-1 bg-muted/50 text-[10px] text-muted-foreground font-medium">
-          <span>Serie · {seriesMatches.length} juegos</span>
-          <span className="tabular-nums">
-            {homeWins} – {awayWins}
-          </span>
+          <span>{headerLeft}</span>
+          {headerRight && (
+            <span className="tabular-nums">{headerRight}</span>
+          )}
         </div>
         <div className="grid grid-cols-[1fr_auto] divide-y">
           {/* Home row */}
           <div
             className={cn(
               "flex items-center px-3 py-1.5 truncate",
-              seriesWinnerId === homeTeamId && "bg-primary/5 font-semibold"
+              seriesWinnerId === canonicalHomeId && "bg-primary/5 font-semibold"
             )}
           >
             {homeTeam?.name || "TBD"}
@@ -110,25 +165,28 @@ export function BracketMatch({ match, vueltaMatch, canEdit, tournament, seriesMa
           <div
             className={cn(
               "flex divide-x border-l text-xs",
-              seriesWinnerId === homeTeamId && "bg-primary/5 font-semibold"
+              seriesWinnerId === canonicalHomeId && "bg-primary/5 font-semibold"
             )}
           >
-            {seriesMatches.map((g) => (
-              <span
-                key={`h-${g.id}`}
-                className="w-7 px-1 py-1.5 tabular-nums text-center"
-              >
-                {g.status === "completed" && g.homeScore != null
-                  ? g.homeScore
-                  : "–"}
-              </span>
-            ))}
+            {seriesMatches.map((g) => {
+              const { homeScore } = legScores(g);
+              return (
+                <span
+                  key={`h-${g.id}`}
+                  className="w-7 px-1 py-1.5 tabular-nums text-center"
+                >
+                  {g.status === "completed" && homeScore != null
+                    ? homeScore
+                    : "–"}
+                </span>
+              );
+            })}
           </div>
           {/* Away row */}
           <div
             className={cn(
               "flex items-center px-3 py-1.5 truncate",
-              seriesWinnerId === awayTeamId && "bg-primary/5 font-semibold"
+              seriesWinnerId === canonicalAwayId && "bg-primary/5 font-semibold"
             )}
           >
             {awayTeam?.name || "TBD"}
@@ -136,31 +194,71 @@ export function BracketMatch({ match, vueltaMatch, canEdit, tournament, seriesMa
           <div
             className={cn(
               "flex divide-x border-l text-xs",
-              seriesWinnerId === awayTeamId && "bg-primary/5 font-semibold"
+              seriesWinnerId === canonicalAwayId && "bg-primary/5 font-semibold"
             )}
           >
-            {seriesMatches.map((g) => (
-              <span
-                key={`a-${g.id}`}
-                className="w-7 px-1 py-1.5 tabular-nums text-center"
-              >
-                {g.status === "completed" && g.awayScore != null
-                  ? g.awayScore
-                  : "–"}
-              </span>
-            ))}
+            {seriesMatches.map((g) => {
+              const { awayScore } = legScores(g);
+              return (
+                <span
+                  key={`a-${g.id}`}
+                  className="w-7 px-1 py-1.5 tabular-nums text-center"
+                >
+                  {g.status === "completed" && awayScore != null
+                    ? awayScore
+                    : "–"}
+                </span>
+              );
+            })}
           </div>
         </div>
-        {/* Game labels footer for orientation */}
+        {/* Game labels footer — Ida / Vuelta for double_leg, G1..GN otherwise. */}
         <div className="grid grid-cols-[1fr_auto] border-t bg-muted/20">
           <div className="px-3 py-1 text-[10px] text-muted-foreground" />
           <div className="flex divide-x border-l text-[10px] text-muted-foreground">
-            {seriesMatches.map((_, i) => (
-              <span key={`l-${i}`} className="w-7 px-1 py-1 text-center">
-                G{i + 1}
-              </span>
-            ))}
+            {seriesMatches.map((_, i) => {
+              const label =
+                seriesFormat === "double_leg"
+                  ? i === 0
+                    ? "Ida"
+                    : "Vta"
+                  : seriesMatches.length === 1
+                    ? "Final"
+                    : `G${i + 1}`;
+              return (
+                <span key={`l-${i}`} className="w-7 px-1 py-1 text-center">
+                  {label}
+                </span>
+              );
+            })}
           </div>
+        </div>
+      </Card>
+    );
+  }
+
+  // Bye check sits ABOVE the double-leg render so a bye matchup shows the
+  // "PASE DIRECTO" card even when the bracket is ida y vuelta. In double-leg
+  // the ida is passed as `match` and the vuelta as `vueltaMatch`; for byes
+  // both have the one-team-set/one-null pattern but we only need to render
+  // the bye card once based on the ida.
+  const isByeIdaMatch =
+    match.round === 1 &&
+    ((!!match.homeTeamId && !match.awayTeamId) ||
+      (!match.homeTeamId && !!match.awayTeamId));
+  if (isByeIdaMatch) {
+    const advancingTeam = match.homeTeamId ? homeTeam : awayTeam;
+    return (
+      <Card className="w-[200px] overflow-hidden text-sm border-dashed border-amber-500/40 bg-amber-500/[0.03]">
+        <div className="bg-amber-500/10 px-3 py-1 text-[10px] uppercase text-amber-700 font-semibold tracking-wide flex items-center justify-between">
+          <span>Pase directo</span>
+          <span>Bye</span>
+        </div>
+        <div className="flex items-center justify-between px-3 py-2 font-medium">
+          <span className="truncate mr-2">{advancingTeam?.name || "TBD"}</span>
+        </div>
+        <div className="px-3 py-1.5 text-[10px] text-muted-foreground border-t">
+          Avanza directo a la siguiente ronda
         </div>
       </Card>
     );
@@ -236,31 +334,7 @@ export function BracketMatch({ match, vueltaMatch, canEdit, tournament, seriesMa
     return content;
   }
 
-  // Bye render: round-1 match with exactly one team set. The lone team
-  // auto-advances to the next round (configureBracketSlots resolved it on
-  // save). We render a dedicated card so both the organizer and public
-  // viewers see who passed directly instead of seeing a "TBD" placeholder.
-  const isByeMatch =
-    match.round === 1 &&
-    ((!!match.homeTeamId && !match.awayTeamId) ||
-      (!match.homeTeamId && !!match.awayTeamId));
-  if (isByeMatch) {
-    const advancingTeam = match.homeTeamId ? homeTeam : awayTeam;
-    return (
-      <Card className="w-[200px] overflow-hidden text-sm border-dashed border-amber-500/40 bg-amber-500/[0.03]">
-        <div className="bg-amber-500/10 px-3 py-1 text-[10px] uppercase text-amber-700 font-semibold tracking-wide flex items-center justify-between">
-          <span>Pase directo</span>
-          <span>Bye</span>
-        </div>
-        <div className="flex items-center justify-between px-3 py-2 font-medium">
-          <span className="truncate mr-2">{advancingTeam?.name || "TBD"}</span>
-        </div>
-        <div className="px-3 py-1.5 text-[10px] text-muted-foreground border-t">
-          Avanza directo a la siguiente ronda
-        </div>
-      </Card>
-    );
-  }
+  // (Bye render moved above the double-leg branch so it fires uniformly.)
 
   // Single-leg rendering (original)
   const renderSlot = (

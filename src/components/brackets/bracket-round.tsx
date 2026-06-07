@@ -9,10 +9,11 @@ interface BracketRoundProps {
   canEdit: boolean;
   tournament?: Tournament;
   isDoubleLeg?: boolean;
-  /** Pieza I: best-of-N final series. When set, all matches render as a
-   *  single series card. `seriesTarget` is the wins needed to clinch. */
+  /** Tennis-style final series. When set, all matches render as a single
+   *  card showing both finalists with game-by-game scores. */
   isSeries?: boolean;
   seriesTarget?: number;
+  seriesFormat?: Tournament["playoffFinalFormat"];
 }
 
 export function BracketRound({
@@ -23,8 +24,9 @@ export function BracketRound({
   isDoubleLeg,
   isSeries,
   seriesTarget,
+  seriesFormat,
 }: BracketRoundProps) {
-  // For best-of-N final: one card showing the whole series.
+  // Final series: one card showing both finalists with all game scores.
   if (isSeries && matches.length > 0) {
     return (
       <div className="flex flex-col gap-2">
@@ -36,6 +38,7 @@ export function BracketRound({
             match={matches[0]}
             seriesMatches={matches}
             seriesTarget={seriesTarget}
+            seriesFormat={seriesFormat}
             canEdit={canEdit}
             tournament={tournament}
           />

@@ -315,6 +315,12 @@ export interface Tournament {
    *  true and the UI switches from the matchup builder to the regular
    *  bracket view. Drives the State A → B → C transition in PlayoffBracketView. */
   playoffFixtureGenerated?: boolean;
+  /** Pieza J: horizontal photo of the champion team, uploaded by the organizer
+   *  from the "¡Tenemos campeón!" modal once the tournament is `completed`.
+   *  When set, any visitor (including non-logged-in public viewers) sees a
+   *  centered modal with the photo + champion name on every load of the
+   *  tournament detail page. Undefined = no photo uploaded yet. */
+  championPhotoUrl?: string | null;
   doubleRoundRobin?: boolean;
   enabledStats?: MatchEventType[];
   maxPlayersPerTeam?: number;

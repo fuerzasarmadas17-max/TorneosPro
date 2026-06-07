@@ -135,6 +135,7 @@ export function mapTournament(row: Record<string, unknown>): Tournament {
     playoffFixtureGenerated: (row.playoff_fixture_generated as boolean) ?? undefined,
     playoffFinalFormat:
       (row.playoff_final_format as Tournament["playoffFinalFormat"]) ?? undefined,
+    championPhotoUrl: (row.champion_photo_url as string) ?? null,
     doubleRoundRobin: (row.double_round_robin as boolean) ?? false,
     enabledStats: (row.enabled_stats as MatchEventType[]) ?? undefined,
     maxPlayersPerTeam: (row.max_players_per_team as number) ?? undefined,
@@ -244,6 +245,7 @@ export function toDbTournament(t: Partial<Tournament>): Record<string, unknown> 
   if (t.playoffDoubleLeg !== undefined) db.playoff_double_leg = t.playoffDoubleLeg;
   if (t.playoffFixtureGenerated !== undefined) db.playoff_fixture_generated = t.playoffFixtureGenerated;
   if (t.playoffFinalFormat !== undefined) db.playoff_final_format = t.playoffFinalFormat;
+  if (t.championPhotoUrl !== undefined) db.champion_photo_url = t.championPhotoUrl;
   if (t.doubleRoundRobin !== undefined) db.double_round_robin = t.doubleRoundRobin;
   if (t.maxPlayersPerTeam !== undefined) db.max_players_per_team = t.maxPlayersPerTeam;
   if (t.bestOf !== undefined) db.best_of = t.bestOf;

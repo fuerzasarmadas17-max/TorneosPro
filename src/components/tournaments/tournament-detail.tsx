@@ -13,6 +13,7 @@ import { GroupStageView } from "@/components/standings/group-stage-view";
 import { PhaseConfigDialog } from "@/components/tournaments/phase-config-dialog";
 import { PhaseCompletionModal } from "@/components/tournaments/phase-completion-modal";
 import { TournamentChampionModal } from "@/components/tournaments/tournament-champion-modal";
+import { TournamentChampionViewerModal } from "@/components/tournaments/tournament-champion-viewer-modal";
 import { PlayoffFinalConfigDialog } from "@/components/tournaments/playoff-final-config-dialog";
 import { MatchSchedule } from "@/components/standings/match-schedule";
 import { DateOrganizer } from "@/components/standings/date-organizer";
@@ -46,7 +47,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Download, Settings, MoreVertical, Trash2, Ban, ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
+import { Download, Settings, MoreVertical, Trash2, Ban, ChevronLeft, ChevronRight, CheckCircle2, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
@@ -347,7 +348,17 @@ export function TournamentDetail({
   const { updateTournamentProps, updatePlayoffConfig } = useTournaments();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  // Whether the current viewer is the tournament's actual organizer (the
+  // user who created it). The "fase completada" / "campeón" / "configurar
+  // final" auto-modals are gated on this — super admins have canEdit=true
+  // across every tournament but shouldn't get spammed with celebration
+  // popups every time they open one mid-tournament.
+  const isOrganizer = !!user && user.id === tournament.createdBy;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Pieza J: forces the champion modal into upload-replace mode when the
+  // organizer clicks "Reemplazar foto del campeón" on a tournament that
+  // already has one. Resets to false when the modal closes.
+  const [championForceUpload, setChampionForceUpload] = useState(false);
 
   // Pieza F: one-shot "fase completada" modal. We snapshot which phases are
   // already complete at mount time and only fire the modal when a NEW phase
@@ -383,7 +394,7 @@ export function TournamentDetail({
       initialized.current = true;
       return;
     }
-    if (!canEdit) return;
+    if (!isOrganizer) return;
     // Any phase in `current` that isn't in our memo is a fresh completion.
     for (const phase of current) {
       if (!phasesSeenAsComplete.current.has(phase)) {
@@ -399,7 +410,7 @@ export function TournamentDetail({
       if (!current.has(phase)) phasesSeenAsComplete.current.delete(phase);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tournament.phaseConfigs, tournament.groupStageComplete, canEdit]);
+  }, [tournament.phaseConfigs, tournament.groupStageComplete, isOrganizer]);
 
   // Pieza I: configure-final modal. Fires once both finalists are known AND
   // the organizer hasn't picked a format yet. Detection compares team
@@ -409,7 +420,7 @@ export function TournamentDetail({
   const finalBecameKnownRef = useRef<boolean>(false);
   const [showFinalConfig, setShowFinalConfig] = useState(false);
   useEffect(() => {
-    if (!canEdit) return;
+    if (!isOrganizer) return;
     if (tournament.format !== "group-playoff" && tournament.format !== "elimination") return;
     if (tournament.playoffFinalFormat) return; // already configured
     const playoff = tournament.matches.filter(
@@ -435,20 +446,26 @@ export function TournamentDetail({
       // Reset so a future "finals re-determined" still fires.
       finalBecameKnownRef.current = false;
     }
-  }, [tournament.matches, tournament.format, tournament.playoffFinalFormat, canEdit]);
+  }, [tournament.matches, tournament.format, tournament.playoffFinalFormat, isOrganizer]);
 
   // Pieza H: champion celebration modal. Fires when tournament.status flips
-  // from any other value to "completed" during the session. Same one-shot
-  // semantics as the phase-completion modal — already-completed tournaments
-  // on mount don't re-trigger.
-  const seenCompletedRef = useRef<boolean>(tournament.status === "completed");
+  // from any other value to "completed" during the session, gated on the
+  // organizer (a super admin jumping between tournaments shouldn't get a
+  // champion popup on each one). We track the *previous* status seen by this
+  // mount and fire on a real transition (prev ≠ "completed" → "completed"),
+  // not on a one-shot flag. That way an organizer who resets the final from
+  // SQL and reloads results in the same tab still sees the modal — the
+  // earlier one-shot flag would've stayed `true` from before the reset.
+  const prevStatusRef = useRef<typeof tournament.status>(tournament.status);
   const [showChampion, setShowChampion] = useState(false);
   useEffect(() => {
-    if (tournament.status !== "completed") return;
-    if (seenCompletedRef.current) return;
-    seenCompletedRef.current = true;
-    setShowChampion(true);
-  }, [tournament.status]);
+    if (!isOrganizer) return;
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = tournament.status;
+    if (prev !== "completed" && tournament.status === "completed") {
+      setShowChampion(true);
+    }
+  }, [tournament.status, isOrganizer]);
 
   // Controlled Tabs so the modal's "Ir a fase X" / "Ir a Playoffs" button can
   // switch tabs programmatically. Default depends on format.
@@ -546,17 +563,38 @@ export function TournamentDetail({
         {isAdmin && <AdminActions tournament={tournament} />}
        </div>
 
-       {canEdit && (
-         <Button
-           variant="outline"
-           size="sm"
-           className="shrink-0"
-           onClick={() => setSettingsOpen(true)}
-         >
-           <Settings className="h-4 w-4 mr-2" />
-           Configuracion
-         </Button>
-       )}
+       <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+         {/* Pieza J: persistent champion-photo action for the organizer.
+             Visible only once the tournament is completed. When there's no
+             photo yet, the celebration modal opens in its default "upload"
+             state; when a photo is already set, we force replace mode so the
+             organizer can swap it. */}
+         {isOrganizer && tournament.status === "completed" && (
+           <Button
+             variant={tournament.championPhotoUrl ? "outline" : "default"}
+             size="sm"
+             onClick={() => {
+               setChampionForceUpload(!!tournament.championPhotoUrl);
+               setShowChampion(true);
+             }}
+           >
+             <Trophy className="h-4 w-4 mr-2" />
+             {tournament.championPhotoUrl
+               ? "Cambiar foto del campeón"
+               : "Subir foto del campeón"}
+           </Button>
+         )}
+         {canEdit && (
+           <Button
+             variant="outline"
+             size="sm"
+             onClick={() => setSettingsOpen(true)}
+           >
+             <Settings className="h-4 w-4 mr-2" />
+             Configuracion
+           </Button>
+         )}
+       </div>
       </div>
 
       {canEdit && (
@@ -619,11 +657,30 @@ export function TournamentDetail({
       )}
 
       {/* Pieza H: champion celebration modal. Fires when the tournament
-          transitions to "completed" during this session. */}
+          transitions to "completed" during this session. The organizer also
+          gets the upload UI here (Pieza J) so they can publish the champion
+          photo right after crowning them. */}
       <TournamentChampionModal
         open={showChampion}
-        onOpenChange={setShowChampion}
+        onOpenChange={(o) => {
+          setShowChampion(o);
+          // Reset replace-mode flag when the modal closes so the next time it
+          // opens (auto-trigger or "Subir foto") starts from a clean slate.
+          if (!o) setChampionForceUpload(false);
+        }}
         tournament={tournament}
+        isOrganizer={isOrganizer}
+        forceUpload={championForceUpload}
+      />
+
+      {/* Pieza J: read-only champion photo viewer. Pops as a centered modal on
+          every load (and reload) of a completed tournament that has a champion
+          photo set, visible to every visitor — logged in or not. The user can
+          dismiss it to inspect the bracket / phases. We disable it while the
+          organizer's celebration modal is open so they don't stack. */}
+      <TournamentChampionViewerModal
+        tournament={tournament}
+        disabled={showChampion}
       />
 
       {/* Pieza I: prompt to choose the final's format (single / ida y vuelta /

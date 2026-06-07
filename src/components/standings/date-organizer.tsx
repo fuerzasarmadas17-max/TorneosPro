@@ -101,7 +101,37 @@ export function DateOrganizer({ tournament, phaseFilter }: DateOrganizerProps) {
   const sections: { key: string; label: string; matches: Match[] }[] = [];
 
   const groupPhaseMatches = unscheduled.filter((m) => m.phase === "group");
-  const playoffPhaseMatches = unscheduled.filter((m) => m.phase === "playoff");
+  // Playoff: solo mostrar cuando el bracket ya está configurado (al menos un
+  // team asignado a algún slot). El bracket vacío se scaffoldea al generar
+  // el fixture de la última fase de grupos, así que sin este check
+  // aparecerían "Cuartos / Semis / Final" en Fechas antes de siquiera
+  // configurar las llaves.
+  //
+  // Además: ocultar los partidos de la final hasta que el organizador entre
+  // al modal "Configurar la final" y elija el formato (Pieza I). Ahí
+  // también se setean las fechas de los juegos de la final, así que no tiene
+  // sentido que aparezcan aquí antes de eso.
+  const bracketHasTeams = tournament.matches.some(
+    (m) => m.phase === "playoff" && (!!m.homeTeamId || !!m.awayTeamId)
+  );
+  const allPlayoffMatches = tournament.matches.filter(
+    (m) => m.phase === "playoff"
+  );
+  const playoffMaxRound = allPlayoffMatches.length > 0
+    ? Math.max(...allPlayoffMatches.map((m) => m.round))
+    : 0;
+  const isPlayoffDoubleLeg = !!tournament.playoffDoubleLeg;
+  const finalRoundFloor = isPlayoffDoubleLeg
+    ? playoffMaxRound - 1
+    : playoffMaxRound;
+  const hideFinalUntilFormatChosen = !tournament.playoffFinalFormat;
+  const playoffPhaseMatches = bracketHasTeams
+    ? unscheduled.filter(
+        (m) =>
+          m.phase === "playoff" &&
+          (!hideFinalUntilFormatChosen || m.round < finalRoundFloor)
+      )
+    : [];
   const regularMatches = unscheduled.filter((m) => !m.phase);
 
   if (regularMatches.length > 0) {
