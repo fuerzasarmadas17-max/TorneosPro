@@ -20,6 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, ArrowRightLeft, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 interface Destination {
@@ -168,6 +177,40 @@ export function PhaseConfigDialog({
     return map;
   }, [assignments]);
 
+  // Groups-mode helpers: inverse view of `assignments` so each group exposes
+  // its team list in classification order. Teams without a destination yet
+  // land on `unassignedTeamIds` and surface in a dedicated section above the
+  // groups so the organizer can't miss them.
+  const teamsByGroup = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const d of destinations) map[d.id] = [];
+    for (const c of classified) {
+      const destId = assignments[c.teamId];
+      if (destId && destId in map) map[destId].push(c.teamId);
+    }
+    return map;
+  }, [classified, assignments, destinations]);
+
+  const unassignedTeamIds = useMemo(
+    () => classified.filter((c) => !assignments[c.teamId]).map((c) => c.teamId),
+    [classified, assignments]
+  );
+
+  // Per-group collapsed/expanded state. Default: all collapsed so the
+  // organizer sees a compact overview of every group and only opens the
+  // ones they want to inspect or edit.
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    () => new Set(destinations.map((d) => d.id))
+  );
+  const toggleGroup = (groupId: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
+
   const handleSave = async () => {
     // Every classified team must have a destination chosen.
     const missing = classified.filter((c) => !assignments[c.teamId]);
@@ -260,7 +303,160 @@ export function PhaseConfigDialog({
                 ? "Este torneo no tiene equipos cargados todavía."
                 : `Todavía no hay clasificados. Cerrá los partidos pendientes de la fase ${fromPhase}.`}
             </p>
+          ) : mode === "groups" ? (
+            // GROUPS MODE: collapsible per-group cards with team rows + "Mover"
+            // dropdown that lists the other groups. Unassigned teams (if any)
+            // get a separate banner above so they're easy to spot.
+            <div className="space-y-3 py-2">
+              {unassignedTeamIds.length > 0 && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-2">
+                  <div className="flex items-center gap-2 text-sm font-medium text-amber-900 dark:text-amber-200">
+                    <AlertCircle className="h-4 w-4" />
+                    Sin asignar ({unassignedTeamIds.length})
+                  </div>
+                  <div className="space-y-1.5">
+                    {unassignedTeamIds.map((teamId) => (
+                      <div
+                        key={teamId}
+                        className="flex items-center justify-between gap-2 rounded bg-background/60 px-2.5 py-1.5"
+                      >
+                        <span className="text-sm truncate">{nameOf(teamId)}</span>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs">
+                              <ArrowRightLeft className="h-3 w-3 mr-1" />
+                              Asignar
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel className="text-xs">
+                              Elegí un grupo
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {destinations.map((d) => (
+                              <DropdownMenuItem
+                                key={d.id}
+                                onClick={() =>
+                                  setAssignments((prev) => ({
+                                    ...prev,
+                                    [teamId]: d.id,
+                                  }))
+                                }
+                              >
+                                {d.label}
+                                <span className="ml-auto text-xs text-muted-foreground">
+                                  {teamsByGroup[d.id]?.length ?? 0}
+                                </span>
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {destinations.map((group) => {
+                const teamsInGroup = teamsByGroup[group.id] ?? [];
+                const collapsed = collapsedGroups.has(group.id);
+                const otherGroups = destinations.filter((d) => d.id !== group.id);
+                return (
+                  <div key={group.id} className="rounded-md border bg-card">
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(group.id)}
+                      className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-muted/50 transition-colors rounded-t-md"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ChevronDown
+                          className={`h-4 w-4 shrink-0 transition-transform ${
+                            collapsed ? "-rotate-90" : ""
+                          }`}
+                        />
+                        <span className="font-medium text-sm truncate">
+                          {group.label}
+                        </span>
+                      </div>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {teamsInGroup.length}{" "}
+                        {teamsInGroup.length === 1 ? "equipo" : "equipos"}
+                      </span>
+                    </button>
+
+                    {!collapsed && (
+                      <div className="border-t px-3 py-2 space-y-1.5">
+                        {teamsInGroup.length === 0 ? (
+                          <p className="text-xs text-muted-foreground italic py-1.5 text-center">
+                            Sin equipos asignados
+                          </p>
+                        ) : (
+                          teamsInGroup.map((teamId) => {
+                            const c = classified.find((x) => x.teamId === teamId);
+                            return (
+                              <div
+                                key={teamId}
+                                className="flex items-center justify-between gap-2 rounded bg-muted/40 px-2.5 py-1.5"
+                              >
+                                <div className="min-w-0">
+                                  <div className="text-sm truncate">
+                                    {nameOf(teamId)}
+                                  </div>
+                                  {c && c.position > 0 && (
+                                    <div className="text-[10px] text-muted-foreground">
+                                      {c.position}° de {c.fromGroupName}
+                                    </div>
+                                  )}
+                                </div>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 px-2 text-xs shrink-0"
+                                      disabled={otherGroups.length === 0}
+                                    >
+                                      <ArrowRightLeft className="h-3 w-3 mr-1" />
+                                      Mover
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel className="text-xs">
+                                      Mover a…
+                                    </DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    {otherGroups.map((d) => (
+                                      <DropdownMenuItem
+                                        key={d.id}
+                                        onClick={() =>
+                                          setAssignments((prev) => ({
+                                            ...prev,
+                                            [teamId]: d.id,
+                                          }))
+                                        }
+                                      >
+                                        {d.label}
+                                        <span className="ml-auto text-xs text-muted-foreground">
+                                          {teamsByGroup[d.id]?.length ?? 0}
+                                        </span>
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           ) : (
+            // BRACKET MODE: kept as-is — each team picks a 1:1 slot from a
+            // Select. The collapsible-by-group layout doesn't apply because
+            // bracket slots hold a single team each.
             <div className="space-y-2 py-2">
               {classified.map((c) => (
                 <div

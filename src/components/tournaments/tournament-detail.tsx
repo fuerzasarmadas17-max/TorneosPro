@@ -591,7 +591,7 @@ export function TournamentDetail({
              onClick={() => setSettingsOpen(true)}
            >
              <Settings className="h-4 w-4 mr-2" />
-             Configuracion
+             Configurar torneo
            </Button>
          )}
        </div>
@@ -712,27 +712,29 @@ export function TournamentDetail({
       {tournament.format === "group-playoff" && tournament.phaseConfigs?.length ? (
         /* Multi-phase group-playoff */
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <div className="flex items-center gap-2">
-            <TabsList>
-              {tournament.phaseConfigs.map((pc) => {
-                if (pc.phase > 1 && !isTabVisible(`phase${pc.phase}`)) return null;
-                const groupsInPhase = tournament.groups?.filter(g => g.phase === pc.phase) || [];
-                const phaseLabel = groupsInPhase.length === 1
-                  ? `Liga (Fase ${pc.phase})`
-                  : `Grupos (Fase ${pc.phase})`;
-                return (
-                  <TabsTrigger key={`phase${pc.phase}`} value={`phase${pc.phase}`}>
-                    {phaseLabel}
-                  </TabsTrigger>
-                );
-              })}
-              {isTabVisible("playoffs") && <TabsTrigger value="playoffs">Playoffs</TabsTrigger>}
-              {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
-              {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
-              {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
-              {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
-            </TabsList>
-          </div>
+          {/* TabsList already manages its own horizontal scroll on mobile.
+              Avoid wrapping it in a flex container — that turns it into a
+              flex item, which expands to its content's natural width and
+              defeats the internal overflow. */}
+          <TabsList>
+            {tournament.phaseConfigs.map((pc) => {
+              if (pc.phase > 1 && !isTabVisible(`phase${pc.phase}`)) return null;
+              const groupsInPhase = tournament.groups?.filter(g => g.phase === pc.phase) || [];
+              const phaseLabel = groupsInPhase.length === 1
+                ? `Liga (Fase ${pc.phase})`
+                : `Grupos (Fase ${pc.phase})`;
+              return (
+                <TabsTrigger key={`phase${pc.phase}`} value={`phase${pc.phase}`}>
+                  {phaseLabel}
+                </TabsTrigger>
+              );
+            })}
+            {isTabVisible("playoffs") && <TabsTrigger value="playoffs">Playoffs</TabsTrigger>}
+            {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
+            {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
+            {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+          </TabsList>
           {tournament.phaseConfigs.map((pc) => {
             if (pc.phase > 1 && !isTabVisible(`phase${pc.phase}`)) return null;
             return (
@@ -752,7 +754,7 @@ export function TournamentDetail({
           )}
           {isTabVisible("schedule") && (
             <TabsContent value="schedule" className="mt-4">
-              <MatchSchedule tournament={tournament} canEdit={canEdit} />
+              <MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} />
             </TabsContent>
           )}
           {canEdit && (
@@ -774,16 +776,15 @@ export function TournamentDetail({
       ) : tournament.format === "group-playoff" ? (
         /* Single-phase group-playoff */
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <div className="flex items-center gap-2">
-            <TabsList>
-              <TabsTrigger value="groups">Grupos</TabsTrigger>
-              {isTabVisible("playoffs") && <TabsTrigger value="playoffs">Playoffs</TabsTrigger>}
-              {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
-              {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
-              {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
-              {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
-            </TabsList>
-          </div>
+          {/* See note above re: wrapping TabsList in a flex container. */}
+          <TabsList>
+            <TabsTrigger value="groups">Grupos</TabsTrigger>
+            {isTabVisible("playoffs") && <TabsTrigger value="playoffs">Playoffs</TabsTrigger>}
+            {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
+            {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
+            {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+          </TabsList>
           <TabsContent value="groups" className="mt-4">
             <GroupStageView tournament={tournament} canEdit={canEdit} />
           </TabsContent>
@@ -794,7 +795,7 @@ export function TournamentDetail({
           )}
           {isTabVisible("schedule") && (
             <TabsContent value="schedule" className="mt-4">
-              <MatchSchedule tournament={tournament} canEdit={canEdit} />
+              <MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} />
             </TabsContent>
           )}
           {canEdit && (
@@ -815,21 +816,19 @@ export function TournamentDetail({
         </Tabs>
       ) : tournament.format === "elimination" ? (
         <Tabs defaultValue="bracket">
-          <div className="flex items-center gap-2">
-            <TabsList>
-              <TabsTrigger value="bracket">Bracket</TabsTrigger>
-              {isTabVisible("schedule") && <TabsTrigger value="matches">Partidos</TabsTrigger>}
-              {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
-              {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
-              {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
-            </TabsList>
-          </div>
+          <TabsList>
+            <TabsTrigger value="bracket">Bracket</TabsTrigger>
+            {isTabVisible("schedule") && <TabsTrigger value="matches">Partidos</TabsTrigger>}
+            {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
+            {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+          </TabsList>
           <TabsContent value="bracket" className="mt-4">
             <BracketView tournament={tournament} canEdit={canEdit} />
           </TabsContent>
           {isTabVisible("schedule") && (
             <TabsContent value="matches" className="mt-4">
-              <MatchSchedule tournament={tournament} canEdit={canEdit} />
+              <MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} />
             </TabsContent>
           )}
           {canEdit && (
@@ -850,21 +849,19 @@ export function TournamentDetail({
         </Tabs>
       ) : tournament.groups && tournament.groups.length > 0 ? (
         <Tabs defaultValue="groups">
-          <div className="flex items-center gap-2">
-            <TabsList>
-              <TabsTrigger value="groups">Grupos</TabsTrigger>
-              {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
-              {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
-              {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
-              {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
-            </TabsList>
-          </div>
+          <TabsList>
+            <TabsTrigger value="groups">Grupos</TabsTrigger>
+            {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
+            {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
+            {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+          </TabsList>
           <TabsContent value="groups" className="mt-4">
             <GroupStageView tournament={tournament} canEdit={canEdit} />
           </TabsContent>
           {isTabVisible("schedule") && (
             <TabsContent value="schedule" className="mt-4">
-              <MatchSchedule tournament={tournament} canEdit={canEdit} />
+              <MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} />
             </TabsContent>
           )}
           {canEdit && (
@@ -885,15 +882,13 @@ export function TournamentDetail({
         </Tabs>
       ) : (
         <Tabs defaultValue="standings">
-          <div className="flex items-center gap-2">
-            <TabsList>
-              <TabsTrigger value="standings">Clasificacion</TabsTrigger>
-              {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
-              {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
-              {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
-              {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
-            </TabsList>
-          </div>
+          <TabsList>
+            <TabsTrigger value="standings">Clasificacion</TabsTrigger>
+            {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
+            {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
+            {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+          </TabsList>
           <TabsContent value="standings" className="mt-4">
             {sportCategory === "baseball" ? (
               <BaseballStandingsTable tournament={tournament} />
@@ -907,7 +902,7 @@ export function TournamentDetail({
           </TabsContent>
           {isTabVisible("schedule") && (
             <TabsContent value="schedule" className="mt-4">
-              <MatchSchedule tournament={tournament} canEdit={canEdit} />
+              <MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} />
             </TabsContent>
           )}
           {canEdit && (
@@ -1504,7 +1499,7 @@ function PhaseTabContent({
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
           <Button variant="outline" onClick={() => setConfigOpen(true)}>
-            Editar configuración
+            Configurar grupos
           </Button>
           <Button disabled={generating} onClick={onGenerateClick}>
             {generating ? "Generando..." : `Generar fixture`}
@@ -1593,7 +1588,7 @@ function PhaseTabContent({
         </p>
       </div>
       <Button onClick={() => setConfigOpen(true)}>
-        Configurar fase {phase}
+        Configurar grupos
       </Button>
       <PhaseConfigDialog
         open={configOpen}

@@ -464,9 +464,12 @@ function MatchRow({
         </div>
         <div className="flex items-center gap-1.5">
           <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          {/* Width matches the date input so both pills align. The earlier
+              100px got truncated on browsers that show the "AM/PM" suffix
+              inside the native time picker. */}
           <Input
             type="time"
-            className="h-8 sm:h-7 text-sm sm:text-xs w-[100px]"
+            className="h-8 sm:h-7 text-sm sm:text-xs w-[130px]"
             value={time}
             onChange={(e) => setTime(e.target.value)}
             onBlur={commitTime}

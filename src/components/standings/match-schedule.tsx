@@ -39,6 +39,10 @@ import { JornadaBuilder } from "./jornada-builder";
 interface MatchScheduleProps {
   tournament: Tournament;
   canEdit: boolean;
+  /** True if a user is logged in. The round/jornada badge ("J1", "R2", "Extra")
+   *  is meaningful for organizers and registered followers but not for
+   *  anonymous public viewers — hide it when this is false. */
+  isAuthenticated?: boolean;
 }
 
 function formatTime12h(time: string): string {
@@ -73,7 +77,7 @@ const statusLabels: Record<MatchStatus, string> = {
   completed: "Completado",
 };
 
-export function MatchSchedule({ tournament, canEdit }: MatchScheduleProps) {
+export function MatchSchedule({ tournament, canEdit, isAuthenticated = false }: MatchScheduleProps) {
   const { getTeamById } = useTournaments();
   const [manualMode, setManualMode] = useState(false);
 
@@ -133,6 +137,7 @@ export function MatchSchedule({ tournament, canEdit }: MatchScheduleProps) {
       <MatchDisplay
         tournament={tournament}
         canEdit={canEdit}
+        isAuthenticated={isAuthenticated}
         getTeamById={getTeamById}
       />
 
@@ -158,10 +163,12 @@ export function MatchSchedule({ tournament, canEdit }: MatchScheduleProps) {
 function MatchDisplay({
   tournament,
   canEdit,
+  isAuthenticated,
   getTeamById,
 }: {
   tournament: Tournament;
   canEdit: boolean;
+  isAuthenticated: boolean;
   getTeamById: (id: string) => import("@/types").Team | undefined;
 }) {
   const { updateMatchDetails } = useTournaments();
@@ -352,6 +359,62 @@ function MatchDisplay({
           </div>
         )}
 
+        {/* Card header — round + group badges on the left, status
+            dropdown/badge anchored to the right corner. Decoupling status
+            from the bottom row keeps "Cargar resultado" prominent on its
+            own line and avoids the dropdown crowding it on narrow screens. */}
+        <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b bg-muted/30">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+            {/* Round/jornada badge: hidden for anonymous public viewers
+                (organizers + registered followers still see it). */}
+            {isAuthenticated && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+                {roundLabel}
+              </Badge>
+            )}
+            {groupName && (
+              <Badge variant="secondary" className="text-xs">
+                {groupName}
+              </Badge>
+            )}
+          </div>
+          <div className="shrink-0">
+            {canEdit && !isCompleted ? (
+              <Select
+                value={match.status}
+                onValueChange={(value) => handleStatusChange(match.id, value as MatchStatus)}
+              >
+                <SelectTrigger className="h-7 w-auto text-xs gap-1 min-w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {match.status === "scheduled" && (
+                    <>
+                      <SelectItem value="scheduled">Programado</SelectItem>
+                      <SelectItem value="unscheduled">Sin Programar</SelectItem>
+                      <SelectItem value="postponed">Aplazado</SelectItem>
+                    </>
+                  )}
+                  {match.status === "postponed" && (
+                    <>
+                      <SelectItem value="postponed">Aplazado</SelectItem>
+                      <SelectItem value="reschedule">Reprogramar</SelectItem>
+                      <SelectItem value="unscheduled">Enviar a Fechas</SelectItem>
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Badge
+                variant="outline"
+                className={`text-xs ${isPostponed ? "bg-amber-500/10 text-amber-700 border-amber-500/30" : ""}`}
+              >
+                {statusLabels[match.status]}
+              </Badge>
+            )}
+          </div>
+        </div>
+
         {/* Teams + score — stacked on mobile, inline on desktop */}
         <div className="p-3 sm:p-3">
           {/* Mobile: stacked layout */}
@@ -388,57 +451,17 @@ function MatchDisplay({
                 Sets: {match.sets.map((s) => `${s.homePoints}-${s.awayPoints}`).join(", ")}
               </p>
             )}
-            {/* Badges row */}
-            <div className="flex items-center gap-2 mt-1">
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
-                {roundLabel}
-              </Badge>
-              {groupName && (
-                <Badge variant="secondary" className="text-xs">
-                  {groupName}
-                </Badge>
-              )}
-              {canEdit && !isCompleted ? (
-                <Select
-                  value={match.status}
-                  onValueChange={(value) => handleStatusChange(match.id, value as MatchStatus)}
-                >
-                  <SelectTrigger className="h-7 w-auto text-xs gap-1 min-w-[120px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {match.status === "scheduled" && (
-                      <>
-                        <SelectItem value="scheduled">Programado</SelectItem>
-                        <SelectItem value="unscheduled">Sin Programar</SelectItem>
-                        <SelectItem value="postponed">Aplazado</SelectItem>
-                      </>
-                    )}
-                    {match.status === "postponed" && (
-                      <>
-                        <SelectItem value="postponed">Aplazado</SelectItem>
-                        <SelectItem value="reschedule">Reprogramar</SelectItem>
-                        <SelectItem value="unscheduled">Enviar a Fechas</SelectItem>
-                      </>
-                    )}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Badge
-                  variant="outline"
-                  className={`text-xs ${isPostponed ? "bg-amber-500/10 text-amber-700 border-amber-500/30" : ""}`}
-                >
-                  {statusLabels[match.status]}
-                </Badge>
-              )}
-              {canEdit && match.status === "scheduled" && match.homeTeamId && match.awayTeamId && (
+            {/* Action row — round/group/status moved up to the card header,
+                so this row only holds the "Cargar resultado" CTA. */}
+            {canEdit && match.status === "scheduled" && match.homeTeamId && match.awayTeamId && (
+              <div className="flex justify-end mt-1">
                 <Button variant="outline" size="sm" asChild>
                   <Link href={`/tournaments/${tournament.id}/matches/${match.id}`}>
-                    Resultado
+                    Cargar resultado
                   </Link>
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Desktop: horizontal layout */}
@@ -480,56 +503,17 @@ function MatchDisplay({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
-                {roundLabel}
-              </Badge>
-              {groupName && (
-                <Badge variant="secondary" className="text-xs">
-                  {groupName}
-                </Badge>
-              )}
-              {canEdit && !isCompleted ? (
-                <Select
-                  value={match.status}
-                  onValueChange={(value) => handleStatusChange(match.id, value as MatchStatus)}
-                >
-                  <SelectTrigger className="h-7 w-auto text-xs gap-1 min-w-[120px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {match.status === "scheduled" && (
-                      <>
-                        <SelectItem value="scheduled">Programado</SelectItem>
-                        <SelectItem value="unscheduled">Sin Programar</SelectItem>
-                        <SelectItem value="postponed">Aplazado</SelectItem>
-                      </>
-                    )}
-                    {match.status === "postponed" && (
-                      <>
-                        <SelectItem value="postponed">Aplazado</SelectItem>
-                        <SelectItem value="reschedule">Reprogramar</SelectItem>
-                        <SelectItem value="unscheduled">Enviar a Fechas</SelectItem>
-                      </>
-                    )}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Badge
-                  variant="outline"
-                  className={`text-xs ${isPostponed ? "bg-amber-500/10 text-amber-700 border-amber-500/30" : ""}`}
-                >
-                  {statusLabels[match.status]}
-                </Badge>
-              )}
-              {canEdit && match.status === "scheduled" && match.homeTeamId && match.awayTeamId && (
+            {/* Right-side action: only the "Cargar resultado" CTA, since
+                round/group/status badges live in the card header above. */}
+            {canEdit && match.status === "scheduled" && match.homeTeamId && match.awayTeamId && (
+              <div className="shrink-0">
                 <Button variant="outline" size="sm" asChild>
                   <Link href={`/tournaments/${tournament.id}/matches/${match.id}`}>
-                    Resultado
+                    Cargar resultado
                   </Link>
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
 
