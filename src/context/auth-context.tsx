@@ -180,10 +180,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(
     async (name: string, email: string, password: string) => {
+      // After confirming the email, Supabase redirects to this URL with the
+      // session token in the URL hash. The supabase-js client picks it up
+      // automatically, so landing on /dashboard gives the user a logged-in
+      // session straight away instead of bouncing them to the Site URL
+      // (which is the landing page).
+      const appUrl =
+        process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") ||
+        (typeof window !== "undefined" ? window.location.origin : "");
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { name } },
+        options: {
+          data: { name },
+          emailRedirectTo: `${appUrl}/dashboard`,
+        },
       });
 
       if (error) {
