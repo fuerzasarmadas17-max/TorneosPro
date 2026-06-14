@@ -51,6 +51,9 @@ interface ScorerTeam {
   name: string;
   primaryColor: string | null;
   secondaryColor: string | null;
+  /** Roster del equipo. Si está vacío el anotador escribe nombres libres
+   *  (caso típico de torneos donde el organizer no cargó jugadores). */
+  players: { id: string; name: string }[];
 }
 
 interface ScorerData {
@@ -620,10 +623,33 @@ function MatchScreen({
             })}
           </div>
 
+          {/* Datalists con el roster de cada equipo. Cada input de jugador
+              referencia uno via `list={`players-${teamId}`}` y obtiene
+              typeahead nativo + sugerencias del browser. Si el roster está
+              vacío o el anotador escribe un nombre no listado, se acepta
+              igual como texto libre — el campo es input, no select. */}
+          {home && home.players.length > 0 && (
+            <datalist id={`scorer-players-${home.id}`}>
+              {home.players.map((p) => (
+                <option key={p.id} value={p.name} />
+              ))}
+            </datalist>
+          )}
+          {away && away.players.length > 0 && (
+            <datalist id={`scorer-players-${away.id}`}>
+              {away.players.map((p) => (
+                <option key={p.id} value={p.name} />
+              ))}
+            </datalist>
+          )}
+
           {eventEntries.length > 0 && (
             <div className="space-y-1.5 pt-1">
               {eventEntries.map((e, i) => {
                 const def = getStatDefinition(e.type);
+                const teamHasRoster =
+                  (e.teamId === home?.id && (home?.players.length ?? 0) > 0) ||
+                  (e.teamId === away?.id && (away?.players.length ?? 0) > 0);
                 return (
                   <div key={i} className="flex items-center gap-1.5">
                     <Badge variant="secondary" className="text-[10px] shrink-0">
@@ -637,12 +663,15 @@ function MatchScreen({
                       <option value={home?.id ?? ""}>{home?.name ?? "Local"}</option>
                       <option value={away?.id ?? ""}>{away?.name ?? "Visit."}</option>
                     </select>
-                    <Input
+                    <input
+                      type="text"
+                      list={teamHasRoster ? `scorer-players-${e.teamId}` : undefined}
                       value={e.playerName}
                       onChange={(ev) => updateEvent(i, { playerName: ev.target.value })}
                       placeholder="Jugador"
-                      className="h-8 text-xs flex-1"
+                      className="h-8 text-xs flex-1 rounded-md border bg-background px-2"
                       maxLength={60}
+                      autoComplete="off"
                     />
                     <Button size="sm" variant="ghost" onClick={() => removeEvent(i)}>
                       <Trash2 className="h-3 w-3" />

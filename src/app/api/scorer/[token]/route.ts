@@ -59,8 +59,10 @@ export async function GET(
     return NextResponse.json({ error: "DB error" }, { status: 500 });
   }
 
-  // Necesitamos el nombre + colores de los equipos involucrados para que
-  // la lista del anotador no muestre UUIDs.
+  // Necesitamos nombre + colores + roster de los equipos involucrados
+  // para que (a) la lista de partidos no muestre UUIDs y (b) el anotador
+  // tenga typeahead de jugadores al cargar eventos en lugar de escribir
+  // a mano cada nombre.
   const teamIds = new Set<string>();
   for (const m of matchesRes.data ?? []) {
     if (m.home_team_id) teamIds.add(m.home_team_id);
@@ -68,7 +70,7 @@ export async function GET(
   }
   const { data: teamsRows } = await supabaseAdmin
     .from("teams")
-    .select("id, name, primary_color, secondary_color")
+    .select("id, name, primary_color, secondary_color, players(id, name)")
     .in("id", Array.from(teamIds));
 
   return NextResponse.json({
@@ -85,6 +87,15 @@ export async function GET(
       name: t.name,
       primaryColor: t.primary_color,
       secondaryColor: t.secondary_color,
+      // Players viene como array de { id, name } gracias al embed players(id, name).
+      // El anotador los usa para typeahead; mantenemos texto libre como
+      // fallback si el jugador no está cargado en la base.
+      players: Array.isArray(t.players)
+        ? (t.players as { id: string; name: string }[]).map((p) => ({
+            id: p.id,
+            name: p.name,
+          }))
+        : [],
     })),
     matches: (matchesRes.data ?? []).map((m) => ({
       id: m.id,
