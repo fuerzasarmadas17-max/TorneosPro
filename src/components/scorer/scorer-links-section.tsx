@@ -49,7 +49,11 @@ export function ScorerLinksSection({ tournament }: ScorerLinksSectionProps) {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [createdToken, setCreatedToken] = useState<string | null>(null);
-  const [showActive, setShowActive] = useState(true);
+  // Historial = expirados y revocados. Lo escondemos por default porque
+  // una vez que un link cumple su propósito (los partidos se cargaron, el
+  // link expira) queda como ruido visual permanente. Toggle opt-in para
+  // los casos de auditoría.
+  const [showHistory, setShowHistory] = useState(false);
 
   // Cap por tier — usado para deshabilitar el botón al tope.
   const tierKey = (tournament.tier as TournamentTier | null) ?? "free";
@@ -61,6 +65,14 @@ export function ScorerLinksSection({ tournament }: ScorerLinksSectionProps) {
       links.filter(
         (l) =>
           !l.revoked_at && new Date(l.expires_at).getTime() > Date.now()
+      ),
+    [links]
+  );
+  const historicalLinks = useMemo(
+    () =>
+      links.filter(
+        (l) =>
+          l.revoked_at || new Date(l.expires_at).getTime() <= Date.now()
       ),
     [links]
   );
@@ -141,20 +153,37 @@ export function ScorerLinksSection({ tournament }: ScorerLinksSectionProps) {
         )}
       </div>
 
-      {/* Lista de links existentes */}
-      {!loading && links.length > 0 && (
-        <div className="border-t pt-3 space-y-2">
+      {/* Lista de links activos. Si no hay activos pero sí historial, se
+          esconde toda la lista y solo se muestra el toggle de historial al
+          final. */}
+      {!loading && activeLinks.length > 0 && (
+        <div className="border-t pt-3 space-y-1.5">
+          {activeLinks.map((l) => (
+            <ScorerLinkRowItem
+              key={l.token}
+              link={l}
+              tournament={tournament}
+              getTeamName={(id) => getTeamById(id)?.name ?? "TBD"}
+              onRevoke={() => handleRevoke(l.token)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Historial colapsado. Solo aparece el toggle si hay algo viejo. */}
+      {!loading && historicalLinks.length > 0 && (
+        <div className={activeLinks.length > 0 ? "pt-1" : "border-t pt-3"}>
           <button
             type="button"
-            onClick={() => setShowActive(!showActive)}
+            onClick={() => setShowHistory(!showHistory)}
             className="text-xs font-medium flex items-center gap-1 text-muted-foreground hover:text-foreground"
           >
-            {showActive ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            Mis links ({links.length})
+            {showHistory ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            {showHistory ? "Ocultar historial" : "Ver historial"} ({historicalLinks.length})
           </button>
-          {showActive && (
-            <div className="space-y-1.5">
-              {links.map((l) => (
+          {showHistory && (
+            <div className="space-y-1.5 mt-2">
+              {historicalLinks.map((l) => (
                 <ScorerLinkRowItem
                   key={l.token}
                   link={l}

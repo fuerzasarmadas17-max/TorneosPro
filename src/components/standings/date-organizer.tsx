@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tournament, Match } from "@/types";
 import { useTournaments } from "@/context/tournament-context";
-import { getRoundLabel } from "@/data/helpers";
+import { getPendingMatchups, getRoundLabel } from "@/data/helpers";
+import { JornadaBuilder } from "./jornada-builder";
+import { GroupJornadaBuilder } from "./match-schedule";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CalendarIcon, Clock, MapPin, Check, ArrowRight, Filter } from "lucide-react";
 import { toast } from "sonner";
@@ -383,6 +385,53 @@ export function DateOrganizer({ tournament, phaseFilter }: DateOrganizerProps) {
         <div className="px-4 py-6 text-center text-sm text-muted-foreground">
           {teamOptions.find((t) => t.id === teamFilter)?.name ?? "Ese equipo"} no tiene cruces pendientes
         </div>
+      )}
+
+      {/* "Agregar más partidos" — JornadaBuilder (round-robin/group-playoff).
+          Antes vivía en el tab Calendario duplicando esta misma UI. Ahora
+          se renderiza acá, debajo del organizador de fechas, solo cuando
+          hay enfrentamientos pendientes. */}
+      <JornadaBuilderSection tournament={tournament} />
+    </div>
+  );
+}
+
+function JornadaBuilderSection({ tournament }: { tournament: Tournament }) {
+  const isRoundRobinType =
+    tournament.format === "round-robin" || tournament.format === "group-playoff";
+  if (!isRoundRobinType) return null;
+
+  const hasPending = (() => {
+    if (tournament.format === "group-playoff") {
+      return (tournament.groups || []).some((g) => {
+        const groupMatches = tournament.matches.filter(
+          (m) => m.phase === "group" && m.groupId === g.id
+        );
+        return (
+          getPendingMatchups(g.teamIds, groupMatches, tournament.doubleRoundRobin)
+            .length > 0
+        );
+      });
+    }
+    const regularMatches = tournament.matches.filter((m) => !m.phase);
+    return (
+      getPendingMatchups(
+        tournament.teamIds,
+        regularMatches,
+        tournament.doubleRoundRobin
+      ).length > 0
+    );
+  })();
+
+  if (!hasPending) return null;
+
+  return (
+    <div className="border-t bg-background px-4 py-4 space-y-3">
+      <h3 className="font-semibold text-sm">Agregar más partidos</h3>
+      {tournament.format === "group-playoff" && tournament.groups ? (
+        <GroupJornadaBuilder tournament={tournament} />
+      ) : (
+        <JornadaBuilder tournament={tournament} />
       )}
     </div>
   );

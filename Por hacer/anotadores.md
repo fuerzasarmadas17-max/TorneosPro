@@ -423,6 +423,29 @@ otro anotador cargó algo en paralelo).
 - Anotador en otro dispositivo (sin localStorage) abre el mismo link →
   vuelve a pedir nombre. Distintos `entered_by_name` quedan en DB.
 
+## Soporte por deporte (v1)
+
+| Deporte | Soportado en /score | Notas |
+|---|---|---|
+| Fútbol / Futsal / Microfútbol | ✅ Score + goles + tarjetas + asistencias | Funciona |
+| Vóley | ✅ Score + sets (1-9) + aces/dobles faltas | Funciona |
+| Basketball | ✅ Score + puntos/asistencias/bloqueos/rebotes | Funciona |
+| Ping-pong / Tenis / Pádel | ✅ Solo score | Estos deportes no tienen stats en el catálogo |
+| Béisbol / Softball / Wiffleball | ❌ Bloqueado en v1 | Mensaje pidiendo que el organizer cargue |
+
+**Por qué béisbol queda fuera v1:** el scoresheet de béisbol es una planilla
+~9×10 celdas (jugadores × stats: at_bats, hits, dobles, triples, HR, RBI,
+errores, walks, ponches, runs). En pantalla de 360px ese layout se rompe —
+o las celdas quedan ilegibles, o hay que hacer scroll horizontal. El
+`baseball-scoresheet.tsx` actual está pensado para tablet/desktop (donde
+el organizer suele estar). Para llevarlo a mobile habría que re-diseñar
+con un patrón "tap un jugador → modal con sus stats" en lugar de la grilla.
+Trabajo no trivial; aparte de momento no hay caso de uso real demandándolo.
+
+**Cuándo retomarlo:** cuando aparezca un torneo de béisbol/softball cuyo
+organizer quiera delegar la carga. Ahí evaluamos el re-diseño mobile vs.
+seguir asumiendo que el organizer carga desde su compu/tablet.
+
 ## Open questions / decisiones pendientes
 
 - **Compartir entre anotadores:** si Juan reenvía el link a Pedro y Pedro

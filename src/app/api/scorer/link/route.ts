@@ -118,7 +118,10 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
-  // Calcular expires_at = MAX(date + time) + 24h.
+  // Calcular expires_at = MAX(date + time) + 24h. Si todos los partidos
+  // ya pasaron (organizador delega carga retroactiva), usamos now() como
+  // piso para que el link sirva al menos 24h desde su creación — sino
+  // arrancaría expirado y daría 404 al toque.
   let latestMs = 0;
   for (const m of matches) {
     if (!m.date || !m.time) {
@@ -136,7 +139,8 @@ export async function POST(request: NextRequest) {
     }
     if (ms > latestMs) latestMs = ms;
   }
-  const expiresAt = new Date(latestMs + 24 * 60 * 60 * 1000).toISOString();
+  const baseMs = Math.max(latestMs, Date.now());
+  const expiresAt = new Date(baseMs + 24 * 60 * 60 * 1000).toISOString();
 
   // Crear el link.
   const token = generateScorerToken();

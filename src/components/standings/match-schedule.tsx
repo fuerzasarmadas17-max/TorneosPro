@@ -118,42 +118,20 @@ export function MatchSchedule({ tournament, canEdit, isAuthenticated = false }: 
     );
   }
 
-  // --- Has matches: display schedule + optional JornadaBuilder ---
-  // For round-robin types, check if there are pending matchups
-  const hasPendingMatchups = isRoundRobinType && canEdit && (() => {
-    if (tournament.format === "group-playoff") {
-      return (tournament.groups || []).some((g) => {
-        const groupMatches = tournament.matches.filter((m) => m.phase === "group" && m.groupId === g.id);
-        return getPendingMatchups(g.teamIds, groupMatches, tournament.doubleRoundRobin).length > 0;
-      });
-    }
-    const regularMatches = tournament.matches.filter((m) => !m.phase);
-    return getPendingMatchups(tournament.teamIds, regularMatches, tournament.doubleRoundRobin).length > 0;
-  })();
+  // El JornadaBuilder ("Agregar más partidos") y la lista de
+  // "Enfrentamientos Pendientes" viven AHORA en el tab Fechas
+  // (DateOrganizer), no acá. El tab Calendario muestra exclusivamente
+  // partidos ya programados / completos / aplazados — la duplicación
+  // anterior generaba ruido visual y confundía al organizador.
 
   return (
     <div className="space-y-6">
-      {/* Match display */}
       <MatchDisplay
         tournament={tournament}
         canEdit={canEdit}
         isAuthenticated={isAuthenticated}
         getTeamById={getTeamById}
       />
-
-      {/* JornadaBuilder for incomplete schedules */}
-      {hasPendingMatchups && (
-        <div className="space-y-3">
-          <div className="border-t pt-4">
-            <h3 className="font-semibold text-sm mb-3">Agregar mas partidos</h3>
-            {tournament.format === "group-playoff" && tournament.groups ? (
-              <GroupJornadaBuilder tournament={tournament} />
-            ) : (
-              <JornadaBuilder tournament={tournament} />
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -971,7 +949,7 @@ function RoundRobinEmptySchedule({
 
 // --- Group jornada builder (renders one JornadaBuilder per group) ---
 
-function GroupJornadaBuilder({ tournament }: { tournament: Tournament }) {
+export function GroupJornadaBuilder({ tournament }: { tournament: Tournament }) {
   const groups = tournament.groups || [];
 
   return (
