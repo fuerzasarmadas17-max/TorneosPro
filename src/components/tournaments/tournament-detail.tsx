@@ -16,6 +16,7 @@ import { TournamentChampionModal } from "@/components/tournaments/tournament-cha
 import { TournamentChampionViewerModal } from "@/components/tournaments/tournament-champion-viewer-modal";
 import { PlayoffFinalConfigDialog } from "@/components/tournaments/playoff-final-config-dialog";
 import { MatchSchedule } from "@/components/standings/match-schedule";
+import { ScorerLinksSection } from "@/components/scorer/scorer-links-section";
 import { DateOrganizer } from "@/components/standings/date-organizer";
 import { TournamentStats } from "@/components/standings/tournament-stats";
 import { TeamRosterDialog } from "@/components/tournaments/team-roster-dialog";
@@ -37,7 +38,8 @@ import { useAuth } from "@/context/auth-context";
 import { AdminActions } from "@/components/tournaments/admin-actions";
 import { getSportInfo } from "@/data/sports";
 import { getDepartmentLabel, getMunicipalityLabel } from "@/data/colombia";
-import { getSportCategory, Tournament, Sponsor } from "@/types";
+import { getSportCategory, Tournament, Sponsor, Match } from "@/types";
+import { supabase } from "@/lib/supabase";
 import { SponsorBanner } from "@/components/sponsors/sponsor-banner";
 import { SponsorForm } from "@/components/sponsors/sponsor-form";
 import { AddTeamsDialog } from "@/components/tournaments/add-teams-dialog";
@@ -345,7 +347,7 @@ export function TournamentDetail({
   orgSponsors,
   isAuthenticated = false,
 }: TournamentDetailProps) {
-  const { updateTournamentProps, updatePlayoffConfig } = useTournaments();
+  const { updateTournamentProps, updatePlayoffConfig, applyExternalMatchUpdate } = useTournaments();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   // Whether the current viewer is the tournament's actual organizer (the
@@ -466,6 +468,44 @@ export function TournamentDetail({
       setShowChampion(true);
     }
   }, [tournament.status, isOrganizer]);
+
+  // Realtime: cuando el anotador (o cualquier writer) guarda un cambio en
+  // matches, lo reflejamos en el state local sin recargar. Esto hace que
+  // la tabla pública del torneo, las cards del organizer y la pantalla del
+  // anotador queden sincronizadas en vivo. Se suscribe a UPDATEs sobre
+  // matches filtrados por tournament_id; el payload de Realtime trae las
+  // columnas nuevas directamente, así que solo mapeamos snake → camel y
+  // se lo pasamos al setter del context.
+  useEffect(() => {
+    const channel = supabase
+      .channel(`tournament-${tournament.id}-matches`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "matches",
+          filter: `tournament_id=eq.${tournament.id}`,
+        },
+        (payload) => {
+          const row = payload.new as Record<string, unknown>;
+          if (!row?.id) return;
+          applyExternalMatchUpdate(tournament.id, row.id as string, {
+            homeScore: row.home_score as number | null,
+            awayScore: row.away_score as number | null,
+            winnerId: (row.winner_id as string | null) ?? null,
+            status: row.status as Match["status"],
+            date: (row.date as string) ?? undefined,
+            time: (row.time as string) ?? undefined,
+            venue: (row.venue as string) ?? undefined,
+          });
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [tournament.id, applyExternalMatchUpdate]);
 
   // Controlled Tabs so the modal's "Ir a fase X" / "Ir a Playoffs" button can
   // switch tabs programmatically. Default depends on format.
@@ -754,7 +794,7 @@ export function TournamentDetail({
           )}
           {isTabVisible("schedule") && (
             <TabsContent value="schedule" className="mt-4">
-              <MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} />
+              <div className="space-y-4">{canEdit && <ScorerLinksSection tournament={tournament} />}<MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} /></div>
             </TabsContent>
           )}
           {canEdit && (
@@ -795,7 +835,7 @@ export function TournamentDetail({
           )}
           {isTabVisible("schedule") && (
             <TabsContent value="schedule" className="mt-4">
-              <MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} />
+              <div className="space-y-4">{canEdit && <ScorerLinksSection tournament={tournament} />}<MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} /></div>
             </TabsContent>
           )}
           {canEdit && (
@@ -828,7 +868,7 @@ export function TournamentDetail({
           </TabsContent>
           {isTabVisible("schedule") && (
             <TabsContent value="matches" className="mt-4">
-              <MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} />
+              <div className="space-y-4">{canEdit && <ScorerLinksSection tournament={tournament} />}<MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} /></div>
             </TabsContent>
           )}
           {canEdit && (
@@ -861,7 +901,7 @@ export function TournamentDetail({
           </TabsContent>
           {isTabVisible("schedule") && (
             <TabsContent value="schedule" className="mt-4">
-              <MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} />
+              <div className="space-y-4">{canEdit && <ScorerLinksSection tournament={tournament} />}<MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} /></div>
             </TabsContent>
           )}
           {canEdit && (
@@ -902,7 +942,7 @@ export function TournamentDetail({
           </TabsContent>
           {isTabVisible("schedule") && (
             <TabsContent value="schedule" className="mt-4">
-              <MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} />
+              <div className="space-y-4">{canEdit && <ScorerLinksSection tournament={tournament} />}<MatchSchedule tournament={tournament} canEdit={canEdit} isAuthenticated={isAuthenticated} /></div>
             </TabsContent>
           )}
           {canEdit && (

@@ -91,6 +91,14 @@ interface TournamentContextType {
     events?: MatchEvent[],
     sets?: VolleyballSet[]
   ) => Promise<void>;
+  /** Apply an externally-sourced match update (Realtime channel). Only
+   *  patches local state — does NOT write to the DB. The patch comes from
+   *  a Supabase Realtime payload, so the change is already persisted. */
+  applyExternalMatchUpdate: (
+    tournamentId: string,
+    matchId: string,
+    patch: Partial<Match>
+  ) => void;
   updateTeamPlayers: (teamId: string, players: Player[]) => Promise<void>;
   updateTeam: (teamId: string, updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor">>) => Promise<void>;
   updateEventPaid: (tournamentId: string, matchId: string, eventId: string, paid: boolean) => Promise<void>;
@@ -1462,6 +1470,27 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     [tournaments]
   );
 
+  // Applies a Realtime-sourced patch to the local match without touching DB.
+  // Used by tournament-detail's subscription so that scorer-link updates
+  // (and any other concurrent writer) reflect in the UI without reload.
+  const applyExternalMatchUpdate = useCallback(
+    (tournamentId: string, matchId: string, patch: Partial<Match>) => {
+      setTournaments((prev) =>
+        prev.map((t) =>
+          t.id === tournamentId
+            ? {
+                ...t,
+                matches: t.matches.map((m) =>
+                  m.id === matchId ? { ...m, ...patch } : m
+                ),
+              }
+            : t
+        )
+      );
+    },
+    []
+  );
+
   const value = useMemo(
     () => ({
       tournaments,
@@ -1492,6 +1521,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       assignTeamsToGroupFn,
       addMatchesToTournament,
       updateMatch,
+      applyExternalMatchUpdate,
       getTournamentById,
       getTeamById,
       getFilteredTournaments,
@@ -1526,6 +1556,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       assignTeamsToGroupFn,
       addMatchesToTournament,
       updateMatch,
+      applyExternalMatchUpdate,
       getTournamentById,
       getTeamById,
       getFilteredTournaments,

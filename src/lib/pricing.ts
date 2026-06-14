@@ -7,6 +7,8 @@ export const FREE_TIER_LIMITS = {
   statsEnabled: false,
   maxGroups: 0,
   maxActiveFree: 1,
+  // scorer-links activos por torneo en plan gratuito
+  maxScorerLinks: 1,
 } as const;
 
 export interface FreeTierCheck {
@@ -59,6 +61,22 @@ export const TIER_TEAM_RANGES: Record<TournamentTier, { min: number; max: number
   medio: { min: 9, max: 16 },
   pro: { min: 17, max: 24 },
   premium: { min: 25, max: null },
+};
+
+/**
+ * Cap de scorer-links **activos** por torneo (Por hacer/anotadores.md).
+ * "Activo" = `revoked_at IS NULL AND expires_at > now()`. Expirados o
+ * revocados liberan slot.
+ *
+ * Un valor de Number.POSITIVE_INFINITY representa "sin límite" — Premium
+ * no tiene cap porque ya pagan el tier más alto.
+ */
+export const MAX_SCORER_LINKS_BY_TIER: Record<TournamentTier | "free", number> = {
+  free: 1,
+  basico: 3,
+  medio: 5,
+  pro: 10,
+  premium: Number.POSITIVE_INFINITY,
 };
 
 export function getTier(teamCount: number): TournamentTier {

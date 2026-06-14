@@ -256,6 +256,8 @@ CREATE TABLE matches (
   next_match_id UUID REFERENCES matches(id) ON DELETE SET NULL,
   phase match_phase,
   group_id UUID REFERENCES tournament_groups(id) ON DELETE SET NULL,
+  result_entered_by_name TEXT, -- scorer-link: nombre que escribió el anotador
+  result_entered_via_token TEXT, -- scorer-link: token del link usado
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -278,6 +280,8 @@ CREATE TABLE match_events (
   type match_event_type NOT NULL,
   position TEXT, -- para beisbol: P, C, 1B, 2B, 3B, SS, LF, CF, RF
   paid BOOLEAN NOT NULL DEFAULT false,
+  entered_by_name TEXT, -- scorer-link: nombre del anotador
+  entered_via_token TEXT, -- scorer-link: token del link usado
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -295,11 +299,37 @@ CREATE TABLE volleyball_sets (
   set_number SMALLINT NOT NULL,
   home_points INT NOT NULL DEFAULT 0,
   away_points INT NOT NULL DEFAULT 0,
+  entered_by_name TEXT, -- scorer-link: nombre del anotador
+  entered_via_token TEXT, -- scorer-link: token del link usado
 
   UNIQUE (match_id, set_number)
 );
 
 CREATE INDEX idx_volleyball_sets_match ON volleyball_sets(match_id);
+
+-- ========================
+-- SCORER LINKS (anotadores via link compartible — Por hacer/anotadores.md)
+-- ========================
+
+CREATE TABLE scorer_links (
+  token TEXT PRIMARY KEY,
+  tournament_id UUID NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  match_ids UUID[] NOT NULL,
+  created_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ,
+  last_used_at TIMESTAMPTZ,
+  usage_count INT NOT NULL DEFAULT 0,
+  CONSTRAINT scorer_links_match_ids_not_empty CHECK (array_length(match_ids, 1) > 0)
+);
+
+CREATE INDEX idx_scorer_links_tournament_active
+  ON scorer_links(tournament_id)
+  WHERE revoked_at IS NULL;
+CREATE INDEX idx_scorer_links_expires
+  ON scorer_links(expires_at)
+  WHERE revoked_at IS NULL;
 
 -- ========================
 -- ROW LEVEL SECURITY (RLS)
@@ -320,6 +350,22 @@ ALTER TABLE playoff_configs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE match_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE volleyball_sets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scorer_links ENABLE ROW LEVEL SECURITY;
+
+-- Scorer links: solo el organizador del torneo gestiona sus links. Los
+-- endpoints públicos (/api/scorer/*) usan service role para saltar RLS.
+CREATE POLICY "Organizer manages own tournament's scorer links"
+  ON scorer_links FOR ALL
+  USING (
+    tournament_id IN (
+      SELECT id FROM tournaments WHERE created_by = auth.uid()
+    )
+  )
+  WITH CHECK (
+    tournament_id IN (
+      SELECT id FROM tournaments WHERE created_by = auth.uid()
+    )
+  );
 
 -- ========================
 -- POLICIES: Lectura publica
