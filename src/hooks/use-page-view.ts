@@ -54,7 +54,11 @@ export function usePageView(
       }
     };
 
-    insertView();
+    // Defer la insert para que NO compita con la hidratación inicial ni
+    // con queries críticas de la página (ej. el seed del torneo en el
+    // detalle). Sale del critical render path y se ejecuta cuando el
+    // browser termina lo importante.
+    const insertTimer = setTimeout(insertView, 200);
 
     const updateDuration = () => {
       if (!viewIdRef.current) return;
@@ -84,6 +88,7 @@ export function usePageView(
     window.addEventListener("beforeunload", updateDuration);
 
     return () => {
+      clearTimeout(insertTimer);
       updateDuration();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("beforeunload", updateDuration);

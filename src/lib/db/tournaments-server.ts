@@ -49,9 +49,18 @@ export interface TournamentPageData {
 export async function fetchTournamentForPage(
   id: string
 ): Promise<TournamentPageData | null> {
+  // Logs van a Vercel Function Logs y ayudan a diagnosticar timeouts
+  // por torneos pesados. Pueden quitarse después de validar tiempos.
+  const t0 = Date.now();
   const tournament = await fetchTournamentById(id, supabaseServer);
+  const t1 = Date.now();
+  console.log(`[SSR] fetchTournamentById(${id}) tardó ${t1 - t0}ms`);
   if (!tournament) return null;
 
   const teams = await fetchTeamsByIds(tournament.teamIds, supabaseServer);
+  const t2 = Date.now();
+  console.log(
+    `[SSR] fetchTeamsByIds(${tournament.teamIds.length}) tardó ${t2 - t1}ms · total ${t2 - t0}ms`
+  );
   return { tournament, teams };
 }

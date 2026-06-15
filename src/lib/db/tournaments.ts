@@ -3,7 +3,12 @@ import { supabase } from "@/lib/supabase";
 import { Match, Tournament } from "@/types";
 import { mapTournament, toDbMatch, toDbTournament } from "./mappers";
 
-const TOURNAMENT_SELECT = `
+// SELECT completo para la página de detalle de UN solo torneo. Incluye
+// match_events embed que es lo que hace que la query "explote" en filas
+// (un torneo grande con 200 matches × 30 events = 6000 filas). Para un
+// torneo solo es manejable; para una lista de torneos NO. Por eso hay
+// dos versiones.
+const TOURNAMENT_DETAIL_SELECT = `
   *,
   tournament_teams(team_id),
   tournament_groups(*, tournament_group_teams(team_id)),
@@ -12,10 +17,26 @@ const TOURNAMENT_SELECT = `
   sponsors(*)
 `;
 
+// SELECT liviano para listas (vista pública `/tournaments`, dashboard,
+// perfil de organizador, contexto global). NO incluye match_events:
+// para 50 torneos × 200 matches × 30 events serían 300k filas en una
+// sola query — eso era el principal cuello de botella en mobile y la
+// causa del 504 en `/tournaments/[id]` cuando el provider hacía esta
+// query en cascada con la del torneo detallado. Los eventos se cargan
+// recién cuando el usuario entra a un torneo específico (vía SSR).
+const TOURNAMENT_LIST_SELECT = `
+  *,
+  tournament_teams(team_id),
+  tournament_groups(*, tournament_group_teams(team_id)),
+  playoff_configs(*),
+  matches(*, volleyball_sets(*)),
+  sponsors(*)
+`;
+
 export async function fetchTournaments(): Promise<Tournament[]> {
   const { data, error } = await supabase
     .from("tournaments")
-    .select(TOURNAMENT_SELECT)
+    .select(TOURNAMENT_LIST_SELECT)
     .order("created_at", { ascending: false });
 
   if (error || !data) return [];
@@ -28,7 +49,7 @@ export async function fetchTournamentById(
 ): Promise<Tournament | null> {
   const { data, error } = await client
     .from("tournaments")
-    .select(TOURNAMENT_SELECT)
+    .select(TOURNAMENT_DETAIL_SELECT)
     .eq("id", id)
     .single();
 
