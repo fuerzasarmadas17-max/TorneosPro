@@ -1,8 +1,6 @@
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
 import { Tournament, Team, getSportCategory } from "@/types";
 import { StatLeaderboard, CardEntry, BaseballPlayerStats } from "@/hooks/use-tournament-stats";
-import { BASEBALL_LEADERBOARD_ORDER } from "@/components/standings/tournament-stats";
+import { BASEBALL_LEADERBOARD_ORDER } from "@/lib/baseball-order";
 
 const fmt = (v: number) => v.toFixed(3).replace(/^0/, "");
 
@@ -36,12 +34,24 @@ interface StatsData {
  * y se muestran completas (sin slice). Sin filtro, cada tabla se corta
  * en `topN` filas.
  */
-export function downloadStatsPdf(
+export async function downloadStatsPdf(
   tournament: Tournament,
   data: StatsData,
   teamsById: Map<string, Team>,
   options: StatsPdfOptions = {}
-): void {
+): Promise<void> {
+  // Lazy-load de jspdf y jspdf-autotable: estas libs son pesadas (~300KB
+  // gz juntas) y solo se necesitan cuando el organizador hace click en
+  // "Descargar PDF". Cargarlas inline rompía el initial bundle de toda
+  // la app porque jspdf accede a `window`/`navigator` al evaluarse —
+  // bien para el cliente pero costoso en bundle. Con dynamic import
+  // queda code-split en un chunk aparte que solo se baja al click.
+  const [{ jsPDF }, autoTableModule] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+  const autoTable = autoTableModule.default;
+
   const { filterTeamId, topN = 10 } = options;
   const hasFilter = !!filterTeamId;
   const teamName = filterTeamId ? teamsById.get(filterTeamId)?.name ?? "" : "";

@@ -26,11 +26,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Filter, Download } from "lucide-react";
-import { Tournament, getSportCategory, MatchEventType } from "@/types";
+import { Tournament, getSportCategory } from "@/types";
 import { useTournamentStats, CardEntry } from "@/hooks/use-tournament-stats";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useTournaments } from "@/context/tournament-context";
 import { downloadStatsPdf } from "@/lib/stats-pdf";
+import { BASEBALL_LEADERBOARD_ORDER } from "@/lib/baseball-order";
 
 // Sin filtro de equipo: las cards muestran top 5 + "Ver más" → modal con
 // top 10. La tabla individual de béisbol muestra top 5 + "Ver más" →
@@ -41,23 +42,6 @@ const TOP_PREVIEW = 5;
 const TOP_MODAL = 10;
 const TOP_BASEBALL_EXPANDED = 20;
 
-// Orden de las cards de stats para deportes de béisbol. Después de la
-// tabla individual van: sencillos → dobles → triples → HR → runs →
-// RBI → errores → ponches → BB → AB. Cualquier otra stat no listada
-// va al final manteniendo su orden original. Se exporta para reusarlo
-// en el generador de PDF y mantener consistencia visual.
-export const BASEBALL_LEADERBOARD_ORDER: MatchEventType[] = [
-  "hit",
-  "double",
-  "triple",
-  "home_run",
-  "run_scored",
-  "rbi",
-  "error",
-  "strikeout",
-  "walk",
-  "at_bat",
-];
 
 const fmt = (v: number) => v.toFixed(3).replace(/^0/, "");
 
@@ -188,13 +172,17 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
     }
   };
 
-  const generatePdf = (topN: number) => {
+  const generatePdf = async (topN: number) => {
     const teamsMap = new Map(
       tournament.teamIds
         .map((id) => [id, getTeamById(id)])
         .filter(([, t]) => !!t) as [string, NonNullable<ReturnType<typeof getTeamById>>][]
     );
-    downloadStatsPdf(
+    setPdfDialogOpen(false);
+    // downloadStatsPdf es async porque hace dynamic import de jspdf.
+    // No bloqueamos la UI: el await es solo para errores; la descarga
+    // dispara sola cuando termina.
+    await downloadStatsPdf(
       tournament,
       { leaderboards, cardEntries, baseballPlayerStats },
       teamsMap,
@@ -203,7 +191,6 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
         topN,
       }
     );
-    setPdfDialogOpen(false);
   };
 
   return (
