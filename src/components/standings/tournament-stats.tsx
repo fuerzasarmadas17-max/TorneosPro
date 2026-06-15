@@ -219,7 +219,11 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                           {team?.name || p.teamId}
                         </TableCell>
                         <TableCell className="text-center">{p.ab}</TableCell>
-                        <TableCell className="text-center">{p.h}</TableCell>
+                        {/* H = sencillos (1B) — convención del scoresheet
+                            input. El total (singles + 2B + 3B + HR) se usa
+                            internamente para el cálculo de AVG/OBP/SLG y se
+                            puede deducir sumando las columnas. */}
+                        <TableCell className="text-center">{p.singles}</TableCell>
                         <TableCell className="text-center">{p.doubles}</TableCell>
                         <TableCell className="text-center">{p.triples}</TableCell>
                         <TableCell className="text-center">{p.hr}</TableCell>
