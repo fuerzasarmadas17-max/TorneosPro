@@ -34,6 +34,17 @@ export function VideoBackground() {
   const videoBRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
+    // Mobile no carga video. Cada clip pesa ~5MB y en 4G es la principal
+    // razón de que la landing se sienta lenta. En desktop con buena
+    // conexión sigue mostrando el carrusel. Si el user prefiere reducir
+    // animaciones (settings de accesibilidad) tampoco arrancamos.
+    if (typeof window === "undefined") return;
+    const isSmallScreen = window.matchMedia("(max-width: 768px)").matches;
+    const prefersReducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    if (isSmallScreen || prefersReducedMotion) return;
+
     const videoA = videoARef.current;
     const videoB = videoBRef.current;
     if (!videoA || !videoB) return;
