@@ -1,10 +1,14 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { Team, Player } from "@/types";
 import { mapTeam } from "./mappers";
 
-export async function fetchTeamsByIds(ids: string[]): Promise<Team[]> {
+export async function fetchTeamsByIds(
+  ids: string[],
+  client: SupabaseClient = supabase
+): Promise<Team[]> {
   if (ids.length === 0) return [];
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from("teams")
     .select("*, players(*)")
     .in("id", ids);

@@ -28,6 +28,12 @@ interface TournamentContextType {
    *  spinner hasta que los nombres de equipos estén disponibles. */
   teamsLoading: boolean;
   error: string | null;
+  /** Inyecta un torneo + sus equipos en el state local sin disparar una
+   *  query nueva. Lo usa el page de `/tournaments/[id]` cuando recibe
+   *  los datos pre-cargados del Server Component — así el primer render
+   *  ya tiene la data sin spinners. Idempotente: si el torneo ya estaba
+   *  en el state lo reemplaza con la versión más fresca. */
+  seedTournamentData: (tournament: Tournament, teams: Team[]) => void;
   addTournament: (tournament: Tournament) => Promise<{ id: string } | null>;
   addTeams: (newTeams: Team[]) => Promise<string[]>;
   addTeamsToTournament: (tournamentId: string, teamIds: string[]) => Promise<boolean>;
@@ -172,6 +178,34 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       setTeamsLoading(false);
     }
   }, []);
+
+  // Hidrata el state con datos pre-cargados del Server Component. No
+  // dispara ninguna query — los datos vienen ya armados. Si el torneo
+  // ya estaba en `tournaments`, lo reemplaza por la versión nueva.
+  // Si algún equipo ya estaba en `teams`, idem. Limpia los flags de
+  // loading porque ya tenemos data para mostrar.
+  const seedTournamentData = useCallback(
+    (tournament: Tournament, seedTeams: Team[]) => {
+      setTournaments((prev) => {
+        const idx = prev.findIndex((t) => t.id === tournament.id);
+        if (idx === -1) return [...prev, tournament];
+        const next = [...prev];
+        next[idx] = tournament;
+        return next;
+      });
+      if (seedTeams.length > 0) {
+        setTeams((prev) => {
+          if (prev.length === 0) return seedTeams;
+          const map = new Map(prev.map((t) => [t.id, t]));
+          for (const t of seedTeams) map.set(t.id, t);
+          return Array.from(map.values());
+        });
+        setTeamsLoading(false);
+      }
+      setIsLoading(false);
+    },
+    []
+  );
 
   // Initial mount: arrancamos cargando torneos para tener la landing
   // utilizable lo antes posible. Los equipos van en un effect separado
@@ -1544,6 +1578,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       isLoading,
       teamsLoading,
       error,
+      seedTournamentData,
       addTournament,
       addTeams,
       addTeamsToTournament: addTeamsToTournamentFn,
