@@ -15,19 +15,39 @@ export default function TournamentDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const { getTournamentById, isLoading: dataLoading } = useTournaments();
+  const { getTournamentById, isLoading: dataLoading, teamsLoading, teams } = useTournaments();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   usePageView("tournament", id, "tournament");
 
   const tournament = getTournamentById(id);
 
-  // Still loading — don't show "not found" yet
+  // Still loading — don't show "not found" yet.
   if (!tournament && (dataLoading || authLoading)) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">Cargando torneo...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Tenemos el torneo pero los equipos del sistema aún están bajando en
+  // background. Sin esto el bracket / posiciones / calendario muestran
+  // UUIDs en lugar de nombres durante ~1-2s — feo y confuso. Esperamos
+  // unos segundos a que termine la carga; si ya hay datos en `teams` lo
+  // saltamos directo aunque `teamsLoading` siga true (caso navegación
+  // interna). En la práctica solo aparece para usuarios anónimos que
+  // entran directo por link compartido (WhatsApp etc.).
+  if (tournament && teamsLoading && teams.length === 0) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">
+            Cargando equipos del torneo...
+          </p>
         </div>
       </div>
     );

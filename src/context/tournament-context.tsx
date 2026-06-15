@@ -17,11 +17,16 @@ import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/auth-context";
 
 interface TournamentContextType {
   tournaments: Tournament[];
   teams: Team[];
   isLoading: boolean;
+  /** True mientras se carga la lista de equipos del sistema (background
+   *  load). La página de detalle del torneo lo usa para mostrar un
+   *  spinner hasta que los nombres de equipos estén disponibles. */
+  teamsLoading: boolean;
   error: string | null;
   addTournament: (tournament: Tournament) => Promise<{ id: string } | null>;
   addTeams: (newTeams: Team[]) => Promise<string[]>;
@@ -122,36 +127,64 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   // recreate every callback on each state mutation).
   const tournamentsRef = useRef<Tournament[]>([]);
   tournamentsRef.current = tournaments;
+  // `isLoading` refleja solo el estado de torneos (la query liviana). Lo
+  // usamos en la landing y /tournaments para no bloquear el render.
+  // `teamsLoading` es la query pesada de equipos; se carga en background
+  // y la página de detalle del torneo la usa para esperar los nombres.
   const [isLoading, setIsLoading] = useState(true);
+  const [teamsLoading, setTeamsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
+  // El estado de auth se inyecta vía AuthProvider (que envuelve a este
+  // provider en app/providers.tsx). Lo usamos para evitar pedir
+  // `fetchAllTeams()` en el initial load para usuarios anónimos — esa
+  // query trae TODOS los equipos del sistema con sus jugadores y es la
+  // peor parte del bottleneck de performance (auditoria_landing.md #1).
+  // Anónimos solo ven la landing y el listado público de torneos; los
+  // equipos los cargamos recién cuando el user se autentica.
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+
+  // Torneos: query pública con RLS, se carga siempre para todos.
+  const loadTournaments = useCallback(async () => {
     try {
-      const [tournamentsData, teamsData] = await Promise.all([
-        fetchTournaments(),
-        fetchAllTeams(),
-      ]);
-      setTournaments(tournamentsData);
-      setTeams(teamsData);
+      const data = await fetchTournaments();
+      setTournaments(data);
       setError(null);
     } catch (err) {
       setError("Error al cargar datos");
       console.error(err);
-    } finally {
-      setIsLoading(false);
     }
   }, []);
 
+  // Equipos: query "todos los equipos del sistema" — pesada. Se carga
+  // en BACKGROUND después del initial paint de la landing. El estado
+  // `teamsLoading` permite a la página de detalle del torneo mostrar
+  // un spinner mientras los nombres reales llegan, en lugar de mostrar
+  // UUIDs / "TBD" en bracket, calendario y posiciones.
+  const loadTeams = useCallback(async () => {
+    setTeamsLoading(true);
+    try {
+      const data = await fetchAllTeams();
+      setTeams(data);
+    } catch (err) {
+      console.error("loadTeams failed", err);
+    } finally {
+      setTeamsLoading(false);
+    }
+  }, []);
+
+  // Initial mount: arrancamos cargando torneos para tener la landing
+  // utilizable lo antes posible. Los equipos van en un effect separado
+  // que depende del estado de auth.
   useEffect(() => {
-    // Load data immediately (works if session is valid or for public RLS)
-    loadData();
+    loadTournaments().finally(() => setIsLoading(false));
 
     // Re-load when Supabase confirms a valid session (after token refresh,
-    // sign-in, or session restore). This catches the case where the initial
-    // load failed because the JWT was expired.
+    // sign-in, or session restore). Esto cubre el caso de que el JWT
+    // estuviera vencido al mount o que el usuario haya hecho login.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        loadData();
+        loadTournaments();
       }
     });
 
@@ -163,21 +196,34 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
       clearTimeout(safetyTimer);
     };
-  }, [loadData]);
+  }, [loadTournaments]);
+
+  // Equipos: lazy load en background apenas el auth termina su check
+  // inicial. Antes solo cargábamos para usuarios logueados, pero un
+  // anónimo que entra directo a un link compartido de torneo se
+  // encontraba con UUIDs en lugar de nombres. Ahora cargamos siempre,
+  // pero después del primer paint — la landing y /tournaments arrancan
+  // rápido igual porque dependen solo de `isLoading` (que es de
+  // torneos), no de `teamsLoading`.
+  useEffect(() => {
+    if (authLoading) return;
+    loadTeams();
+  }, [authLoading, loadTeams]);
 
   const refetch = useCallback(async () => {
-    await loadData();
-  }, [loadData]);
+    await loadTournaments();
+    await loadTeams();
+  }, [loadTournaments, loadTeams]);
 
   const addTournament = useCallback(async (tournament: Tournament): Promise<{ id: string } | null> => {
     const tournamentId = await dbCreateTournament(tournament);
     if (tournamentId) {
       // Refetch to get the full tournament with DB-generated IDs
-      await loadData();
+      await refetch();
       return { id: tournamentId };
     }
     return null;
-  }, [loadData]);
+  }, [refetch]);
 
   const addTeams = useCallback(async (newTeams: Team[]): Promise<string[]> => {
     const ids = await dbCreateTeams(newTeams);
@@ -192,18 +238,18 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   const addTeamsToTournamentFn = useCallback(async (tournamentId: string, teamIds: string[]): Promise<boolean> => {
     const ok = await addTournamentTeams(tournamentId, teamIds);
     if (ok) {
-      await loadData();
+      await refetch();
     }
     return ok;
-  }, [loadData]);
+  }, [refetch]);
 
   const assignTeamsToGroupFn = useCallback(async (groupId: string, teamIds: string[]): Promise<boolean> => {
     const ok = await assignTeamsToGroup(groupId, teamIds);
     if (ok) {
-      await loadData();
+      await refetch();
     }
     return ok;
-  }, [loadData]);
+  }, [refetch]);
 
   const addMatchesToTournament = useCallback(async (tournamentId: string, newMatches: Match[]) => {
     if (newMatches.length === 0) return;
@@ -258,14 +304,14 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    await loadData();
-  }, [loadData]);
+    await refetch();
+  }, [refetch]);
 
   const addMatchToTournament = useCallback(async (tournamentId: string, match: Match) => {
     const dbData = toDbMatch({ ...match, tournamentId });
     await supabase.from("matches").insert(dbData);
-    await loadData();
-  }, [loadData]);
+    await refetch();
+  }, [refetch]);
 
   const removeMatchFromTournament = useCallback(async (tournamentId: string, matchId: string) => {
     await dbDeleteMatch(matchId);
@@ -1496,6 +1542,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       tournaments,
       teams,
       isLoading,
+      teamsLoading,
       error,
       addTournament,
       addTeams,
@@ -1531,6 +1578,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       tournaments,
       teams,
       isLoading,
+      teamsLoading,
       error,
       addTournament,
       addTeams,

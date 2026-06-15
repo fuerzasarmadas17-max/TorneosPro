@@ -1,5 +1,6 @@
 "use client";
 
+import { useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,9 +16,15 @@ import { DEPARTMENTS, getDepartment } from "@/data/colombia";
 export function TournamentFilters() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // useTransition hace que el cambio de filtro NO bloquee la UI mientras
+  // React procesa el re-render. Sin esto, cada tap en un Select se
+  // sentía "freezeado" porque router.replace() disparaba un re-render
+  // del server component sincrónico. Con startTransition el UI se
+  // mantiene responsive y `isPending` nos da un visual de "estoy
+  // trabajando" (opacity reducida en todo el wrapper).
+  const [isPending, startTransition] = useTransition();
 
   const currentSport = searchParams.get("sport") || "";
-  const currentFormat = searchParams.get("format") || "";
   const currentStatus = searchParams.get("status") || "in-progress";
   const currentSearch = searchParams.get("search") || "";
   const currentDepartment = searchParams.get("department") || "";
@@ -30,7 +37,9 @@ export function TournamentFilters() {
     } else {
       params.delete(key);
     }
-    router.replace(`/tournaments?${params.toString()}`);
+    startTransition(() => {
+      router.replace(`/tournaments?${params.toString()}`);
+    });
   };
 
   const updateDepartment = (v: string) => {
@@ -41,11 +50,15 @@ export function TournamentFilters() {
       params.delete("department");
     }
     params.delete("municipality");
-    router.replace(`/tournaments?${params.toString()}`);
+    startTransition(() => {
+      router.replace(`/tournaments?${params.toString()}`);
+    });
   };
 
   return (
-    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
+    <div
+      className={`flex flex-col sm:flex-row sm:flex-wrap gap-3 transition-opacity ${isPending ? "opacity-60" : ""}`}
+    >
       <Input
         placeholder="Buscar torneo..."
         value={currentSearch}

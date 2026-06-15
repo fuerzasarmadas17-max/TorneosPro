@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,11 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // El push a /dashboard se hace dentro de startTransition para que
+  // React priorice el unmount del form y la nav sin bloquear el thread.
+  // Sin esto, el botón "Iniciar Sesion" quedaba ~2s sin feedback visible
+  // mientras el TournamentProvider recargaba data en paralelo.
+  const [isPending, startTransition] = useTransition();
   const { login } = useAuth();
   const router = useRouter();
 
@@ -40,7 +45,9 @@ export function LoginForm() {
 
     if (result.success) {
       toast.success("Sesion iniciada correctamente");
-      router.push("/dashboard");
+      startTransition(() => {
+        router.push("/dashboard");
+      });
     } else {
       setError(result.error || "Error al iniciar sesion");
     }
@@ -90,8 +97,8 @@ export function LoginForm() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-4 pt-6">
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Ingresando..." : "Iniciar Sesion"}
+          <Button type="submit" className="w-full" disabled={loading || isPending}>
+            {loading ? "Ingresando..." : isPending ? "Redirigiendo..." : "Iniciar Sesion"}
           </Button>
           <p className="text-sm text-muted-foreground">
             No tienes cuenta?{" "}
