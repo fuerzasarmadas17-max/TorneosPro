@@ -219,11 +219,12 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                           {team?.name || p.teamId}
                         </TableCell>
                         <TableCell className="text-center">{p.ab}</TableCell>
-                        {/* H = sencillos (1B) — convención del scoresheet
-                            input. El total (singles + 2B + 3B + HR) se usa
-                            internamente para el cálculo de AVG/OBP/SLG y se
-                            puede deducir sumando las columnas. */}
-                        <TableCell className="text-center">{p.singles}</TableCell>
+                        {/* H = total de hits (convención MLB / planillas
+                            oficiales). 2B/3B/HR son subset de H; los
+                            sencillos se deducen restando: 1B = H - 2B - 3B - HR.
+                            El input del scoresheet también espera H como
+                            total y la app calcula los sencillos al guardar. */}
+                        <TableCell className="text-center">{p.h}</TableCell>
                         <TableCell className="text-center">{p.doubles}</TableCell>
                         <TableCell className="text-center">{p.triples}</TableCell>
                         <TableCell className="text-center">{p.hr}</TableCell>

@@ -11,8 +11,21 @@ import {
 import { Input } from "@/components/ui/input";
 import { MatchEventType, Player, getStatDefinition } from "@/types";
 
+/**
+ * Convención MLB: en el scoresheet `v.hit` representa el TOTAL de hits
+ * del bateador (incluyendo sencillos, 2B, 3B y HR). Los hits especiales
+ * (`double`, `triple`, `home_run`) son un subset que se cuenta aparte
+ * para SLG y para mostrar el desglose en la tabla. Los sencillos no se
+ * almacenan: se deducen como `hit - double - triple - home_run`.
+ */
 function totalHits(v: Record<string, number>) {
-  return (v.hit ?? 0) + (v.double ?? 0) + (v.triple ?? 0) + (v.home_run ?? 0);
+  return v.hit ?? 0;
+}
+
+/** Suma los hits "extra-base" cargados explícitamente (2B + 3B + HR).
+ *  Sirve para validar que el H total no quede por debajo del subset. */
+function extraBaseHits(v: Record<string, number>) {
+  return (v.double ?? 0) + (v.triple ?? 0) + (v.home_run ?? 0);
 }
 
 interface PlayerStats {
@@ -56,6 +69,15 @@ export function BaseballScoresheet({
         return totalHits(v) > (v.at_bat ?? 0) && (v.at_bat ?? 0) > 0;
       })
     : [];
+
+  // Convención MLB: 2B + 3B + HR son un subset de H. Si la suma supera
+  // a H, hay un error de carga (no se pueden tener más extra-base que
+  // hits totales). Lo marcamos pero no bloqueamos el save porque el
+  // organizer puede estar a mitad de carga.
+  const extraExceedsHPlayers = players.filter((p) => {
+    const v = values[p.name] || {};
+    return extraBaseHits(v) > totalHits(v) && extraBaseHits(v) > 0;
+  });
 
   if (players.length === 0) {
     return (
@@ -129,6 +151,13 @@ export function BaseballScoresheet({
       {inconsistentPlayers.length > 0 && (
         <p className="text-xs text-amber-500">
           Revisa: H &gt; AB en {inconsistentPlayers.map((p) => p.name).join(", ")}
+        </p>
+      )}
+      {extraExceedsHPlayers.length > 0 && (
+        <p className="text-xs text-amber-500">
+          Revisa: 2B + 3B + HR superan a H en{" "}
+          {extraExceedsHPlayers.map((p) => p.name).join(", ")}.
+          H debe incluir todos los hits (sencillos + extra-base).
         </p>
       )}
     </div>
