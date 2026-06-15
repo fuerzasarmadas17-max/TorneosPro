@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Table,
   TableBody,
@@ -18,13 +18,46 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tournament, getSportCategory } from "@/types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Filter, Download } from "lucide-react";
+import { Tournament, getSportCategory, MatchEventType } from "@/types";
 import { useTournamentStats, CardEntry } from "@/hooks/use-tournament-stats";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useTournaments } from "@/context/tournament-context";
+import { downloadStatsPdf } from "@/lib/stats-pdf";
 
+// Sin filtro de equipo: las cards muestran top 5 + "Ver más" → modal con
+// top 10. La tabla individual de béisbol muestra top 5 + "Ver más" →
+// top 20 inline (sin modal, solo extiende la tabla).
+// Con filtro: ambas vistas muestran TODOS los entries del equipo, sin
+// botón "Ver más".
 const TOP_PREVIEW = 5;
-const TOP_MODAL = 15;
+const TOP_MODAL = 10;
+const TOP_BASEBALL_EXPANDED = 20;
+
+// Orden de las cards de stats para deportes de béisbol. Después de la
+// tabla individual van: sencillos → dobles → triples → HR → runs →
+// RBI → errores → ponches → BB → AB. Cualquier otra stat no listada
+// va al final manteniendo su orden original. Se exporta para reusarlo
+// en el generador de PDF y mantener consistencia visual.
+export const BASEBALL_LEADERBOARD_ORDER: MatchEventType[] = [
+  "hit",
+  "double",
+  "triple",
+  "home_run",
+  "run_scored",
+  "rbi",
+  "error",
+  "strikeout",
+  "walk",
+  "at_bat",
+];
 
 const fmt = (v: number) => v.toFixed(3).replace(/^0/, "");
 
@@ -36,10 +69,29 @@ interface TournamentStatsProps {
 export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
   const { leaderboards, hasStats, cardEntries, baseballPlayerStats } = useTournamentStats(tournament);
   const { getTeamById, updateEventPaid } = useTournaments();
-  // Which leaderboard is being shown expanded in the dialog (top 15).
+  // Which leaderboard is being shown expanded in the dialog.
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  // Filtro de equipo único que aplica a todas las cards + la tabla
+  // individual. "all" = sin filtro (comportamiento original).
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("all");
+  // "Ver más" inline para la tabla de béisbol (sin filtro). Cuando hay
+  // filtro de equipo este flag se ignora — siempre mostramos todos.
+  const [baseballExpanded, setBaseballExpanded] = useState(false);
+  // Diálogo para elegir top N al descargar PDF sin filtro de equipo.
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [pdfTopN, setPdfTopN] = useState<string>("10");
+
   const isBaseball = getSportCategory(tournament.sport) === "baseball";
   const showBaseballTable = isBaseball && baseballPlayerStats.length > 0;
+  const hasFilter = selectedTeamId !== "all";
+
+  // Opciones del dropdown de equipo: todos los del torneo, ordenados
+  // alfabéticamente para que el organizador no tenga que cazarlos.
+  const teamOptions = useMemo(() => {
+    return tournament.teamIds
+      .map((id) => ({ id, name: getTeamById(id)?.name || id }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [tournament.teamIds, getTeamById]);
 
   // Determine if cards/ejections are enabled
   const hasCardStats =
@@ -49,20 +101,64 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
     tournament.enabledStats?.includes("blue_card");
 
   // Filter cards based on view: creator sees all, public sees only unpaid
-  const visibleCards: CardEntry[] = canEdit
+  const visibleCardsAll: CardEntry[] = canEdit
     ? cardEntries
     : cardEntries.filter((c) => !c.paid);
+  // El filtro de equipo también aplica a sanciones — si el organizer
+  // está mirando un equipo específico, le sirve ver solo sus tarjetas.
+  const visibleCards = hasFilter
+    ? visibleCardsAll.filter((c) => c.teamId === selectedTeamId)
+    : visibleCardsAll;
 
   // Non-card leaderboards (exclude yellow_card, red_card, ejection)
   const nonCardLeaderboards = leaderboards.filter(
     (lb) => lb.statKey !== "yellow_card" && lb.statKey !== "red_card" && lb.statKey !== "ejection" && lb.statKey !== "blue_card"
   );
 
-  const hasNonCardStats = nonCardLeaderboards.some(
+  // Aplicar el filtro de equipo a cada leaderboard. Filtramos las
+  // entradas de jugador por teamId, y para los "computed" (team-level
+  // stats como Goals Against) filtramos las teamLeaders por id directo.
+  const filteredLeaderboards = useMemo(() => {
+    const base = hasFilter
+      ? nonCardLeaderboards.map((lb) => ({
+          ...lb,
+          leaders: lb.leaders.filter((l) => l.teamId === selectedTeamId),
+          teamLeaders: lb.teamLeaders.filter((t) => t.teamId === selectedTeamId),
+        }))
+      : nonCardLeaderboards;
+    // Aplicar el orden de béisbol para que las cards sigan la secuencia
+    // que el organizador espera (sencillos → ... → AB). Para otros
+    // deportes mantenemos el orden original que viene del catálogo.
+    if (!isBaseball) return base;
+    return [...base].sort((a, b) => {
+      const aIdx = BASEBALL_LEADERBOARD_ORDER.indexOf(a.statKey);
+      const bIdx = BASEBALL_LEADERBOARD_ORDER.indexOf(b.statKey);
+      const aOrder = aIdx === -1 ? BASEBALL_LEADERBOARD_ORDER.length : aIdx;
+      const bOrder = bIdx === -1 ? BASEBALL_LEADERBOARD_ORDER.length : bIdx;
+      return aOrder - bOrder;
+    });
+  }, [nonCardLeaderboards, selectedTeamId, hasFilter, isBaseball]);
+
+  const hasNonCardStats = filteredLeaderboards.some(
     (lb) => lb.leaders.length > 0 || lb.teamLeaders.length > 0
   );
 
-  if (!hasStats && visibleCards.length === 0 && !showBaseballTable) {
+  // Tabla individual de béisbol filtrada + paginada:
+  // - con filtro: todos los jugadores del equipo, sin slice.
+  // - sin filtro: top 5 inicial, o top 20 si baseballExpanded.
+  const filteredBaseballPlayers = useMemo(() => {
+    if (hasFilter) {
+      return baseballPlayerStats.filter((p) => p.teamId === selectedTeamId);
+    }
+    return baseballPlayerStats.slice(
+      0,
+      baseballExpanded ? TOP_BASEBALL_EXPANDED : TOP_PREVIEW
+    );
+  }, [baseballPlayerStats, hasFilter, selectedTeamId, baseballExpanded]);
+  const hasMoreBaseball =
+    !hasFilter && baseballPlayerStats.length > TOP_PREVIEW;
+
+  if (!hasStats && visibleCardsAll.length === 0 && !showBaseballTable) {
     return (
       <Card>
         <CardContent className="py-8 text-center">
@@ -81,8 +177,77 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
     updateEventPaid(tournament.id, card.matchId, card.eventId, !card.paid);
   };
 
+  // Genera y descarga el PDF. Con filtro de equipo se baja directo (todas
+  // las stats del equipo); sin filtro abre el mini-diálogo para que el
+  // organizador elija cuántos top jugadores incluir por estadística.
+  const handleDownloadPdfClick = () => {
+    if (hasFilter) {
+      generatePdf(0);
+    } else {
+      setPdfDialogOpen(true);
+    }
+  };
+
+  const generatePdf = (topN: number) => {
+    const teamsMap = new Map(
+      tournament.teamIds
+        .map((id) => [id, getTeamById(id)])
+        .filter(([, t]) => !!t) as [string, NonNullable<ReturnType<typeof getTeamById>>][]
+    );
+    downloadStatsPdf(
+      tournament,
+      { leaderboards, cardEntries, baseballPlayerStats },
+      teamsMap,
+      {
+        filterTeamId: hasFilter ? selectedTeamId : null,
+        topN,
+      }
+    );
+    setPdfDialogOpen(false);
+  };
+
   return (
     <div className="space-y-6">
+      {/* Filtro de equipo + botón de descarga PDF (organizer only).
+          Aplica a sanciones + cards + tabla béisbol. El botón PDF
+          respeta el filtro: con filtro descarga directo todas las
+          stats del equipo; sin filtro abre un diálogo para elegir
+          cuántos top por estadística incluir. */}
+      {teamOptions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
+          <Select value={selectedTeamId} onValueChange={(v) => {
+            setSelectedTeamId(v);
+            // Resetear el toggle inline cuando se cambia el filtro —
+            // así al volver a "Todos" arrancamos en preview otra vez.
+            setBaseballExpanded(false);
+          }}>
+            <SelectTrigger className="h-9 w-full sm:w-64">
+              <SelectValue placeholder="Filtrar por equipo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los equipos</SelectItem>
+              {teamOptions.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {canEdit && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadPdfClick}
+              className="h-9 ml-auto"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Descargar PDF
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Card payment table */}
       {hasCardStats && visibleCards.length > 0 && (
         <Card>
@@ -166,7 +331,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
         </Card>
       )}
 
-      {hasCardStats && visibleCards.length === 0 && cardEntries.length > 0 && (
+      {hasCardStats && visibleCards.length === 0 && cardEntries.length > 0 && !hasFilter && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Sanciones</CardTitle>
@@ -180,10 +345,20 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
       )}
 
       {/* Baseball / softball / wiffleball: per-player AVG / OBP / SLG / OPS */}
-      {showBaseballTable && (
+      {showBaseballTable && filteredBaseballPlayers.length > 0 && (
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Estadisticas individuales</CardTitle>
+            {hasMoreBaseball && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setBaseballExpanded((v) => !v)}
+              >
+                {baseballExpanded ? "Ver menos" : "Ver más"}
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             <ScrollArea className="w-full">
@@ -209,7 +384,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {baseballPlayerStats.map((p, index) => {
+                  {filteredBaseballPlayers.map((p, index) => {
                     const team = getTeamById(p.teamId);
                     return (
                       <TableRow key={`${p.playerName}-${p.teamId}`}>
@@ -219,11 +394,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                           {team?.name || p.teamId}
                         </TableCell>
                         <TableCell className="text-center">{p.ab}</TableCell>
-                        {/* H = total de hits (convención MLB / planillas
-                            oficiales). 2B/3B/HR son subset de H; los
-                            sencillos se deducen restando: 1B = H - 2B - 3B - HR.
-                            El input del scoresheet también espera H como
-                            total y la app calcula los sencillos al guardar. */}
+                        {/* H = total de hits (convención MLB). */}
                         <TableCell className="text-center">{p.h}</TableCell>
                         <TableCell className="text-center">{p.doubles}</TableCell>
                         <TableCell className="text-center">{p.triples}</TableCell>
@@ -247,17 +418,23 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
         </Card>
       )}
 
-      {/* Non-card leaderboards */}
+      {/* Non-card leaderboards.
+          - Sin filtro: top 5 inline + "Ver más" → modal con top 10.
+          - Con filtro: TODOS los entries del equipo inline, sin "Ver más". */}
       {hasNonCardStats && (
         <div className="grid gap-6 md:grid-cols-2">
-          {nonCardLeaderboards.map((lb) => {
+          {filteredLeaderboards.map((lb) => {
             if (lb.computed) {
               if (lb.teamLeaders.length === 0) return null;
+              const rows = hasFilter
+                ? lb.teamLeaders
+                : lb.teamLeaders.slice(0, TOP_PREVIEW);
+              const canExpand = !hasFilter && lb.teamLeaders.length > TOP_PREVIEW;
               return (
                 <Card key={lb.statKey}>
                   <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
                     <CardTitle className="text-base">{lb.pluralLabel}</CardTitle>
-                    {lb.teamLeaders.length > TOP_PREVIEW && (
+                    {canExpand && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -281,7 +458,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {lb.teamLeaders.slice(0, TOP_PREVIEW).map((entry, index) => {
+                        {rows.map((entry, index) => {
                           const team = getTeamById(entry.teamId);
                           return (
                             <TableRow key={entry.teamId}>
@@ -308,11 +485,13 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
             }
 
             if (lb.leaders.length === 0) return null;
+            const rows = hasFilter ? lb.leaders : lb.leaders.slice(0, TOP_PREVIEW);
+            const canExpand = !hasFilter && lb.leaders.length > TOP_PREVIEW;
             return (
               <Card key={lb.statKey}>
                 <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
                   <CardTitle className="text-base">{lb.pluralLabel}</CardTitle>
-                  {lb.leaders.length > TOP_PREVIEW && (
+                  {canExpand && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -336,7 +515,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {lb.leaders.slice(0, TOP_PREVIEW).map((entry, index) => {
+                      {rows.map((entry, index) => {
                         const team = getTeamById(entry.teamId);
                         return (
                           <TableRow
@@ -366,15 +545,16 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
         </div>
       )}
 
-      {/* Top 15 modal (one shared modal; content depends on which leaderboard
-          was clicked via "Ver más"). */}
+      {/* Top N modal (one shared modal; content depends on which leaderboard
+          was clicked via "Ver más"). Solo se usa cuando NO hay filtro de
+          equipo activo — con filtro mostramos todos inline. */}
       <Dialog
         open={expandedKey !== null}
         onOpenChange={(o) => !o && setExpandedKey(null)}
       >
         <DialogContent className="max-w-xl">
           {(() => {
-            const lb = nonCardLeaderboards.find((l) => l.statKey === expandedKey);
+            const lb = filteredLeaderboards.find((l) => l.statKey === expandedKey);
             if (!lb) return null;
             return (
               <>
@@ -455,6 +635,42 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
               </>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo para elegir top N al descargar PDF sin filtro. Si hay
+          filtro de equipo este diálogo no se abre — la descarga es
+          directa con todas las stats del equipo. */}
+      <Dialog open={pdfDialogOpen} onOpenChange={setPdfDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Descargar PDF de estadísticas</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              ¿Cuántos jugadores/equipos por estadística querés incluir?
+            </p>
+            <Select value={pdfTopN} onValueChange={setPdfTopN}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">Top 5</SelectItem>
+                <SelectItem value="10">Top 10</SelectItem>
+                <SelectItem value="20">Top 20</SelectItem>
+                <SelectItem value="9999">Todos</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="outline" onClick={() => setPdfDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => generatePdf(parseInt(pdfTopN, 10) || 10)}>
+              <Download className="h-4 w-4 mr-2" />
+              Descargar
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
