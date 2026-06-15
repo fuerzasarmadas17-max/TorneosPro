@@ -32,6 +32,7 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useTournaments } from "@/context/tournament-context";
 import { downloadStatsPdf } from "@/lib/stats-pdf";
 import { BASEBALL_LEADERBOARD_ORDER } from "@/lib/baseball-order";
+import { getShortName } from "@/lib/name-utils";
 
 // Sin filtro de equipo: las cards muestran top 5 + "Ver más" → modal con
 // top 10. La tabla individual de béisbol muestra top 5 + "Ver más" →
@@ -41,6 +42,18 @@ import { BASEBALL_LEADERBOARD_ORDER } from "@/lib/baseball-order";
 const TOP_PREVIEW = 5;
 const TOP_MODAL = 10;
 const TOP_BASEBALL_EXPANDED = 20;
+
+// Abreviación de stats para mostrar en mobile como header de columna.
+// El título de la card (lb.pluralLabel = "Bases por bolas") queda intacto
+// — solo se acorta la columna individual del valor para que no se rompa
+// el layout responsive. Las stats no listadas usan lb.label tal cual.
+const SHORT_STAT_HEADER: Record<string, string> = {
+  walk: "BB",
+  run_scored: "R",
+  at_bat: "AB",
+};
+const shortHeader = (statKey: string, fallback: string) =>
+  SHORT_STAT_HEADER[statKey] ?? fallback;
 
 
 const fmt = (v: number) => v.toFixed(3).replace(/^0/, "");
@@ -245,10 +258,10 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Jugador</TableHead>
-                  <TableHead>Equipo</TableHead>
-                  <TableHead className="text-center">Tipo</TableHead>
-                  <TableHead className="text-center">Estado</TableHead>
+                  <TableHead className="whitespace-nowrap">Jugador</TableHead>
+                  <TableHead className="whitespace-nowrap">Equipo</TableHead>
+                  <TableHead className="text-center whitespace-nowrap">Tipo</TableHead>
+                  <TableHead className="text-center whitespace-nowrap">Estado</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -275,10 +288,13 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                       key={card.eventId}
                       className={card.paid ? "opacity-50" : ""}
                     >
-                      <TableCell className="font-medium">
-                        {card.playerName}
+                      <TableCell className="font-medium whitespace-nowrap">
+                        {/* Mobile: nombre corto (primer nombre + primer
+                            apellido). Desktop: nombre completo. */}
+                        <span className="sm:hidden">{getShortName(card.playerName)}</span>
+                        <span className="hidden sm:inline">{card.playerName}</span>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="text-muted-foreground whitespace-nowrap">
                         {team?.name || card.teamId}
                       </TableCell>
                       <TableCell className="text-center">
@@ -376,7 +392,10 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                     return (
                       <TableRow key={`${p.playerName}-${p.teamId}`}>
                         <TableCell className="font-medium">{index + 1}</TableCell>
-                        <TableCell className="font-medium">{p.playerName}</TableCell>
+                        <TableCell className="font-medium whitespace-nowrap">
+                          <span className="sm:hidden">{getShortName(p.playerName)}</span>
+                          <span className="hidden sm:inline">{p.playerName}</span>
+                        </TableCell>
                         <TableCell className="text-muted-foreground">
                           {team?.name || p.teamId}
                         </TableCell>
@@ -407,9 +426,14 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
 
       {/* Non-card leaderboards.
           - Sin filtro: top 5 inline + "Ver más" → modal con top 10.
-          - Con filtro: TODOS los entries del equipo inline, sin "Ver más". */}
+          - Con filtro: TODOS los entries del equipo inline, sin "Ver más".
+          `min-w-0` en el grid es clave: sin él, los items del grid se
+          expanden al ancho del contenido natural de la tabla (que tiene
+          whitespace-nowrap), rompiendo el viewport mobile. Con min-w-0
+          el item respeta el viewport y el overflow-x-auto interno del
+          <Table> de shadcn produce scroll horizontal dentro de la card. */}
       {hasNonCardStats && (
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-2 [&>*]:min-w-0">
           {filteredLeaderboards.map((lb) => {
             if (lb.computed) {
               if (lb.teamLeaders.length === 0) return null;
@@ -440,7 +464,10 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                           <TableHead>Equipo</TableHead>
                           <TableHead className="text-center w-12">PJ</TableHead>
                           <TableHead className="text-center w-12">
-                            {lb.label}
+                            {/* Mobile: abreviado (BB / R / AB). Desktop:
+                                etiqueta completa del catálogo. */}
+                            <span className="sm:hidden">{shortHeader(lb.statKey, lb.label)}</span>
+                            <span className="hidden sm:inline">{lb.label}</span>
                           </TableHead>
                         </TableRow>
                       </TableHeader>
@@ -452,7 +479,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                               <TableCell className="font-medium">
                                 {index + 1}
                               </TableCell>
-                              <TableCell className="font-medium">
+                              <TableCell className="font-medium whitespace-nowrap">
                                 {team?.name || entry.teamId}
                               </TableCell>
                               <TableCell className="text-center">
@@ -497,7 +524,8 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                         <TableHead>Jugador</TableHead>
                         <TableHead>Equipo</TableHead>
                         <TableHead className="text-center w-14">
-                          {lb.label}
+                          <span className="sm:hidden">{shortHeader(lb.statKey, lb.label)}</span>
+                          <span className="hidden sm:inline">{lb.label}</span>
                         </TableHead>
                       </TableRow>
                     </TableHeader>
@@ -511,10 +539,11 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                             <TableCell className="font-medium">
                               {index + 1}
                             </TableCell>
-                            <TableCell className="font-medium">
-                              {entry.playerName}
+                            <TableCell className="font-medium whitespace-nowrap">
+                              <span className="sm:hidden">{getShortName(entry.playerName)}</span>
+                              <span className="hidden sm:inline">{entry.playerName}</span>
                             </TableCell>
-                            <TableCell className="text-muted-foreground">
+                            <TableCell className="text-muted-foreground whitespace-nowrap">
                               {team?.name || entry.teamId}
                             </TableCell>
                             <TableCell className="text-center font-bold">
@@ -557,7 +586,10 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                           <TableHead>Equipo</TableHead>
                           <TableHead className="text-center w-12">PJ</TableHead>
                           <TableHead className="text-center w-12">
-                            {lb.label}
+                            {/* Mobile: abreviado (BB / R / AB). Desktop:
+                                etiqueta completa del catálogo. */}
+                            <span className="sm:hidden">{shortHeader(lb.statKey, lb.label)}</span>
+                            <span className="hidden sm:inline">{lb.label}</span>
                           </TableHead>
                         </TableRow>
                       </TableHeader>
@@ -603,10 +635,11 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                               <TableCell className="font-medium">
                                 {index + 1}
                               </TableCell>
-                              <TableCell className="font-medium">
-                                {entry.playerName}
+                              <TableCell className="font-medium whitespace-nowrap">
+                                <span className="sm:hidden">{getShortName(entry.playerName)}</span>
+                                <span className="hidden sm:inline">{entry.playerName}</span>
                               </TableCell>
-                              <TableCell className="text-muted-foreground">
+                              <TableCell className="text-muted-foreground whitespace-nowrap">
                                 {team?.name || entry.teamId}
                               </TableCell>
                               <TableCell className="text-center font-bold">
