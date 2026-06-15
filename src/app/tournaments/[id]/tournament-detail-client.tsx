@@ -1,69 +1,79 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { useEffect, useMemo } from "react";
 import { TournamentDetail } from "@/components/tournaments/tournament-detail";
 import { useTournaments } from "@/context/tournament-context";
 import { useAuth } from "@/context/auth-context";
 import { usePageView } from "@/hooks/use-page-view";
 import type { TournamentPageData } from "@/lib/db/tournaments-server";
+import { Loader2 } from "lucide-react";
 
 interface TournamentDetailClientProps {
   initialData: TournamentPageData;
 }
 
 /**
- * Wrapper cliente que recibe el torneo + sus equipos pre-cargados por
- * el Server Component (`page.tsx`) y los inyecta al `TournamentContext`
- * antes del primer render. Después de eso `TournamentDetail` (que usa
- * `useTournaments()` internamente para resolver nombres de equipos)
- * encuentra todo armado y aparece sin spinners.
+ * Wrapper cliente del detalle del torneo.
  *
- * Patrón "seed during render": usamos `useRef` para garantizar que el
- * seed se haga UNA sola vez, dentro del cuerpo del render. React 18+
- * permite llamar a `setState` de un componente externo durante el
- * render de otro (no del propio), así que esto es válido — el provider
- * recibe el update y los hooks que dependen de él lo verán en el
- * commit. El effect adicional vuelve a llamar el seed cuando cambia el
- * `initialData` (típicamente al revalidar la cache de Edge).
+ * Estrategia para evitar el "flash de UUIDs": el SSR no puede ejecutar
+ * setState en el provider, así que el HTML inicial tendría los teams
+ * vacíos en el contexto. Si renderizáramos TournamentDetail directo,
+ * los subcomponentes (BracketView, MatchSchedule, Standings) leerían
+ * `useTournaments().getTeamById` con `teams=[]` y mostrarían los UUIDs.
+ *
+ * Solución: verificamos si TODOS los equipos del torneo están en el
+ * context. Si faltan, sembramos vía useEffect y mientras tanto
+ * mostramos un skeleton liviano con info que sí tenemos (nombre del
+ * torneo del initialData). Es ~50-100ms entre el primer paint
+ * (skeleton + título) y el TournamentDetail completo — mucho mejor que
+ * mostrar UUIDs.
+ *
+ * Cuando el usuario navega desde el listado interno, los teams ya
+ * están en el context y el skeleton ni siquiera aparece.
  */
 export function TournamentDetailClient({
   initialData,
 }: TournamentDetailClientProps) {
-  const { getTournamentById, seedTournamentData } = useTournaments();
+  const { getTournamentById, seedTournamentData, teams } = useTournaments();
   const { user, isAuthenticated } = useAuth();
 
   usePageView("tournament", initialData.tournament.id, "tournament");
 
-  const seededRef = useRef<string | null>(null);
-  if (seededRef.current !== initialData.tournament.id) {
-    seedTournamentData(initialData.tournament, initialData.teams);
-    seededRef.current = initialData.tournament.id;
-  }
-
-  // Si los `initialData` cambian (ej. ISR revalidó), re-sembramos para
-  // que el state quede sincronizado.
+  // Resembrar si cambian los initialData (revalidación de cache Edge).
   useEffect(() => {
     seedTournamentData(initialData.tournament, initialData.teams);
   }, [initialData, seedTournamentData]);
 
-  // El context ya tiene el torneo (acabamos de sembrar). Si por algún
-  // motivo `getTournamentById` devolviese undefined, usamos el initial
-  // como fallback robusto. En la práctica esto no debería ocurrir.
+  // ¿El context tiene todos los equipos del torneo? Mientras no los
+  // tenga, los subcomponentes mostrarían UUIDs — mejor un skeleton.
+  const teamsReady = useMemo(() => {
+    if (teams.length === 0) return false;
+    const teamIdSet = new Set(teams.map((t) => t.id));
+    return initialData.tournament.teamIds.every((id) => teamIdSet.has(id));
+  }, [teams, initialData.tournament.teamIds]);
+
   const tournament =
     getTournamentById(initialData.tournament.id) ?? initialData.tournament;
 
-  if (!tournament) {
+  if (!teamsReady) {
+    // Primer paint del SSR + transición de hidratación. Mostramos lo
+    // que ya tenemos del initialData (nombre + descripción) y un
+    // spinner suave debajo. Dura típicamente 50-100ms en cliente
+    // después del hydrate.
     return (
-      <div className="container mx-auto px-4 py-20 text-center">
-        <h1 className="text-2xl font-bold">Torneo no encontrado</h1>
-        <p className="text-muted-foreground mt-2">
-          El torneo que buscas no existe
-        </p>
-        <Button asChild className="mt-4">
-          <Link href="/tournaments">Ver todos los torneos</Link>
-        </Button>
+      <div className="container mx-auto px-4 py-8 space-y-6">
+        <header className="space-y-2">
+          <h1 className="text-3xl font-bold">{tournament.name}</h1>
+          {tournament.description && (
+            <p className="text-muted-foreground">{tournament.description}</p>
+          )}
+          <p className="text-sm text-muted-foreground">
+            {tournament.teamIds.length} equipos · Inicio: {tournament.startDate}
+          </p>
+        </header>
+        <div className="flex min-h-[40vh] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
       </div>
     );
   }
