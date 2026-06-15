@@ -58,20 +58,12 @@ function MatchContent({
     );
   }
 
-  if (match.status === "completed") {
-    return (
-      <div className="text-center py-20">
-        <h1 className="text-2xl font-bold">Partido ya completado</h1>
-        <p className="text-muted-foreground mt-2">
-          Este partido ya tiene resultado registrado
-        </p>
-        <Button asChild className="mt-4">
-          <Link href={`/tournaments/${tournamentId}`}>Volver al torneo</Link>
-        </Button>
-      </div>
-    );
-  }
-
+  // Antes acá había un block hard-coded de match.status === "completed"
+  // que impedía entrar al form. El organizer no podía corregir un
+  // resultado mal cargado. Lo quitamos — el guard por `createdBy` arriba
+  // sigue siendo la restricción real (solo el creador edita, super admin
+  // queda bloqueado). El form precarga los valores actuales y avisa que
+  // es edición, no nueva carga.
   return <MatchResultForm match={match} enabledStats={tournament.enabledStats} sport={tournament.sport} bestOf={tournament.bestOf} />;
 }
 

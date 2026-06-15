@@ -45,6 +45,28 @@ interface MatchResultFormProps {
   bestOf?: 3 | 5;
 }
 
+/**
+ * Rearma la matriz player×stat que usa el `BaseballScoresheet` a partir
+ * de los `match.events` ya guardados. Se llama solo en la inicialización
+ * del form cuando se entra a editar un partido completado — agrupa por
+ * `playerName` y cuenta cuántos events de cada tipo hay para ese jugador
+ * en su equipo.
+ */
+function buildScoresheetData(
+  events: MatchEvent[],
+  teamId: string | null
+): Record<string, PlayerStats> {
+  if (!teamId) return {};
+  const data: Record<string, PlayerStats> = {};
+  for (const e of events) {
+    if (e.teamId !== teamId) continue;
+    if (!data[e.playerName]) data[e.playerName] = {};
+    const prev = data[e.playerName][e.type] ?? 0;
+    data[e.playerName][e.type] = prev + 1;
+  }
+  return data;
+}
+
 export function MatchResultForm({
   match,
   enabledStats,
@@ -54,19 +76,28 @@ export function MatchResultForm({
   const { getTeamById, updateMatch } = useTournaments();
   const router = useRouter();
 
-  const [homeScore, setHomeScore] = useState("");
-  const [awayScore, setAwayScore] = useState("");
-  const [eventEntries, setEventEntries] = useState<EventEntry[]>([]);
+  // `isEditing` = el partido ya tiene resultado cargado y estamos
+  // corrigiendo. Cambia el copy de título/botones y precarga el form con
+  // los valores existentes en lugar de arrancar vacío. La precarga es
+  // lo que hace seguro pisar el resultado — sino el organizer entraría
+  // a un form en blanco y al guardar sobrescribiría con nulls.
+  const isEditing = match.status === "completed";
+
+  const [homeScore, setHomeScore] = useState(
+    match.homeScore != null ? String(match.homeScore) : ""
+  );
+  const [awayScore, setAwayScore] = useState(
+    match.awayScore != null ? String(match.awayScore) : ""
+  );
+  const [eventEntries, setEventEntries] = useState<EventEntry[]>(() =>
+    (match.events ?? []).map((e) => ({
+      type: e.type,
+      teamId: e.teamId,
+      playerName: e.playerName,
+    }))
+  );
   const [error, setError] = useState("");
   const [scoresheetStep, setScoresheetStep] = useState<1 | 2>(1);
-
-  // Scoresheet state for baseball
-  const [homeScoresheetData, setHomeScoresheetData] = useState<
-    Record<string, PlayerStats>
-  >({});
-  const [awayScoresheetData, setAwayScoresheetData] = useState<
-    Record<string, PlayerStats>
-  >({});
 
   const homeTeam = match.homeTeamId ? getTeamById(match.homeTeamId) : null;
   const awayTeam = match.awayTeamId ? getTeamById(match.awayTeamId) : null;
@@ -80,9 +111,29 @@ export function MatchResultForm({
   const isVolleyball = sport === "volleyball";
   const setsToWin = bestOf ? Math.ceil(bestOf / 2) : 2;
 
-  // Volleyball set scores state
+  // Scoresheet state for baseball — pre-cargar la matriz player×stat
+  // desde `match.events` para que la edición arranque con los datos
+  // ya cargados.
+  const [homeScoresheetData, setHomeScoresheetData] = useState<
+    Record<string, PlayerStats>
+  >(() => buildScoresheetData(match.events ?? [], match.homeTeamId));
+  const [awayScoresheetData, setAwayScoresheetData] = useState<
+    Record<string, PlayerStats>
+  >(() => buildScoresheetData(match.events ?? [], match.awayTeamId));
+
+  // Volleyball set scores state — precargar los sets ya cargados o
+  // arrancar con la cantidad de bestOf si es la primera vez.
   const [setScores, setSetScores] = useState<Array<{ home: string; away: string }>>(
-    Array.from({ length: bestOf || 3 }, () => ({ home: "", away: "" }))
+    () => {
+      const existing = match.sets ?? [];
+      if (existing.length > 0) {
+        return existing.map((s) => ({
+          home: String(s.homePoints),
+          away: String(s.awayPoints),
+        }));
+      }
+      return Array.from({ length: bestOf || 3 }, () => ({ home: "", away: "" }));
+    }
   );
 
   const getPlayersForTeam = (teamId: string): Player[] => {
@@ -373,7 +424,16 @@ export function MatchResultForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-center">Ingresar Resultado</CardTitle>
+        <CardTitle className="text-center">
+          {isEditing ? "Editar Resultado" : "Ingresar Resultado"}
+        </CardTitle>
+        {isEditing && (
+          <p className="text-xs text-muted-foreground text-center">
+            Este partido ya tiene resultado cargado. Cualquier cambio que
+            guardes va a pisar lo anterior y recalcular las estadísticas y
+            la tabla de posiciones automáticamente.
+          </p>
+        )}
       </CardHeader>
       <form onSubmit={(e) => e.preventDefault()}>
         <CardContent className="space-y-6">
@@ -678,7 +738,7 @@ export function MatchResultForm({
                 {homeTeam?.name || "Equipo 1"}
               </Button>
               <Button type="button" className="flex-1" onClick={handleSave}>
-                Guardar Resultado
+                {isEditing ? "Sobrescribir resultado" : "Guardar Resultado"}
               </Button>
             </>
           ) : useScoresheet && scoresheetStep === 1 ? (
@@ -724,7 +784,7 @@ export function MatchResultForm({
                 Cancelar
               </Button>
               <Button type="button" className="flex-1" onClick={handleSave}>
-                Guardar Resultado
+                {isEditing ? "Sobrescribir resultado" : "Guardar Resultado"}
               </Button>
             </>
           )}

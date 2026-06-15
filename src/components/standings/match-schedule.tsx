@@ -430,12 +430,15 @@ function MatchDisplay({
               </p>
             )}
             {/* Action row — round/group/status moved up to the card header,
-                so this row only holds the "Cargar resultado" CTA. */}
-            {canEdit && match.status === "scheduled" && match.homeTeamId && match.awayTeamId && (
+                so this row only holds the score CTA. Mostramos el botón
+                tanto para partidos `scheduled` (carga inicial) como
+                `completed` (edición correctiva). El form precarga los
+                valores y recalcula stats/posiciones al guardar. */}
+            {canEdit && (match.status === "scheduled" || match.status === "completed") && match.homeTeamId && match.awayTeamId && (
               <div className="flex justify-end mt-1">
                 <Button variant="outline" size="sm" asChild>
                   <Link href={`/tournaments/${tournament.id}/matches/${match.id}`}>
-                    Cargar resultado
+                    {match.status === "completed" ? "Editar resultado" : "Cargar resultado"}
                   </Link>
                 </Button>
               </div>
@@ -481,13 +484,13 @@ function MatchDisplay({
               </div>
             </div>
 
-            {/* Right-side action: only the "Cargar resultado" CTA, since
-                round/group/status badges live in the card header above. */}
-            {canEdit && match.status === "scheduled" && match.homeTeamId && match.awayTeamId && (
+            {/* Right-side action: score CTA. Misma condición que mobile:
+                mostramos para scheduled (carga) y completed (edición). */}
+            {canEdit && (match.status === "scheduled" || match.status === "completed") && match.homeTeamId && match.awayTeamId && (
               <div className="shrink-0">
                 <Button variant="outline" size="sm" asChild>
                   <Link href={`/tournaments/${tournament.id}/matches/${match.id}`}>
-                    Cargar resultado
+                    {match.status === "completed" ? "Editar resultado" : "Cargar resultado"}
                   </Link>
                 </Button>
               </div>
