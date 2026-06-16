@@ -232,17 +232,21 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     };
   }, [loadTournaments]);
 
-  // Equipos: lazy load en background apenas el auth termina su check
-  // inicial. Antes solo cargábamos para usuarios logueados, pero un
-  // anónimo que entra directo a un link compartido de torneo se
-  // encontraba con UUIDs en lugar de nombres. Ahora cargamos siempre,
-  // pero después del primer paint — la landing y /tournaments arrancan
-  // rápido igual porque dependen solo de `isLoading` (que es de
-  // torneos), no de `teamsLoading`.
+  // Equipos: cargar SOLO si el user está autenticado. Anónimos no los
+  // necesitan: el detalle del torneo público (/tournaments/[id]) los
+  // recibe pre-cargados por el SSR vía seedTournamentData. Antes
+  // cargábamos para todos en background, pero en mobile 4G esa query
+  // de "todos los equipos del sistema con jugadores" saturaba el
+  // ancho de banda y bloqueaba la hidratación. Si después un anónimo
+  // se loguea, el effect re-corre con isAuthenticated=true.
   useEffect(() => {
     if (authLoading) return;
-    loadTeams();
-  }, [authLoading, loadTeams]);
+    if (isAuthenticated) {
+      loadTeams();
+    } else {
+      setTeamsLoading(false);
+    }
+  }, [authLoading, isAuthenticated, loadTeams]);
 
   const refetch = useCallback(async () => {
     await loadTournaments();
