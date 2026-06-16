@@ -51,7 +51,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Download, Settings, MoreVertical, Trash2, Ban, ChevronLeft, ChevronRight, CheckCircle2, Trophy } from "lucide-react";
 import { toast } from "sonner";
-import * as XLSX from "xlsx";
+// xlsx pesa ~700KB y solo se usa cuando el organizador descarga la
+// plantilla de jugadores. Dynamic import dentro del handler para que
+// no se incluya en el bundle inicial que descarga TODO visitante del
+// detalle del torneo.
 
 const statusLabels: Record<string, string> = {
   upcoming: "Proximo",
@@ -91,7 +94,11 @@ function TemplateDownloadDialog() {
     });
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
+    // Dynamic import: xlsx solo se descarga cuando el organizer clickea
+    // "Descargar plantilla". Cero peso en el bundle inicial para
+    // visitantes públicos que nunca usan esta función.
+    const XLSX = await import("xlsx");
     const wb = XLSX.utils.book_new();
     const baseHeaders = ["Nombre", "Apellido 1", "Apellido 2"];
     const extras = OPTIONAL_COLUMNS.filter((c) => selected.has(c.key));

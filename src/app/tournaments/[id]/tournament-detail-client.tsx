@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { TournamentDetail } from "@/components/tournaments/tournament-detail";
 import { useTournaments } from "@/context/tournament-context";
 import { useAuth } from "@/context/auth-context";
@@ -8,7 +8,6 @@ import { usePageView } from "@/hooks/use-page-view";
 import type { TournamentPageData } from "@/lib/db/tournaments-server";
 import { fetchMatchEventsByMatchIds } from "@/lib/db/tournaments";
 import { mapMatchEvent } from "@/lib/db/mappers";
-import { Loader2 } from "lucide-react";
 import type { Tournament } from "@/types";
 
 interface TournamentDetailClientProps {
@@ -37,78 +36,61 @@ interface TournamentDetailClientProps {
 export function TournamentDetailClient({
   initialData,
 }: TournamentDetailClientProps) {
-  const { getTournamentById, seedTournamentData, teams } = useTournaments();
+  const { getTournamentById, seedTournamentData } = useTournaments();
   const { user, isAuthenticated } = useAuth();
 
   usePageView("tournament", initialData.tournament.id, "tournament");
 
-  // Seed inicial + carga de events en un solo flow para evitar el race
-  // condition entre dos useEffects pisándose el state. Pasos:
+  // Seed inicial + carga de events en un solo flow para evitar race
+  // conditions entre dos useEffects pisándose el state. Pasos:
   //   1. Sembrar inmediato con initialData (header + bracket + calendario
-  //      visibles al toque, sin events).
+  //      visibles al toque).
   //   2. Fetch específico de match_events para los matchIds del torneo.
-  //   3. Re-sembrar con los events mergeados → stats individuales,
-  //      sanciones y tarjetas aparecen.
-  // Si initialData cambia (revalidación de Edge cache), cancelamos y
-  // re-arrancamos.
+  //   3. Re-sembrar con los events mergeados → stats, sanciones, tarjetas.
   useEffect(() => {
     let cancelled = false;
     // Paso 1: seed inmediato sin events.
     seedTournamentData(initialData.tournament, initialData.teams);
-    // Paso 2-3: fetch events y re-seed enriquecido.
+    // Paso 2-3: fetch events + re-seed con .catch defensivo para que un
+    // error de red en mobile NO deje al componente colgado.
     const matchIds = initialData.tournament.matches.map((m) => m.id);
-    (async () => {
-      const eventsMap = await fetchMatchEventsByMatchIds(matchIds);
-      if (cancelled) return;
-      const enriched: Tournament = {
-        ...initialData.tournament,
-        matches: initialData.tournament.matches.map((m) => {
-          const rawEvents = eventsMap.get(m.id);
-          if (!rawEvents) return m;
-          return { ...m, events: rawEvents.map(mapMatchEvent) };
-        }),
-      };
-      seedTournamentData(enriched, initialData.teams);
-    })();
+    fetchMatchEventsByMatchIds(matchIds)
+      .then((eventsMap) => {
+        if (cancelled) return;
+        const enriched: Tournament = {
+          ...initialData.tournament,
+          matches: initialData.tournament.matches.map((m) => {
+            const rawEvents = eventsMap.get(m.id);
+            if (!rawEvents) return m;
+            return { ...m, events: rawEvents.map(mapMatchEvent) };
+          }),
+        };
+        seedTournamentData(enriched, initialData.teams);
+      })
+      .catch((err) => {
+        // Si el fetch falla en mobile (timeout 4G, cellular drop, etc.)
+        // dejamos el torneo sin events. Las stats individuales no se
+        // van a ver pero la página principal sigue funcionando — mucho
+        // mejor que quedar en blanco para siempre.
+        console.error("fetchMatchEventsByMatchIds failed", err);
+      });
     return () => {
       cancelled = true;
     };
   }, [initialData, seedTournamentData]);
 
-  // ¿El context tiene todos los equipos del torneo? Mientras no los
-  // tenga, los subcomponentes mostrarían UUIDs — mejor un skeleton.
-  const teamsReady = useMemo(() => {
-    if (teams.length === 0) return false;
-    const teamIdSet = new Set(teams.map((t) => t.id));
-    return initialData.tournament.teamIds.every((id) => teamIdSet.has(id));
-  }, [teams, initialData.tournament.teamIds]);
-
+  // El context ya tiene el torneo (lo sembramos en el effect). Si por
+  // algún motivo `getTournamentById` devolviese undefined, usamos el
+  // initial como fallback robusto.
   const tournament =
     getTournamentById(initialData.tournament.id) ?? initialData.tournament;
 
-  if (!teamsReady) {
-    // Primer paint del SSR + transición de hidratación. Mostramos lo
-    // que ya tenemos del initialData (nombre + descripción) y un
-    // spinner suave debajo. Dura típicamente 50-100ms en cliente
-    // después del hydrate.
-    return (
-      <div className="container mx-auto px-4 py-8 space-y-6">
-        <header className="space-y-2">
-          <h1 className="text-3xl font-bold">{tournament.name}</h1>
-          {tournament.description && (
-            <p className="text-muted-foreground">{tournament.description}</p>
-          )}
-          <p className="text-sm text-muted-foreground">
-            {tournament.teamIds.length} equipos · Inicio: {tournament.startDate}
-          </p>
-        </header>
-        <div className="flex min-h-[40vh] items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </div>
-    );
-  }
-
+  // Render directo del detalle. El `teamsReady` que esperaba al state
+  // global del context era EL bug del bloqueo de 30 segundos en mobile:
+  // para anónimos el global `teams[]` NUNCA se llena (loadTeams solo
+  // dispara para autenticados) — el skeleton quedaba para siempre. Como
+  // el SSR ya nos pasó `initialData.teams` y el effect del seed los
+  // mete al context de inmediato, no hay nada que esperar.
   const isAdmin = user?.role === "admin";
   const canEdit =
     (user?.id === tournament.createdBy && tournament.status !== "completed") ||
