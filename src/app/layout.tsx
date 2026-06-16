@@ -58,6 +58,12 @@ export const viewport: Viewport = {
   ],
 };
 
+// Host de Supabase para hint de conexión temprana al browser. Se
+// inferéncia de la env var en build time; si por alguna razón no está
+// disponible, omitimos el preconnect (degrada a comportamiento normal).
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const supabaseHost = SUPABASE_URL ? new URL(SUPABASE_URL).origin : null;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -65,6 +71,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
+      <head>
+        {/* Preconnect a Supabase: el browser establece el handshake
+            TCP+TLS antes de que el primer fetch lo pida. Ahorra
+            ~200-400ms en la primera query del cliente. */}
+        {supabaseHost && (
+          <>
+            <link rel="preconnect" href={supabaseHost} crossOrigin="anonymous" />
+            <link rel="dns-prefetch" href={supabaseHost} />
+          </>
+        )}
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

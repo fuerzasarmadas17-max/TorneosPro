@@ -66,18 +66,25 @@ export async function fetchTournamentById(
 }
 
 /**
- * Carga solo los match_events de los matches del torneo. Se llama
- * desde el cliente después del primer paint para hidratar stats y
- * eventos sin bloquear el SSR. Devuelve un mapa matchId → events.
+ * Carga solo los match_events de los matches dados. Se llama desde el
+ * cliente después del primer paint para hidratar stats y eventos sin
+ * bloquear el SSR. Devuelve un mapa matchId → events.
+ *
+ * Antes esto recibía `tournamentId` y hacía un join `matches!inner` con
+ * filter embebido. Esa sintaxis es frágil entre versiones de PostgREST
+ * y devolvía vacío en algunos casos. Ahora el caller pasa directamente
+ * los matchIds que ya tiene en memoria desde el SSR — query simple
+ * `.in("match_id", ...)` que siempre funciona.
  */
-export async function fetchMatchEventsByTournament(
-  tournamentId: string,
+export async function fetchMatchEventsByMatchIds(
+  matchIds: string[],
   client: SupabaseClient = supabase
 ): Promise<Map<string, Record<string, unknown>[]>> {
+  if (matchIds.length === 0) return new Map();
   const { data, error } = await client
     .from("match_events")
-    .select("*, matches!inner(tournament_id)")
-    .eq("matches.tournament_id", tournamentId);
+    .select("*")
+    .in("match_id", matchIds);
 
   if (error || !data) return new Map();
   const map = new Map<string, Record<string, unknown>[]>();
