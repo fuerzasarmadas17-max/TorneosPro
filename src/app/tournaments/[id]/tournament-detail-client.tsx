@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { TournamentDetail } from "@/components/tournaments/tournament-detail";
 import { useTournaments } from "@/context/tournament-context";
 import { useAuth } from "@/context/auth-context";
@@ -41,18 +41,25 @@ export function TournamentDetailClient({
 
   usePageView("tournament", initialData.tournament.id, "tournament");
 
-  // Seed inicial + carga de events en un solo flow para evitar race
-  // conditions entre dos useEffects pisándose el state. Pasos:
-  //   1. Sembrar inmediato con initialData (header + bracket + calendario
-  //      visibles al toque).
-  //   2. Fetch específico de match_events para los matchIds del torneo.
-  //   3. Re-sembrar con los events mergeados → stats, sanciones, tarjetas.
+  // SEED DURANTE RENDER (no en useEffect): si lo dejamos para el effect,
+  // el primer render del TournamentDetail pasa con `teams=[]` en el
+  // context — los subcomponentes (BracketView, MatchSchedule, etc.) ven
+  // UUIDs en `getTeamById` y los renderean. En mobile ese "flash de
+  // UUIDs" dura 1-2 segundos hasta el re-render post-seed. Llamando el
+  // seed durante render con un useRef-guard, el setState del provider
+  // se procesa antes del commit y el primer paint ya tiene los teams.
+  const seededRef = useRef<string | null>(null);
+  if (seededRef.current !== initialData.tournament.id) {
+    seedTournamentData(initialData.tournament, initialData.teams);
+    seededRef.current = initialData.tournament.id;
+  }
+
+  // Después del primer paint, traer los match_events (que el SSR omitió
+  // para no timeoutear) y re-seed. Las stats individuales, sanciones y
+  // tarjetas aparecen ~300-500ms después sin bloquear el bracket ni el
+  // calendario que ya están visibles.
   useEffect(() => {
     let cancelled = false;
-    // Paso 1: seed inmediato sin events.
-    seedTournamentData(initialData.tournament, initialData.teams);
-    // Paso 2-3: fetch events + re-seed con .catch defensivo para que un
-    // error de red en mobile NO deje al componente colgado.
     const matchIds = initialData.tournament.matches.map((m) => m.id);
     fetchMatchEventsByMatchIds(matchIds)
       .then((eventsMap) => {
@@ -68,10 +75,6 @@ export function TournamentDetailClient({
         seedTournamentData(enriched, initialData.teams);
       })
       .catch((err) => {
-        // Si el fetch falla en mobile (timeout 4G, cellular drop, etc.)
-        // dejamos el torneo sin events. Las stats individuales no se
-        // van a ver pero la página principal sigue funcionando — mucho
-        // mejor que quedar en blanco para siempre.
         console.error("fetchMatchEventsByMatchIds failed", err);
       });
     return () => {
