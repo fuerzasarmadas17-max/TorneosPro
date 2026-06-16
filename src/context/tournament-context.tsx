@@ -151,10 +151,35 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   // Torneos: query pública con RLS, se carga siempre para todos.
+  // CRÍTICO: hacemos MERGE con los datos existentes, no replace. Eso es
+  // porque `fetchTournaments()` ahora usa TOURNAMENT_LIST_SELECT (sin
+  // match_events) para evitar el 504. Si reemplazáramos crudo, perdería
+  // los events que el detalle del torneo cargó vía
+  // fetchMatchEventsByMatchIds + seedTournamentData. El merge preserva
+  // los `events` ya cargados por match. Sin esto, las stats individuales
+  // desaparecen apenas loadTournaments termina.
   const loadTournaments = useCallback(async () => {
     try {
       const data = await fetchTournaments();
-      setTournaments(data);
+      setTournaments((prev) => {
+        if (prev.length === 0) return data;
+        // Map matchId → events existentes para mergear rápido.
+        const existingEventsByMatch = new Map<string, MatchEvent[] | undefined>();
+        for (const t of prev) {
+          for (const m of t.matches) {
+            if (m.events && m.events.length > 0) {
+              existingEventsByMatch.set(m.id, m.events);
+            }
+          }
+        }
+        return data.map((newT) => ({
+          ...newT,
+          matches: newT.matches.map((m) => {
+            const events = existingEventsByMatch.get(m.id);
+            return events ? { ...m, events } : m;
+          }),
+        }));
+      });
       setError(null);
     } catch (err) {
       setError("Error al cargar datos");
@@ -184,13 +209,37 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   // ya estaba en `tournaments`, lo reemplaza por la versión nueva.
   // Si algún equipo ya estaba en `teams`, idem. Limpia los flags de
   // loading porque ya tenemos data para mostrar.
+  //
+  // Preserva events: si el tournament entrante NO trae events en algún
+  // match pero el existing SÍ los tenía, mantenemos los del existing.
+  // Es el caso del seed inicial del SSR (sin events) cuando el cliente
+  // ya cargó events vía un fetch posterior — sin esto el re-seed del
+  // SSR borraría los stats que el usuario acaba de ver.
   const seedTournamentData = useCallback(
     (tournament: Tournament, seedTeams: Team[]) => {
       setTournaments((prev) => {
         const idx = prev.findIndex((t) => t.id === tournament.id);
-        if (idx === -1) return [...prev, tournament];
+        // Si el incoming trae events vacíos en algún match pero existing
+        // los tenía, preservamos los existing.
+        const existing = idx >= 0 ? prev[idx] : null;
+        const merged: Tournament = existing
+          ? {
+              ...tournament,
+              matches: tournament.matches.map((m) => {
+                const existingMatch = existing.matches.find((em) => em.id === m.id);
+                const incomingHasEvents = m.events && m.events.length > 0;
+                const existingHasEvents =
+                  existingMatch?.events && existingMatch.events.length > 0;
+                if (!incomingHasEvents && existingHasEvents) {
+                  return { ...m, events: existingMatch.events };
+                }
+                return m;
+              }),
+            }
+          : tournament;
+        if (idx === -1) return [...prev, merged];
         const next = [...prev];
-        next[idx] = tournament;
+        next[idx] = merged;
         return next;
       });
       if (seedTeams.length > 0) {
