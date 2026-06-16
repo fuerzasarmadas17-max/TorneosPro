@@ -52,7 +52,12 @@ export async function fetchTournamentForPage(
   // Logs van a Vercel Function Logs y ayudan a diagnosticar timeouts
   // por torneos pesados. Pueden quitarse después de validar tiempos.
   const t0 = Date.now();
-  const tournament = await fetchTournamentById(id, supabaseServer);
+  // SSR carga el torneo SIN match_events. Es lo que evita el timeout
+  // de Vercel cuando el torneo tiene 200+ matches con miles de events.
+  // El cliente carga los eventos después de hidratar (vía
+  // `fetchMatchEventsByTournament`), así las stats individuales y
+  // tarjetas aparecen ~500ms después sin bloquear el primer paint.
+  const tournament = await fetchTournamentById(id, supabaseServer, false);
   const t1 = Date.now();
   console.log(`[SSR] fetchTournamentById(${id}) tardó ${t1 - t0}ms`);
   if (!tournament) return null;

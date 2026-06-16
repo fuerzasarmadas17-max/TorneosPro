@@ -45,16 +45,48 @@ export async function fetchTournaments(): Promise<Tournament[]> {
 
 export async function fetchTournamentById(
   id: string,
-  client: SupabaseClient = supabase
+  client: SupabaseClient = supabase,
+  includeEvents: boolean = true
 ): Promise<Tournament | null> {
+  // includeEvents=false: usa el SELECT liviano (sin match_events). Lo
+  // usa el SSR del detalle para evitar timeouts de Vercel cuando el
+  // torneo tiene muchos partidos. Los eventos los carga el cliente en
+  // background apenas hidrata, así nada se pierde — solo se reordena.
+  const selectStr = includeEvents
+    ? TOURNAMENT_DETAIL_SELECT
+    : TOURNAMENT_LIST_SELECT;
   const { data, error } = await client
     .from("tournaments")
-    .select(TOURNAMENT_DETAIL_SELECT)
+    .select(selectStr)
     .eq("id", id)
     .single();
 
   if (error || !data) return null;
   return mapTournament(data as Record<string, unknown>);
+}
+
+/**
+ * Carga solo los match_events de los matches del torneo. Se llama
+ * desde el cliente después del primer paint para hidratar stats y
+ * eventos sin bloquear el SSR. Devuelve un mapa matchId → events.
+ */
+export async function fetchMatchEventsByTournament(
+  tournamentId: string,
+  client: SupabaseClient = supabase
+): Promise<Map<string, Record<string, unknown>[]>> {
+  const { data, error } = await client
+    .from("match_events")
+    .select("*, matches!inner(tournament_id)")
+    .eq("matches.tournament_id", tournamentId);
+
+  if (error || !data) return new Map();
+  const map = new Map<string, Record<string, unknown>[]>();
+  for (const row of data as Record<string, unknown>[]) {
+    const matchId = row.match_id as string;
+    if (!map.has(matchId)) map.set(matchId, []);
+    map.get(matchId)!.push(row);
+  }
+  return map;
 }
 
 /**

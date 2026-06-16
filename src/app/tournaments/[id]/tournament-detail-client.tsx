@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TournamentDetail } from "@/components/tournaments/tournament-detail";
 import { useTournaments } from "@/context/tournament-context";
 import { useAuth } from "@/context/auth-context";
 import { usePageView } from "@/hooks/use-page-view";
 import type { TournamentPageData } from "@/lib/db/tournaments-server";
+import { fetchMatchEventsByTournament } from "@/lib/db/tournaments";
+import { mapMatchEvent } from "@/lib/db/mappers";
 import { Loader2 } from "lucide-react";
+import type { Tournament } from "@/types";
 
 interface TournamentDetailClientProps {
   initialData: TournamentPageData;
@@ -43,6 +46,40 @@ export function TournamentDetailClient({
   useEffect(() => {
     seedTournamentData(initialData.tournament, initialData.teams);
   }, [initialData, seedTournamentData]);
+
+  // El SSR cargó el torneo SIN match_events (para evitar el 504 de
+  // Vercel). Acá completamos: en cuanto el cliente termina de hidratar,
+  // disparamos un fetch específico de los eventos del torneo y los
+  // mergeamos en el state local. Las stats individuales, sanciones y
+  // tarjetas aparecen al toque después (~300-500ms). No bloquea nada.
+  const [eventsLoaded, setEventsLoaded] = useState(false);
+  useEffect(() => {
+    if (eventsLoaded) return;
+    let cancelled = false;
+    (async () => {
+      const eventsMap = await fetchMatchEventsByTournament(
+        initialData.tournament.id
+      );
+      if (cancelled) return;
+      // Sembramos los events directamente en el torneo. Lo hacemos
+      // construyendo un Tournament nuevo con los matches enriquecidos
+      // y volviendo a llamar seedTournamentData, que reemplaza el
+      // torneo existente en el state.
+      const enriched: Tournament = {
+        ...initialData.tournament,
+        matches: initialData.tournament.matches.map((m) => {
+          const rawEvents = eventsMap.get(m.id);
+          if (!rawEvents) return m;
+          return { ...m, events: rawEvents.map(mapMatchEvent) };
+        }),
+      };
+      seedTournamentData(enriched, initialData.teams);
+      setEventsLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialData, eventsLoaded, seedTournamentData]);
 
   // ¿El context tiene todos los equipos del torneo? Mientras no los
   // tenga, los subcomponentes mostrarían UUIDs — mejor un skeleton.
