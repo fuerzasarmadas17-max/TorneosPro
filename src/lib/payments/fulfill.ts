@@ -298,17 +298,11 @@ async function upgradeTournamentFromPayment(
       | null
       | undefined;
     if (groupAssignments && dbTeamIds.length > 0) {
-      const byGroup: Record<string, string[]> = {};
-      for (let i = 0; i < dbTeamIds.length; i++) {
-        const gId = groupAssignments[i];
-        if (!gId) continue;
-        (byGroup[gId] ||= []).push(dbTeamIds[i]);
-      }
-
-      // Existing group members + current matches (for incremental generation).
+      // Una sola consulta por tabla — incluimos `phase` en groups y
+      // `phase_configs` en el tournament para el fallback de nulls.
       const { data: groupRows } = await supabaseAdmin
         .from("tournament_groups")
-        .select("id, tournament_group_teams(team_id)")
+        .select("id, tournament_group_teams(team_id), phase")
         .eq("tournament_id", tournamentId);
       const { data: matchRows } = await supabaseAdmin
         .from("matches")
@@ -316,9 +310,47 @@ async function upgradeTournamentFromPayment(
         .eq("tournament_id", tournamentId);
       const { data: tRow } = await supabaseAdmin
         .from("tournaments")
-        .select("double_round_robin")
+        .select("double_round_robin, phase_configs")
         .eq("id", tournamentId)
         .single();
+
+      // Fallback para nulls: si llega un team SIN groupId pero el torneo
+      // SÍ tiene grupos, lo asignamos al grupo activo más vacío. Sin esta
+      // defensa el equipo quedaba "huérfano" en `tournament.teamIds` sin
+      // estar en ningún `group.teamIds` — eso rompe `getPendingMatchups`
+      // y deja partidos manuales sin descontar (bug que vimos en torneos
+      // con equipos como "Nacional" agregados a mano post-fixture).
+      const phaseConfigs = ((tRow?.phase_configs as unknown) ?? []) as Array<{
+        phase: number;
+        complete?: boolean;
+      }>;
+      const activePhase = phaseConfigs.find((pc) => !pc.complete)?.phase;
+      const activeGroups = (groupRows ?? [])
+        .map((g) => ({
+          id: g.id as string,
+          phase: (g.phase as number) ?? 1,
+          teamCount:
+            ((g.tournament_group_teams as { team_id: string }[]) ?? []).length,
+        }))
+        .filter((g) => activePhase == null || g.phase === activePhase);
+
+      const byGroup: Record<string, string[]> = {};
+      for (let i = 0; i < dbTeamIds.length; i++) {
+        let gId = groupAssignments[i];
+        if (!gId && activeGroups.length > 0) {
+          // Pick the smallest active group so the assignment stays balanced.
+          const fallback = [...activeGroups].sort(
+            (a, b) => a.teamCount - b.teamCount
+          )[0];
+          gId = fallback.id;
+          console.warn(
+            `[fulfill] payment ${payment.id} sent null groupAssignment for team ${dbTeamIds[i]}; falling back to group ${gId}`
+          );
+          fallback.teamCount++;
+        }
+        if (!gId) continue;
+        (byGroup[gId] ||= []).push(dbTeamIds[i]);
+      }
 
       const existingByGroup: Record<string, string[]> = {};
       for (const g of groupRows ?? []) {
