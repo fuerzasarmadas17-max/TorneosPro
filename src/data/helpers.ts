@@ -243,6 +243,74 @@ export function generateRoundRobinCircle(
   return { matches, nextMatchCounter: matchCounter };
 }
 
+// --- Additional rounds for an existing group phase ---
+
+/**
+ * Genera rondas adicionales para un grupo que ya tiene partidos creados.
+ * Reutiliza `generateRoundRobinCircle` y solo offsetea los `round` para
+ * que continúen secuencialmente desde el último ya existente.
+ *
+ *  - `numRounds: 1` → una ronda extra completa (vuelta), con localía
+ *    invertida respecto a la "ida" para que el organizador no repita el
+ *    mismo enfrentamiento idéntico (lo natural en futbol/básquet).
+ *  - `numRounds: 2` → dos rondas extra (ida + vuelta nueva). La primera
+ *    arranca igual que la ida original, la segunda viene invertida —
+ *    misma lógica que `doubleRoundRobin: true` en el generador base.
+ *
+ * No toca el flag `doubleRoundRobin` del torneo a propósito: el flag
+ * representa cómo se CREÓ la fase, no cuántas vueltas tiene ahora.
+ * Tocarlo rompería tablas de posiciones y reportes históricos.
+ */
+export function generateAdditionalGroupRounds(
+  teamIds: string[],
+  tournamentId: string,
+  options: {
+    groupId: string;
+    numRounds: 1 | 2;
+    roundOffset: number;
+    matchCounterStart: number;
+  }
+): { matches: Match[]; nextMatchCounter: number } {
+  const { groupId, numRounds, roundOffset, matchCounterStart } = options;
+
+  if (numRounds === 1) {
+    // Una vuelta adicional con localía invertida.
+    const { matches: base, nextMatchCounter } = generateRoundRobinCircle(
+      teamIds,
+      tournamentId,
+      {
+        phase: "group",
+        groupId,
+        matchCounterStart,
+        doubleRoundRobin: false,
+      }
+    );
+    const matches = base.map((m) => ({
+      ...m,
+      round: m.round + roundOffset,
+      homeTeamId: m.awayTeamId,
+      awayTeamId: m.homeTeamId,
+    }));
+    return { matches, nextMatchCounter };
+  }
+
+  // Dos vueltas adicionales = ida + vuelta. `doubleRoundRobin: true` ya
+  // ordena los matches en (ida) + (vuelta-invertida), solo hay que
+  // empujar todos los round numbers para continuar desde el último.
+  const { matches: base, nextMatchCounter } = generateRoundRobinCircle(
+    teamIds,
+    tournamentId,
+    {
+      phase: "group",
+      groupId,
+      matchCounterStart,
+      doubleRoundRobin: true,
+    }
+  );
+  const matches = base.map((m) => ({ ...m, round: m.round + roundOffset }));
+  return { matches, nextMatchCounter };
+}
+
 // --- Pending matchups helper ---
 
 export function getPendingMatchups(

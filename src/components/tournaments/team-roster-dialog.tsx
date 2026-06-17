@@ -89,11 +89,21 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
           const capitalize = (s: string) =>
             s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
-          const nombre = capitalize(String(row["Nombre"] || row["nombre"] || row["NOMBRE"] || "").trim());
-          const apellido1 = capitalize(String(row["Apellido 1"] || row["apellido 1"] || row["Apellido1"] || row["apellido1"] || row["APELLIDO 1"] || row["APELLIDO1"] || "").trim());
-          const apellido2 = capitalize(String(row["Apellido 2"] || row["apellido 2"] || row["Apellido2"] || row["apellido2"] || row["APELLIDO 2"] || row["APELLIDO2"] || "").trim());
+          // Una sola columna "Nombre Completo". Aceptamos variantes de
+          // mayúsculas / con o sin espacio porque los organizadores
+          // a veces editan el header del template sin querer.
+          const nombreCompleto = capitalize(
+            String(
+              row["Nombre Completo"] ||
+                row["nombre completo"] ||
+                row["NOMBRE COMPLETO"] ||
+                row["NombreCompleto"] ||
+                row["nombrecompleto"] ||
+                ""
+            ).trim()
+          );
 
-          if (!nombre) continue;
+          if (!nombreCompleto) continue;
 
           // Age: try Fecha de nacimiento first, then fallback to Edad
           let edad = "";
@@ -138,12 +148,19 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
             }
           }
 
-          const fullName = [nombre, apellido1, apellido2].filter(Boolean).join(" ");
-          imported.push({ name: fullName, age: edad, documentNumber: documento, eps: epsVal, birthDate: fechaNac });
+          imported.push({
+            name: nombreCompleto,
+            age: edad,
+            documentNumber: documento,
+            eps: epsVal,
+            birthDate: fechaNac,
+          });
         }
 
         if (imported.length === 0) {
-          toast.error("No se encontraron jugadores. Verifica que el archivo tenga columnas: Nombre, Apellido 1, Apellido 2");
+          toast.error(
+            "No se encontraron jugadores. Verifica que el archivo tenga la columna: Nombre Completo"
+          );
           return;
         }
 
@@ -397,7 +414,7 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Columnas: Nombre, Apellido 1, Apellido 2. Opcionales: Fecha de nacimiento, Edad, No. Documento, EPS.
+              Columna: Nombre Completo. Opcionales: Fecha de nacimiento (YYYY-MM-DD, ej: 1995-06-15), Edad, No. Documento, EPS.
             </p>
           </div>
         </div>
