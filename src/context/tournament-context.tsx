@@ -11,7 +11,11 @@ import {
   ReactNode,
 } from "react";
 import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, VolleyballSet, Sponsor, PhaseConfig } from "@/types";
-import { generateRoundRobinCircle, getFinalSeriesChampion } from "@/data/helpers";
+import {
+  generateRoundRobinCircle,
+  generateAdditionalGroupRounds,
+  getFinalSeriesChampion,
+} from "@/data/helpers";
 import { fetchTournaments, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, deleteTournament as dbDeleteTournament, addTournamentTeams, removeTeamFromTournament as dbRemoveTeamFromTournament, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup, assignTeamsToPhaseGroups as dbAssignTeamsToPhaseGroups, assignTeamsToBracketSlots as dbAssignTeamsToBracketSlots, updateGroupName as dbUpdateGroupName } from "@/lib/db/tournaments";
 import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam, updateTeamPlayers as dbUpdateTeamPlayers } from "@/lib/db/teams";
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
@@ -93,6 +97,15 @@ interface TournamentContextType {
     tournamentId: string,
     phase: number,
     doubleRoundRobin?: boolean
+  ) => Promise<boolean>;
+  /** Agrega rondas adicionales a una fase de grupos/liga que ya tiene
+   *  fixture generado. `numRounds: 1` = una vuelta más (localía
+   *  invertida). `numRounds: 2` = ida + vuelta nueva. No modifica el
+   *  flag `doubleRoundRobin` del torneo ni `phaseConfigs`. */
+  generateAdditionalRounds: (
+    tournamentId: string,
+    phase: number,
+    numRounds: 1 | 2
   ) => Promise<boolean>;
   updateMatch: (
     tournamentId: string,
@@ -1218,6 +1231,103 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const generateAdditionalRounds = useCallback(
+    async (
+      tournamentId: string,
+      phase: number,
+      numRounds: 1 | 2
+    ): Promise<boolean> => {
+      // Igual que generatePhaseMatches pero APPEND: usa el último round
+      // existente como offset por grupo. Cada grupo continúa su propia
+      // numeración de jornadas y el matchNumber sigue siendo global.
+      const tournament = tournamentsRef.current.find((t) => t.id === tournamentId);
+      if (!tournament) return false;
+      // Tratamos `phase === undefined` como fase 1 — el schema lo defaultea,
+      // pero por las dudas con datos legacy.
+      const phaseGroups = (tournament.groups ?? []).filter(
+        (g) => (g.phase ?? 1) === phase
+      );
+
+      const allNew: Match[] = [];
+      let counter =
+        Math.max(0, ...tournament.matches.map((m) => m.matchNumber)) + 1;
+
+      if (phaseGroups.length === 0) {
+        // Round-robin "puro" sin groups (liga simple, todos contra todos).
+        // Los matches no tienen groupId ni phase: "group" — solo round +
+        // los equipos. Solo aplica si la fase pedida es la 1, porque un
+        // torneo sin groups no tiene multi-phase.
+        if (phase !== 1) return false;
+        if (tournament.teamIds.length < 2) return false;
+        // Solo contamos rondas de matches "de fase grupos / sin phase"
+        // — excluimos los playoff/elimination para no romper sus rounds.
+        const flatMatches = tournament.matches.filter(
+          (m) => m.phase !== "playoff"
+        );
+        if (flatMatches.length === 0) return false;
+        const lastRound = Math.max(0, ...flatMatches.map((m) => m.round));
+        const { matches, nextMatchCounter } = generateAdditionalGroupRounds(
+          tournament.teamIds,
+          tournamentId,
+          {
+            // groupId vacío para que el match generado NO tenga groupId
+            // ni phase. Lo desespecificamos después.
+            groupId: "",
+            numRounds,
+            roundOffset: lastRound,
+            matchCounterStart: counter,
+          }
+        );
+        // Limpia groupId/phase para que coincida con el formato del
+        // round-robin original (sin esos campos).
+        const cleaned = matches.map((m) => {
+          const { groupId: _gid, phase: _ph, ...rest } = m;
+          void _gid;
+          void _ph;
+          return rest as Match;
+        });
+        allNew.push(...cleaned);
+        counter = nextMatchCounter;
+      } else {
+        for (const group of phaseGroups) {
+          if (group.teamIds.length < 2) continue;
+          const groupMatches = tournament.matches.filter(
+            (m) => m.phase === "group" && m.groupId === group.id
+          );
+          const lastRound = Math.max(0, ...groupMatches.map((m) => m.round));
+          const { matches, nextMatchCounter } = generateAdditionalGroupRounds(
+            group.teamIds,
+            tournamentId,
+            {
+              groupId: group.id,
+              numRounds,
+              roundOffset: lastRound,
+              matchCounterStart: counter,
+            }
+          );
+          allNew.push(...matches);
+          counter = nextMatchCounter;
+        }
+      }
+
+      if (allNew.length === 0) return false;
+      const idMapping = await insertMatchesForPhase(allNew, tournamentId);
+      const persisted = allNew.map((m) => ({
+        ...m,
+        id: idMapping[m.id] ?? m.id,
+      }));
+      setTournaments((prev) =>
+        prev.map((t) =>
+          t.id === tournamentId
+            ? { ...t, matches: [...t.matches, ...persisted] }
+            : t
+        )
+      );
+      return true;
+    },
+    []
+  );
+
   const renameGroup = useCallback(
     async (tournamentId: string, groupId: string, name: string) => {
       const ok = await dbUpdateGroupName(groupId, name);
@@ -1650,6 +1760,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       generatePlayoffFixture,
       configureBracketSlots,
       generatePhaseMatches,
+      generateAdditionalRounds,
       updateTeamPlayers,
       updateTeam,
       updateEventPaid,
@@ -1686,6 +1797,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       generatePlayoffFixture,
       configureBracketSlots,
       generatePhaseMatches,
+      generateAdditionalRounds,
       updateTeamPlayers,
       updateTeam,
       updateEventPaid,

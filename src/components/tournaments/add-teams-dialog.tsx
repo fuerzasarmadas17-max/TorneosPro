@@ -85,6 +85,10 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
   const allAssigned =
     count > 0 &&
     Array.from({ length: count }, (_, i) => i).every((i) => groupAssignments[i]);
+  const assignedCount = Array.from({ length: count }, (_, i) => i).filter(
+    (i) => groupAssignments[i]
+  ).length;
+  const missingCount = count - assignedCount;
 
   const currentTier =
     tournament.plan === "paid" && tournament.tier ? tournament.tier : null;
@@ -205,6 +209,15 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
 
   // Free add (no payment): genuine free add, or a 100%-bono upgrade.
   const handleFreeAdd = async (setNewTier: boolean) => {
+    // Defensa: aunque el botón "Confirmar" está disabled si !allAssigned,
+    // protegemos por si un bug de state desync llama esta fn directamente.
+    // Sin este guard, equipos sin grupo quedan huérfanos en `tournament.
+    // teamIds` y arman partidos manuales que rompen `getPendingMatchups`
+    // (ese es el bug que vimos en el torneo de prueba con Nacional).
+    if (hasGroups && !allAssigned) {
+      toast.error("Falta asignar todos los equipos a un grupo");
+      return;
+    }
     setProcessing(true);
     const teamIds = await createAndLinkTeams();
     if (!teamIds) {
@@ -230,6 +243,13 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
   // Paid upgrade: compute amount server-side, then redirect to Wompi.
   const handlePayRedirect = async () => {
     if (!user) return;
+    // Mismo guard que handleFreeAdd: si el pago se confirma con
+    // assignments null, fulfill.ts crea los equipos pero los deja sin
+    // grupo (línea 304 del fulfill skipea con `continue`).
+    if (hasGroups && !allAssigned) {
+      toast.error("Falta asignar todos los equipos a un grupo");
+      return;
+    }
     setProcessing(true);
 
     const assignments = hasGroups
@@ -425,33 +445,56 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
                 {isIndividual ? "jugador" : "equipo"} nuevo.
               </p>
               <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                {Array.from({ length: count }, (_, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <span className="text-sm w-28 shrink-0 truncate">
-                      {isIndividual
-                        ? `Jugador ${currentCount + i + 1}`
-                        : `Equipo ${currentCount + i + 1}`}
-                    </span>
-                    <Select
-                      value={groupAssignments[i] || ""}
-                      onValueChange={(val) =>
-                        setGroupAssignments((prev) => ({ ...prev, [i]: val }))
-                      }
-                    >
-                      <SelectTrigger className="h-9 flex-1">
-                        <SelectValue placeholder="Seleccionar grupo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableGroups.map((g) => (
-                          <SelectItem key={g.id} value={g.id}>
-                            {g.name} ({g.teamIds.length} equipos)
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ))}
+                {Array.from({ length: count }, (_, i) => {
+                  const unassigned = !groupAssignments[i];
+                  return (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-sm w-28 shrink-0 truncate">
+                        {isIndividual
+                          ? `Jugador ${currentCount + i + 1}`
+                          : `Equipo ${currentCount + i + 1}`}
+                      </span>
+                      <Select
+                        value={groupAssignments[i] || ""}
+                        onValueChange={(val) =>
+                          setGroupAssignments((prev) => ({ ...prev, [i]: val }))
+                        }
+                      >
+                        <SelectTrigger
+                          className={`h-9 flex-1 ${
+                            unassigned
+                              ? "border-amber-500/60 focus:ring-amber-500/30"
+                              : ""
+                          }`}
+                        >
+                          <SelectValue placeholder="Seleccionar grupo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableGroups.map((g) => (
+                            <SelectItem key={g.id} value={g.id}>
+                              {g.name} ({g.teamIds.length} equipos)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                })}
               </div>
+              {missingCount > 0 && (
+                <p className="text-xs text-amber-600">
+                  Falta{missingCount === 1 ? "" : "n"} asignar {missingCount}{" "}
+                  {missingCount === 1
+                    ? isIndividual
+                      ? "jugador"
+                      : "equipo"
+                    : isIndividual
+                      ? "jugadores"
+                      : "equipos"}
+                  . Sin grupo asignado, el partido contra los otros equipos no
+                  se genera y queda como "pendiente" para siempre.
+                </p>
+              )}
             </div>
 
             <div className="flex gap-2 pt-2">

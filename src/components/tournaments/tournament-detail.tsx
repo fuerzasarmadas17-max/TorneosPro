@@ -49,7 +49,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Download, Settings, MoreVertical, Trash2, Ban, ChevronLeft, ChevronRight, CheckCircle2, Trophy } from "lucide-react";
+import { Download, Settings, MoreVertical, Trash2, Ban, ChevronLeft, ChevronRight, CheckCircle2, Trophy, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 // xlsx pesa ~700KB y solo se usa cuando el organizador descarga la
 // plantilla de jugadores. Dynamic import dentro del handler para que
@@ -100,22 +100,63 @@ function TemplateDownloadDialog() {
     // visitantes públicos que nunca usan esta función.
     const XLSX = await import("xlsx");
     const wb = XLSX.utils.book_new();
-    const baseHeaders = ["Nombre", "Apellido 1", "Apellido 2"];
+    // Una sola columna "Nombre Completo" en lugar del split antiguo en
+    // "Nombre / Apellido 1 / Apellido 2". El organizador escribe el
+    // nombre tal como aparece en la planilla y el import lo guarda en
+    // `players.name` sin transformación.
+    const baseHeaders = ["Nombre Completo"];
     const extras = OPTIONAL_COLUMNS.filter((c) => selected.has(c.key));
     const allHeaders = [...baseHeaders, ...extras.map((c) => c.label)];
 
-    const emptyRows = Array.from({ length: 20 }, () =>
+    // Fila de ejemplo (fila 3 visualmente). Sirve de referencia para
+    // que el organizador vea el formato esperado — sobre todo la fecha
+    // de nacimiento en ISO YYYY-MM-DD (10 caracteres). El organizador
+    // la borra o la reemplaza por el primer jugador real.
+    const exampleValues: Record<string, string> = {
+      "Nombre Completo": "Juan Pérez García",
+      "Fecha de nacimiento": "1995-06-15",
+      "Numero de documento": "1234567890",
+      "Lugar de residencia": "Sincelejo",
+      EPS: "Nueva EPS",
+    };
+    const exampleRow = allHeaders.map((h) => exampleValues[h] || "");
+
+    const emptyRows = Array.from({ length: 19 }, () =>
       Array(allHeaders.length).fill("")
     );
     const sheetData: (string | undefined)[][] = [
       ["Nombre del equipo", ""],
       allHeaders,
+      exampleRow,
       ...emptyRows,
     ];
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
     ws["!cols"] = allHeaders.map((h, i) => ({
-      wch: i < 3 ? 20 : extras.find((c) => c.label === h)?.width || 15,
+      // Primera columna (nombre) más ancha porque va el nombre completo.
+      // Fecha de nacimiento: 14 para que entren cómodos los 10 chars ISO.
+      wch:
+        i === 0
+          ? 32
+          : h === "Fecha de nacimiento"
+            ? 14
+            : extras.find((c) => c.label === h)?.width || 15,
     }));
+
+    // Aplica formato yyyy-mm-dd a las 20 filas de la columna de fecha
+    // de nacimiento. Si el organizador escribe la fecha como número o
+    // la pega de otra hoja, Excel respeta el formato visual de 10
+    // caracteres. La celda ejemplo ya viene con el string ISO.
+    const dobIdx = allHeaders.indexOf("Fecha de nacimiento");
+    if (dobIdx >= 0) {
+      for (let r = 2; r <= 21; r++) {
+        const ref = XLSX.utils.encode_cell({ c: dobIdx, r });
+        if (ws[ref]) {
+          ws[ref].z = "yyyy-mm-dd";
+        } else {
+          ws[ref] = { t: "s", v: "", z: "yyyy-mm-dd" };
+        }
+      }
+    }
     XLSX.utils.book_append_sheet(wb, ws, "Jugadores");
 
     XLSX.writeFile(wb, "Plantilla_Jugadores.xlsx");
@@ -142,11 +183,7 @@ function TemplateDownloadDialog() {
           <div>
             <p className="text-sm font-medium mb-2">Campos incluidos siempre:</p>
             <div className="flex flex-wrap gap-2">
-              {["Nombre", "Apellido 1", "Apellido 2"].map((f) => (
-                <Badge key={f} variant="secondary">
-                  {f}
-                </Badge>
-              ))}
+              <Badge variant="secondary">Nombre Completo</Badge>
             </div>
           </div>
           <div>
@@ -833,7 +870,13 @@ export function TournamentDetail({
             {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
           </TabsList>
           <TabsContent value="groups" className="mt-4">
-            <GroupStageView tournament={tournament} canEdit={canEdit} />
+            <div className="space-y-3">
+              {canEdit && tournament.status !== "completed" &&
+                tournament.matches.some((m) => m.phase === "group") && (
+                  <PhaseAdditionalRoundsButton tournament={tournament} phase={1} />
+                )}
+              <GroupStageView tournament={tournament} canEdit={canEdit} />
+            </div>
           </TabsContent>
           {isTabVisible("playoffs") && (
             <TabsContent value="playoffs" className="mt-4">
@@ -904,7 +947,13 @@ export function TournamentDetail({
             {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
           </TabsList>
           <TabsContent value="groups" className="mt-4">
-            <GroupStageView tournament={tournament} canEdit={canEdit} />
+            <div className="space-y-3">
+              {canEdit && tournament.status !== "completed" &&
+                tournament.matches.some((m) => m.phase === "group") && (
+                  <PhaseAdditionalRoundsButton tournament={tournament} phase={1} />
+                )}
+              <GroupStageView tournament={tournament} canEdit={canEdit} />
+            </div>
           </TabsContent>
           {isTabVisible("schedule") && (
             <TabsContent value="schedule" className="mt-4">
@@ -937,15 +986,21 @@ export function TournamentDetail({
             {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
           </TabsList>
           <TabsContent value="standings" className="mt-4">
-            {sportCategory === "baseball" ? (
-              <BaseballStandingsTable tournament={tournament} />
-            ) : sportCategory === "basketball" ? (
-              <BasketballStandingsTable tournament={tournament} />
-            ) : sportCategory === "volleyball" ? (
-              <VolleyballStandingsTable tournament={tournament} />
-            ) : (
-              <StandingsTable tournament={tournament} />
-            )}
+            <div className="space-y-3">
+              {canEdit && tournament.status !== "completed" &&
+                tournament.matches.filter((m) => m.phase !== "playoff").length > 0 && (
+                  <PhaseAdditionalRoundsButton tournament={tournament} phase={1} />
+                )}
+              {sportCategory === "baseball" ? (
+                <BaseballStandingsTable tournament={tournament} />
+              ) : sportCategory === "basketball" ? (
+                <BasketballStandingsTable tournament={tournament} />
+              ) : sportCategory === "volleyball" ? (
+                <VolleyballStandingsTable tournament={tournament} />
+              ) : (
+                <StandingsTable tournament={tournament} />
+              )}
+            </div>
           </TabsContent>
           {isTabVisible("schedule") && (
             <TabsContent value="schedule" className="mt-4">
@@ -1440,6 +1495,177 @@ function ConfigurationDialog({
 }
 
 /**
+ * Botón "Generar nueva ronda" para una fase de grupos/liga ya en marcha.
+ *
+ * Visible solo para el organizador. Aparece SIEMPRE pero queda
+ * deshabilitado mientras la fase tenga 5 o más partidos sin programar
+ * (sin fecha/hora asignada). La idea es evitar que el organizador
+ * genere "muchas vueltas" de antemano y termine con un calendario
+ * imposible de programar — el botón se activa cuando ya casi terminó
+ * de programar las rondas existentes.
+ *
+ * El modal permite elegir entre 1 ronda (vuelta con localía invertida)
+ * o 2 rondas (ida + vuelta nueva). No toca el flag global
+ * `doubleRoundRobin` del torneo — solo agrega partidos.
+ */
+function PhaseAdditionalRoundsButton({
+  tournament,
+  phase,
+}: {
+  tournament: Tournament;
+  phase: number;
+}) {
+  const { generateAdditionalRounds } = useTournaments();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [generating, setGenerating] = useState(false);
+
+  const phaseGroupIds = new Set(
+    (tournament.groups ?? [])
+      // Groups legacy pueden no traer `phase` — el schema usa default 1
+      // pero por las dudas tratamos `undefined` como fase 1.
+      .filter((g) => (g.phase ?? 1) === phase)
+      .map((g) => g.id)
+  );
+  // Dos casos cubiertos:
+  //   1) Torneo con grupos: contar matches del grupo activo (phase=group).
+  //   2) Torneo round-robin "puro" sin grupos: matches sin `phase` ni
+  //      `groupId` — los que viven en `tournament.matches` directamente.
+  //   Excluímos siempre `phase === "playoff"` porque la feature no aplica
+  //   al bracket.
+  const phaseMatches = tournament.matches.filter((m) => {
+    if (m.phase === "playoff") return false;
+    if (phaseGroupIds.size > 0) {
+      return m.phase === "group" && !!m.groupId && phaseGroupIds.has(m.groupId);
+    }
+    // Round-robin puro: solo permitir fase 1 (no hay multi-phase sin grupos).
+    return phase === 1 && !m.phase && !m.groupId;
+  });
+  // Alineado con el badge "X sin programar" del Date Organizer
+  // (date-organizer.tsx:85-86): el conteo oficial es por `status`. Si
+  // chequeáramos `!m.date || !m.time` también nos quedaríamos contando
+  // partidos "completed" o "postponed" a los que les borraron la fecha,
+  // inflando el número y dejando el botón disabled de más.
+  const unscheduledCount = phaseMatches.filter(
+    (m) => m.status === "unscheduled"
+  ).length;
+
+  // ¿Hay matches generados en alguna fase POSTERIOR de grupos? Si sí, no
+  // tiene sentido seguir agregando rondas a esta fase porque los
+  // clasificados ya avanzaron y los rankings finales de esta fase están
+  // congelados desde ahí. Aplica a torneos multi-phase (phase 1 → 2 → ...).
+  const nextPhaseStarted = tournament.matches.some((m) => {
+    if (m.phase !== "group" || !m.groupId) return false;
+    const g = (tournament.groups ?? []).find((gg) => gg.id === m.groupId);
+    if (!g) return false;
+    return (g.phase ?? 1) > phase;
+  });
+
+  // ¿Los playoffs ya están "en marcha"? Importante: el bracket se
+  // scaffoldea VACÍO al generar la fase 1 (mirá `generatePhaseMatches`
+  // en tournament-context.tsx). Esos slots sin equipos NO cuentan como
+  // "empezó" — solo cuentan los matches que tienen al menos un team
+  // asignado (señal real de que la cascada de clasificación corrió).
+  const playoffsStarted = tournament.matches.some(
+    (m) => m.phase === "playoff" && (m.homeTeamId || m.awayTeamId)
+  );
+
+  // Orden de prioridad de los motivos de bloqueo: lock-de-cascada manda
+  // sobre lock-por-conteo. El organizador necesita saber primero que la
+  // siguiente fase / playoffs avanzaron, no que tiene partidos sin
+  // programar (que en ese punto es irrelevante).
+  const phaseLocked = nextPhaseStarted || playoffsStarted;
+  const countLocked = !phaseLocked && unscheduledCount >= 5;
+  const disabled = phaseLocked || countLocked;
+
+  const tooltipText = nextPhaseStarted
+    ? `La fase ${phase + 1} ya comenzó. No se pueden agregar más rondas a esta fase.`
+    : playoffsStarted
+      ? "Los playoffs ya comenzaron. No se pueden agregar más rondas a esta fase."
+      : countLocked
+        ? `Se activará cuando queden menos de 5 partidos sin programar en esta fase (actualmente hay ${unscheduledCount}).`
+        : "";
+
+  const run = async (numRounds: 1 | 2) => {
+    setModalOpen(false);
+    setGenerating(true);
+    const ok = await generateAdditionalRounds(tournament.id, phase, numRounds);
+    setGenerating(false);
+    if (ok) {
+      toast.success(
+        numRounds === 1
+          ? "Nueva ronda generada"
+          : "Ida y vuelta generadas"
+      );
+    } else {
+      toast.error("No pudimos generar las rondas");
+    }
+  };
+
+  return (
+    <div className="flex justify-end">
+      {/* Span wrapper: el title HTML no se dispara en buttons disabled,
+          pero sí en el span padre. Hack para tener tooltip sin instalar
+          un primitive (no hay Tooltip en el design system todavía). */}
+      <span
+        title={tooltipText}
+        className="inline-block"
+      >
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={disabled || generating}
+          onClick={() => setModalOpen(true)}
+          className="gap-1.5"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {generating ? "Generando..." : "Generar nueva ronda"}
+        </Button>
+      </span>
+
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Generar nueva ronda</DialogTitle>
+            <DialogDescription>
+              Los equipos de cada grupo se volverán a enfrentar.
+              ¿Cuántas rondas agregar?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <Button
+              variant="outline"
+              onClick={() => run(1)}
+              className="justify-start h-auto py-3"
+            >
+              <Plus className="h-4 w-4 mr-3 shrink-0" />
+              <div className="text-left">
+                <div className="font-medium">Una ronda más</div>
+                <div className="text-xs text-muted-foreground font-normal">
+                  Los locales pasan a visitantes
+                </div>
+              </div>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => run(2)}
+              className="justify-start h-auto py-3"
+            >
+              <RefreshCw className="h-4 w-4 mr-3 shrink-0" />
+              <div className="text-left">
+                <div className="font-medium">Ida + Vuelta</div>
+                <div className="text-xs text-muted-foreground font-normal">
+                  Dos rondas completas
+                </div>
+              </div>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+/**
  * Tab content for one phase of a multi-phase group-playoff tournament.
  * Decides whether to show:
  *  - the existing GroupStageView (phase has matches → normal view),
@@ -1512,8 +1738,16 @@ function PhaseTabContent({
   const previousComplete = phase === 1 ? true : !!previousPhaseConfig?.complete;
 
   // STATE 1 — Phase is fully set up and has matches: normal standings view.
+  // Para el organizador, mostramos arriba el botón de "generar nueva ronda".
   if (hasMatches) {
-    return <GroupStageView tournament={tournament} phase={phase} canEdit={canEdit} />;
+    return (
+      <div className="space-y-3">
+        {canEdit && tournament.status !== "completed" && (
+          <PhaseAdditionalRoundsButton tournament={tournament} phase={phase} />
+        )}
+        <GroupStageView tournament={tournament} phase={phase} canEdit={canEdit} />
+      </div>
+    );
   }
 
   // STATE 2 — Teams assigned but no fixture yet: show both "Editar
