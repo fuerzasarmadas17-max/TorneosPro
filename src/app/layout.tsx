@@ -17,6 +17,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  // Base para resolver URLs relativas de OG/Twitter images. En prod
+  // usa el dominio comprado (www.torneospro.co). En dev/preview cae al
+  // VERCEL_URL (URL del deploy preview) o localhost. Sin este base,
+  // Next loggea warnings y los previews en WhatsApp/Twitter no cargan
+  // las imágenes de OG.
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000")
+  ),
   title: "Torneos Pro",
   description: "Gestiona tus torneos deportivos",
   // Manifest PWA — generado por `app/manifest.ts`. Esto le dice al

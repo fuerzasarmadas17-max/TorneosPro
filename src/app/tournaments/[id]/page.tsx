@@ -1,7 +1,33 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { fetchTournamentForPage } from "@/lib/db/tournaments-server";
+import { fetchTournamentById } from "@/lib/db/tournaments";
+import { supabase } from "@/lib/supabase";
+import { getSportInfo } from "@/data/sports";
 import { TournamentDetailClient } from "./tournament-detail-client";
+
+// Metadata por torneo para los previews de WhatsApp/Twitter. La IMAGEN de
+// la tarjeta la genera el archivo `opengraph-image.tsx` de esta ruta; aquí
+// solo armamos título y descripción. Fetch liviano (sin equipos ni events).
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const t = await fetchTournamentById(id, supabase, false);
+  if (!t) return { title: "Torneo · TorneosPro" };
+  const sport = getSportInfo(t.sport)?.label ?? "";
+  const description = `${sport ? sport + " · " : ""}${t.teamIds.length} equipos · Sigue resultados, tabla de posiciones y estadísticas en vivo.`;
+  const title = `${t.name} · TorneosPro`;
+  return {
+    title,
+    description,
+    openGraph: { title: t.name, description, type: "website" },
+    twitter: { card: "summary_large_image", title: t.name, description },
+  };
+}
 
 /**
  * Cache de Edge para 60 segundos. Los visitantes que entran al mismo
