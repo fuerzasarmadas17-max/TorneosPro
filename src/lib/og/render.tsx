@@ -148,8 +148,46 @@ export function tournamentOgImage(d: TournamentOgData) {
           </div>
         </div>
 
-        {/* Footer */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+        {/* Footer: si hay patrocinadores, les damos TODO el ancho con logos
+            grandes (y omitimos "Organiza"). Si no hay, mostramos el
+            organizador para que el pie no quede vacío. */}
+        {d.sponsors.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span
+              style={{
+                display: "flex",
+                fontSize: 22,
+                fontWeight: 600,
+                letterSpacing: 2,
+                color: "#94a3b8",
+                marginBottom: 16,
+              }}
+            >
+              PATROCINADORES
+            </span>
+            <div style={{ display: "flex", alignItems: "center" }}>
+              {d.sponsors.slice(0, 5).map((s, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 184,
+                    height: 108,
+                    backgroundColor: "#ffffff",
+                    borderRadius: 16,
+                    marginRight: 18,
+                    padding: 16,
+                  }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={s} alt="" width={152} height={76} style={{ objectFit: "contain" }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : d.organizerName ? (
           <div style={{ display: "flex", alignItems: "center" }}>
             {d.organizerLogo ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -166,41 +204,12 @@ export function tournamentOgImage(d: TournamentOgData) {
                 }}
               />
             ) : null}
-            {d.organizerName ? (
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                <span style={{ fontSize: 22, color: "#94a3b8" }}>Organiza</span>
-                <span style={{ fontSize: 30, fontWeight: 700 }}>{d.organizerName}</span>
-              </div>
-            ) : null}
-          </div>
-
-          {d.sponsors.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-              <span style={{ fontSize: 20, color: "#94a3b8", marginBottom: 10 }}>Patrocinan</span>
-              <div style={{ display: "flex", alignItems: "center" }}>
-                {d.sponsors.slice(0, 5).map((s, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: 88,
-                      height: 54,
-                      backgroundColor: "#ffffff",
-                      borderRadius: 10,
-                      marginLeft: 10,
-                      padding: 6,
-                    }}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={s} alt="" width={76} height={42} style={{ objectFit: "contain" }} />
-                  </div>
-                ))}
-              </div>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ fontSize: 22, color: "#94a3b8" }}>Organiza</span>
+              <span style={{ fontSize: 30, fontWeight: 700 }}>{d.organizerName}</span>
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
     ),
     { ...OG_SIZE }
