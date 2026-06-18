@@ -47,11 +47,13 @@ export function ChampionSponsorsStrip({ sponsors }: ChampionSponsorsStripProps) 
                 href={sponsor.linkUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`${baseClass} hover:border-primary/50 transition-colors group`}
+                title="Visitar patrocinador"
+                className={`${baseClass} border-primary/30 cursor-pointer group transition-all hover:border-primary/60 hover:shadow-sm active:scale-[0.98]`}
               >
                 {tile}
-                <div className="absolute bottom-0.5 right-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                {/* Badge persistente de "enlace" (no depende de hover) */}
+                <div className="absolute top-0.5 right-0.5 rounded-full bg-background/85 backdrop-blur-sm p-0.5 shadow-sm ring-1 ring-border transition-colors group-hover:bg-primary">
+                  <ExternalLink className="h-2.5 w-2.5 text-muted-foreground transition-colors group-hover:text-primary-foreground" />
                 </div>
               </a>
             );

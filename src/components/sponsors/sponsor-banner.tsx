@@ -32,11 +32,15 @@ export function SponsorBanner({ sponsors }: SponsorBannerProps) {
                 href={sponsor.linkUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="relative h-20 rounded-lg border bg-muted/30 overflow-hidden hover:border-primary/50 transition-colors cursor-pointer group"
+                title="Visitar patrocinador"
+                className="relative h-20 rounded-lg border border-primary/30 bg-muted/30 overflow-hidden cursor-pointer group transition-all hover:border-primary/60 hover:shadow-sm active:scale-[0.98]"
               >
                 {content}
-                <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                {/* Badge persistente: indica que es clickeable en desktop y
+                    móvil sin depender del hover. Fondo semitransparente para
+                    que se lea sobre cualquier logo. */}
+                <div className="absolute top-1 right-1 rounded-full bg-background/85 backdrop-blur-sm p-1 shadow-sm ring-1 ring-border transition-colors group-hover:bg-primary">
+                  <ExternalLink className="h-3 w-3 text-muted-foreground transition-colors group-hover:text-primary-foreground" />
                 </div>
               </a>
             );
