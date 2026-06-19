@@ -31,11 +31,11 @@ interface VolleyballStandingsTableProps {
 function ScoringRulesDialog({ bestOf }: { bestOf: 3 | 5 }) {
   const setsToWin = Math.ceil(bestOf / 2);
   return (
-    <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden grid-rows-[auto_minmax(0,1fr)]">
       <DialogHeader>
         <DialogTitle>Sistema de Puntos - Volleyball</DialogTitle>
       </DialogHeader>
-      <div className="space-y-5 text-sm">
+      <div className="space-y-5 text-sm overflow-y-auto min-h-0 pr-1">
         <div>
           <h4 className="font-semibold mb-2">Formato: Mejor de {bestOf} sets (primero a {setsToWin})</h4>
           <div className="rounded-lg border overflow-hidden">
