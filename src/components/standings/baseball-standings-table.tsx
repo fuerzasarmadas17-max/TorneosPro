@@ -29,11 +29,11 @@ interface BaseballStandingsTableProps {
 
 function ScoringRulesDialog() {
   return (
-    <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden grid-rows-[auto_minmax(0,1fr)]">
       <DialogHeader>
         <DialogTitle>Sistema de Puntos - Béisbol</DialogTitle>
       </DialogHeader>
-      <div className="space-y-5 text-sm">
+      <div className="space-y-5 text-sm overflow-y-auto min-h-0 pr-1">
         <div>
           <h4 className="font-semibold mb-2">Puntuación</h4>
           <p className="text-muted-foreground">
