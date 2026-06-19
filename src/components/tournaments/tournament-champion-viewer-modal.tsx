@@ -90,7 +90,10 @@ export function TournamentChampionViewerModal({
 
         {/* Sponsors strip below the photo — public viewers see the tournament's
             patrocinadores alongside the champion. */}
-        <ChampionSponsorsStrip sponsors={tournament.sponsors} />
+        <ChampionSponsorsStrip
+          sponsors={tournament.sponsors}
+          tournamentId={tournament.id}
+        />
 
         <DialogFooter className="sm:justify-center">
           <Button onClick={() => setOpen(false)}>

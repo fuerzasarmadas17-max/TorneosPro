@@ -1,3 +1,5 @@
+import { supabase } from "@/lib/supabase";
+
 const SESSION_KEY = "tp_session_id";
 const SESSION_ACTIVITY_KEY = "tp_session_activity";
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -50,6 +52,44 @@ export function getCleanReferrer(): string | null {
   } catch {
     return null;
   }
+}
+
+export interface TrackEventInput {
+  /** 'sponsor_click' | 'sponsor_impression' | 'cta_click' | ... */
+  eventType: string;
+  /** Torneo donde ocurrió (null para landing / nivel organización). */
+  tournamentId?: string | null;
+  /** id del objetivo: sponsor.id, team.id, etc. */
+  targetId?: string | null;
+  entityType?: "tournament" | "organization" | null;
+  /** user_id del organizador, para eventos a nivel organización. */
+  entityId?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+/**
+ * Registra un evento de interacción en `analytics_events`. Fire-and-forget:
+ * no bloquea ni lanza. Los clics en patrocinadores abren en pestaña nueva
+ * (target="_blank"), así que la página actual NO navega — el insert alcanza
+ * a completarse sin necesidad de keepalive.
+ */
+export function trackEvent(input: TrackEventInput): void {
+  if (typeof window === "undefined") return;
+  void supabase
+    .from("analytics_events")
+    .insert({
+      event_type: input.eventType,
+      tournament_id: input.tournamentId ?? null,
+      target_id: input.targetId ?? null,
+      entity_type: input.entityType ?? null,
+      entity_id: input.entityId ?? null,
+      session_id: getSessionId(),
+      device_type: getDeviceType(),
+      metadata: input.metadata ?? null,
+    })
+    .then(({ error }) => {
+      if (error) console.error("[trackEvent]", error.message);
+    });
 }
 
 export function formatDuration(ms: number): string {

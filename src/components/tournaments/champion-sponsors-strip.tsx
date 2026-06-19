@@ -2,9 +2,12 @@
 
 import { ExternalLink } from "lucide-react";
 import { Sponsor } from "@/types";
+import { trackEvent } from "@/lib/analytics";
 
 interface ChampionSponsorsStripProps {
   sponsors: Sponsor[] | undefined;
+  /** Torneo donde se muestra, para atribuir los clics. */
+  tournamentId?: string;
 }
 
 /**
@@ -17,7 +20,10 @@ interface ChampionSponsorsStripProps {
  * the modal; clicking a sponsor that has a `linkUrl` opens it in a new tab
  * (same convention as the existing SponsorBanner).
  */
-export function ChampionSponsorsStrip({ sponsors }: ChampionSponsorsStripProps) {
+export function ChampionSponsorsStrip({
+  sponsors,
+  tournamentId,
+}: ChampionSponsorsStripProps) {
   if (!sponsors || sponsors.length === 0) return null;
 
   return (
@@ -48,6 +54,15 @@ export function ChampionSponsorsStrip({ sponsors }: ChampionSponsorsStripProps) 
                 target="_blank"
                 rel="noopener noreferrer"
                 title="Visitar patrocinador"
+                onClick={() =>
+                  trackEvent({
+                    eventType: "sponsor_click",
+                    tournamentId: tournamentId ?? null,
+                    entityType: tournamentId ? "tournament" : null,
+                    targetId: sponsor.id,
+                    metadata: { linkUrl: sponsor.linkUrl },
+                  })
+                }
                 className={`${baseClass} border-primary/30 cursor-pointer group transition-all hover:border-primary/60 hover:shadow-sm active:scale-[0.98]`}
               >
                 {tile}
