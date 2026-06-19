@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminGuard } from "@/components/auth-guard";
 import { AnalyticsCards } from "@/components/analytics/analytics-cards";
@@ -10,6 +11,7 @@ import { ViewsChart } from "@/components/analytics/views-chart";
 import { DeviceBreakdown } from "@/components/analytics/device-breakdown";
 import { ReferrerList } from "@/components/analytics/referrer-list";
 import { useAdminAnalytics, OrganizerSummary } from "@/hooks/use-admin-analytics";
+import { SponsorClicksPanel } from "@/components/analytics/sponsor-clicks-panel";
 import { Loader2, ChevronRight, ChevronDown } from "lucide-react";
 
 const dayOptions = [7, 30, 90] as const;
@@ -82,7 +84,17 @@ function OrganizerRow({ org }: { org: OrganizerSummary }) {
 
 function AnalyticsContent() {
   const [days, setDays] = useState<number>(30);
+  const [customInput, setCustomInput] = useState("");
   const { data, organizers, isLoading } = useAdminAnalytics(days);
+
+  const applyCustom = () => {
+    const n = parseInt(customInput, 10);
+    if (!isNaN(n) && n >= 1) {
+      setDays(Math.min(n, 730)); // tope 2 años
+      setCustomInput("");
+    }
+  };
+  const isPreset = (dayOptions as readonly number[]).includes(days);
 
   if (isLoading) {
     return (
@@ -107,7 +119,7 @@ function AnalyticsContent() {
             Metricas globales de la plataforma
           </p>
         </div>
-        <div className="flex gap-1">
+        <div className="flex items-center gap-1 flex-wrap justify-end">
           {dayOptions.map((d) => (
             <Button
               key={d}
@@ -118,6 +130,23 @@ function AnalyticsContent() {
               {d}d
             </Button>
           ))}
+          {/* Días personalizados: escribe cualquier número y Enter */}
+          <div className="flex items-center gap-1 ml-1">
+            <Input
+              type="number"
+              min={1}
+              max={730}
+              placeholder={isPreset ? "Otro" : String(days)}
+              value={customInput}
+              onChange={(e) => setCustomInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") applyCustom();
+              }}
+              onBlur={applyCustom}
+              className={`h-8 w-20 ${!isPreset ? "border-primary text-primary font-medium" : ""}`}
+            />
+            <span className="text-sm text-muted-foreground">días</span>
+          </div>
         </div>
       </div>
 
@@ -127,21 +156,26 @@ function AnalyticsContent() {
         avgDurationMs={data.avg_duration_ms}
       />
 
-      {/* Organizer summary table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Visitas por Organizador</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {organizers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sin datos de organizadores</p>
-          ) : (
-            organizers.map((org) => (
-              <OrganizerRow key={org.user_id} org={org} />
-            ))
-          )}
-        </CardContent>
-      </Card>
+      {/* Organizador + clics en patrocinadores: lado a lado en desktop */}
+      <div className="grid gap-4 lg:grid-cols-2 items-start">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Visitas por Organizador</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {organizers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Sin datos de organizadores</p>
+            ) : (
+              organizers.map((org) => (
+                <OrganizerRow key={org.user_id} org={org} />
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Clics en patrocinadores (interacciones, no solo visitas) */}
+        <SponsorClicksPanel days={days} />
+      </div>
 
       <ViewsChart data={data.views_by_day} />
 

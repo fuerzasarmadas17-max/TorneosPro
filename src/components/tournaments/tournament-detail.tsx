@@ -776,7 +776,9 @@ export function TournamentDetail({
       />
 
       {/* Sponsors Banner */}
-      {allSponsors.length > 0 && <SponsorBanner sponsors={allSponsors} />}
+      {allSponsors.length > 0 && (
+        <SponsorBanner sponsors={allSponsors} tournamentId={tournament.id} />
+      )}
 
       {/* Edit tournament sponsors */}
       {(canEditSponsors ?? canEdit) && (

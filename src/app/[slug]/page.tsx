@@ -54,7 +54,7 @@ export default function ProfilePage() {
       <ProfileHeader profile={user.organizationProfile} />
       {user.organizationProfile.sponsors && user.organizationProfile.sponsors.length > 0 && (
         <div className="container mx-auto px-4 pt-6">
-          <SponsorBanner sponsors={user.organizationProfile.sponsors} />
+          <SponsorBanner sponsors={user.organizationProfile.sponsors} orgId={user.id} />
         </div>
       )}
       <div className="container mx-auto px-4 py-8">

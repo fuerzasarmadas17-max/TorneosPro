@@ -185,7 +185,10 @@ export function TournamentChampionModal({
 
         {/* Sponsors strip below the photo — same data as the tournament's
             public sponsor banner, scaled down so 1..N logos fit cleanly. */}
-        <ChampionSponsorsStrip sponsors={tournament.sponsors} />
+        <ChampionSponsorsStrip
+          sponsors={tournament.sponsors}
+          tournamentId={tournament.id}
+        />
 
         {/* Organizer-only uploader: shows when there's no persisted photo, OR
             when the caller forced replace mode (so the organizer can swap the

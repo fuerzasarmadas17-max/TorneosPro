@@ -2,12 +2,18 @@
 
 import { Sponsor } from "@/types";
 import { ExternalLink } from "lucide-react";
+import { trackEvent } from "@/lib/analytics";
 
 interface SponsorBannerProps {
   sponsors: Sponsor[];
+  /** Torneo donde se muestra (para atribuir los clics). Ausente en el
+   *  perfil de organización, donde se usa `orgId`. */
+  tournamentId?: string;
+  /** user_id del organizador, cuando el banner es a nivel organización. */
+  orgId?: string;
 }
 
-export function SponsorBanner({ sponsors }: SponsorBannerProps) {
+export function SponsorBanner({ sponsors, tournamentId, orgId }: SponsorBannerProps) {
   if (sponsors.length === 0) return null;
 
   return (
@@ -33,6 +39,20 @@ export function SponsorBanner({ sponsors }: SponsorBannerProps) {
                 target="_blank"
                 rel="noopener noreferrer"
                 title="Visitar patrocinador"
+                onClick={() =>
+                  trackEvent({
+                    eventType: "sponsor_click",
+                    tournamentId: tournamentId ?? null,
+                    entityType: tournamentId
+                      ? "tournament"
+                      : orgId
+                        ? "organization"
+                        : null,
+                    entityId: tournamentId ? null : orgId ?? null,
+                    targetId: sponsor.id,
+                    metadata: { linkUrl: sponsor.linkUrl },
+                  })
+                }
                 className="relative h-20 rounded-lg border border-primary/30 bg-muted/30 overflow-hidden cursor-pointer group transition-all hover:border-primary/60 hover:shadow-sm active:scale-[0.98]"
               >
                 {content}
