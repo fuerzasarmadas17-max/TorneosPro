@@ -1,5 +1,6 @@
 "use client";
 
+import type { KeyboardEvent } from "react";
 import {
   Table,
   TableBody,
@@ -60,6 +61,46 @@ export function BaseballScoresheet({
   const filteredStats = BASEBALL_STAT_ORDER.filter(
     (s) => enabledSet.has(s) && !getStatDefinition(s)?.computed
   );
+
+  // Navegación por teclado en la planilla. Cada celda tiene id
+  // `bs-{teamId}-{fila}-{columna}`. Al enfocar se selecciona el valor
+  // (escribir lo reemplaza; pasar de largo lo conserva — recomendación A).
+  const focusCell = (row: number, col: number) => {
+    const el = document.getElementById(
+      `bs-${teamId}-${row}-${col}`
+    ) as HTMLInputElement | null;
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  };
+  const handleCellKeyDown = (
+    e: KeyboardEvent<HTMLInputElement>,
+    row: number,
+    col: number
+  ) => {
+    const maxRow = players.length - 1;
+    const maxCol = filteredStats.length - 1;
+    switch (e.key) {
+      case "ArrowDown":
+      case "Enter":
+        e.preventDefault();
+        focusCell(Math.min(row + 1, maxRow), col);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        focusCell(Math.max(row - 1, 0), col);
+        break;
+      case "ArrowLeft":
+        e.preventDefault();
+        focusCell(row, Math.max(col - 1, 0));
+        break;
+      case "ArrowRight":
+        e.preventDefault();
+        focusCell(row, Math.min(col + 1, maxCol));
+        break;
+    }
+  };
 
   // H > AB is logically impossible; surface it without blocking the save —
   // the scorer might be entering hits before AB and will reconcile later.
@@ -124,9 +165,10 @@ export function BaseballScoresheet({
                   <TableCell className="font-medium text-sm">
                     {player.name}
                   </TableCell>
-                  {filteredStats.map((statKey) => (
+                  {filteredStats.map((statKey, colIdx) => (
                     <TableCell key={statKey} className="p-1">
                       <Input
+                        id={`bs-${teamId}-${idx}-${colIdx}`}
                         type="number"
                         min="0"
                         value={playerValues[statKey] || ""}
@@ -134,9 +176,8 @@ export function BaseballScoresheet({
                           const val = parseInt(e.target.value) || 0;
                           onChange(player.name, statKey, val);
                         }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") e.preventDefault();
-                        }}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => handleCellKeyDown(e, idx, colIdx)}
                         className="h-8 w-14 text-center text-sm mx-auto [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         placeholder="0"
                       />
