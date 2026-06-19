@@ -29,6 +29,7 @@ import { Filter, Download } from "lucide-react";
 import { Tournament, getSportCategory } from "@/types";
 import { useTournamentStats, CardEntry } from "@/hooks/use-tournament-stats";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { TableWatermark } from "./table-watermark";
 import { useTournaments } from "@/context/tournament-context";
 import { downloadStatsPdf } from "@/lib/stats-pdf";
 import { BASEBALL_LEADERBOARD_ORDER } from "@/lib/baseball-order";
@@ -364,7 +365,9 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
             )}
           </CardHeader>
           <CardContent>
-            <ScrollArea className="w-full">
+            <div className="relative">
+            <TableWatermark />
+            <ScrollArea className="w-full relative z-10">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -420,6 +423,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
               </Table>
               <ScrollBar orientation="horizontal" />
             </ScrollArea>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -457,6 +461,9 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                     )}
                   </CardHeader>
                   <CardContent>
+                    <div className="relative">
+                    <TableWatermark />
+                    <div className="relative z-10">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -493,6 +500,8 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                         })}
                       </TableBody>
                     </Table>
+                    </div>
+                    </div>
                   </CardContent>
                 </Card>
               );
@@ -517,6 +526,9 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                   )}
                 </CardHeader>
                 <CardContent>
+                  <div className="relative">
+                  <TableWatermark />
+                  <div className="relative z-10">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -554,6 +566,8 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                       })}
                     </TableBody>
                   </Table>
+                  </div>
+                  </div>
                 </CardContent>
               </Card>
             );

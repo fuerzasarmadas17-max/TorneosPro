@@ -20,6 +20,7 @@ import { Tournament } from "@/types";
 import { useBasketballStandings } from "@/hooks/use-basketball-standings";
 import { useTournaments } from "@/context/tournament-context";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { TableWatermark } from "./table-watermark";
 import { Info } from "lucide-react";
 
 interface BasketballStandingsTableProps {
@@ -88,7 +89,9 @@ export function BasketballStandingsTable({
           <ScoringRulesDialog />
         </Dialog>
       </div>
-      <ScrollArea className="w-full">
+      <div className="relative">
+      <TableWatermark />
+      <ScrollArea className="w-full relative z-10">
         <Table>
           <TableHeader>
             <TableRow>
@@ -141,6 +144,7 @@ export function BasketballStandingsTable({
         </Table>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
+      </div>
     </div>
   );
 }

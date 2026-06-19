@@ -20,6 +20,7 @@ import { Tournament } from "@/types";
 import { useBaseballStandings } from "@/hooks/use-baseball-standings";
 import { useTournaments } from "@/context/tournament-context";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { TableWatermark } from "./table-watermark";
 import { Info } from "lucide-react";
 
 interface BaseballStandingsTableProps {
@@ -106,7 +107,9 @@ export function BaseballStandingsTable({ tournament }: BaseballStandingsTablePro
           <ScoringRulesDialog />
         </Dialog>
       </div>
-      <ScrollArea className="w-full">
+      <div className="relative">
+      <TableWatermark />
+      <ScrollArea className="w-full relative z-10">
         <Table>
           <TableHeader>
             <TableRow>
@@ -157,6 +160,7 @@ export function BaseballStandingsTable({ tournament }: BaseballStandingsTablePro
         </Table>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
+      </div>
     </div>
   );
 }

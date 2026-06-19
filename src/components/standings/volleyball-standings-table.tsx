@@ -21,6 +21,7 @@ import { Tournament } from "@/types";
 import { useVolleyballStandings } from "@/hooks/use-volleyball-standings";
 import { useTournaments } from "@/context/tournament-context";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { TableWatermark } from "./table-watermark";
 import { Info } from "lucide-react";
 
 interface VolleyballStandingsTableProps {
@@ -134,7 +135,9 @@ export function VolleyballStandingsTable({
           <ScoringRulesDialog bestOf={bestOf as 3 | 5} />
         </Dialog>
       </div>
-      <ScrollArea className="w-full">
+      <div className="relative">
+      <TableWatermark />
+      <ScrollArea className="w-full relative z-10">
         <Table>
         <TableHeader>
           <TableRow>
@@ -197,6 +200,7 @@ export function VolleyballStandingsTable({
       </Table>
       <ScrollBar orientation="horizontal" />
     </ScrollArea>
+      </div>
     </div>
   );
 }
