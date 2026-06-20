@@ -44,6 +44,12 @@ const TOP_PREVIEW = 5;
 const TOP_MODAL = 10;
 const TOP_BASEBALL_EXPANDED = 20;
 
+// Turnos al bate mínimos para aparecer en la tabla general de estadísticas
+// individuales (beisbol/softball/wiffleball). Evita que un bateador con 1 AB
+// y 1 HR (OPS 5.000) encabece el ranking por muestra chica. Solo aplica a la
+// tabla general; al filtrar por equipo se muestran todos los jugadores.
+const MIN_AB_QUALIFY = 5;
+
 // Abreviación de stats para mostrar en mobile como header de columna.
 // El título de la card (lb.pluralLabel = "Bases por bolas") queda intacto
 // — solo se acorta la columna individual del valor para que no se rompa
@@ -141,20 +147,26 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
     (lb) => lb.leaders.length > 0 || lb.teamLeaders.length > 0
   );
 
+  // Tabla general: solo jugadores que llegaron al mínimo de turnos (calificados),
+  // ordenados por OPS desde el hook. Al filtrar por equipo NO se aplica el mínimo.
+  const generalQualifiedPlayers = useMemo(
+    () => baseballPlayerStats.filter((p) => p.ab >= MIN_AB_QUALIFY),
+    [baseballPlayerStats]
+  );
   // Tabla individual de béisbol filtrada + paginada:
-  // - con filtro: todos los jugadores del equipo, sin slice.
-  // - sin filtro: top 5 inicial, o top 20 si baseballExpanded.
+  // - con filtro: todos los jugadores del equipo, sin slice ni mínimo de AB.
+  // - sin filtro: top 5 inicial (o top 20 si baseballExpanded), solo calificados.
   const filteredBaseballPlayers = useMemo(() => {
     if (hasFilter) {
       return baseballPlayerStats.filter((p) => p.teamId === selectedTeamId);
     }
-    return baseballPlayerStats.slice(
+    return generalQualifiedPlayers.slice(
       0,
       baseballExpanded ? TOP_BASEBALL_EXPANDED : TOP_PREVIEW
     );
-  }, [baseballPlayerStats, hasFilter, selectedTeamId, baseballExpanded]);
+  }, [baseballPlayerStats, generalQualifiedPlayers, hasFilter, selectedTeamId, baseballExpanded]);
   const hasMoreBaseball =
-    !hasFilter && baseballPlayerStats.length > TOP_PREVIEW;
+    !hasFilter && generalQualifiedPlayers.length > TOP_PREVIEW;
 
   if (!hasStats && visibleCardsAll.length === 0 && !showBaseballTable) {
     return (
@@ -365,6 +377,13 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
             )}
           </CardHeader>
           <CardContent>
+            {filteredBaseballPlayers.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                {hasFilter
+                  ? "Este equipo aún no tiene estadísticas de bateo."
+                  : `Aún no hay jugadores con al menos ${MIN_AB_QUALIFY} turnos al bate.`}
+              </p>
+            ) : (
             <div className="relative">
             <TableWatermark />
             <ScrollArea className="w-full relative z-10">
@@ -424,6 +443,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
               <ScrollBar orientation="horizontal" />
             </ScrollArea>
             </div>
+            )}
           </CardContent>
         </Card>
       )}
