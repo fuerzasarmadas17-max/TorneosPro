@@ -81,18 +81,30 @@ export async function fetchMatchEventsByMatchIds(
   client: SupabaseClient = supabase
 ): Promise<Map<string, Record<string, unknown>[]>> {
   if (matchIds.length === 0) return new Map();
-  const { data, error } = await client
-    .from("match_events")
-    .select("*")
-    .in("match_id", matchIds);
 
-  if (error || !data) return new Map();
+  // PostgREST corta en 1000 filas por defecto, así que paginamos con .range()
+  // hasta agotar los eventos. Sin esto, un torneo con >1000 match_events pierde
+  // eventos en silencio y las estadísticas por jugador salen incompletas.
+  // El .order() es obligatorio para que la paginación sea determinista.
+  const PAGE_SIZE = 1000;
   const map = new Map<string, Record<string, unknown>[]>();
-  for (const row of data as Record<string, unknown>[]) {
-    const matchId = row.match_id as string;
-    if (!map.has(matchId)) map.set(matchId, []);
-    map.get(matchId)!.push(row);
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await client
+      .from("match_events")
+      .select("*")
+      .in("match_id", matchIds)
+      .order("id", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (error || !data) break;
+    for (const row of data as Record<string, unknown>[]) {
+      const matchId = row.match_id as string;
+      if (!map.has(matchId)) map.set(matchId, []);
+      map.get(matchId)!.push(row);
+    }
+    if (data.length < PAGE_SIZE) break;
   }
+
   return map;
 }
 

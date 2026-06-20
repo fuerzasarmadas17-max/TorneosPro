@@ -2,7 +2,7 @@ import { TournamentFormat, TournamentTier } from "@/types";
 
 // --- Free tier limits ---
 export const FREE_TIER_LIMITS = {
-  maxTeams: 10,
+  maxTeams: 16,
   allowedFormats: ["elimination"] as TournamentFormat[],
   statsEnabled: false,
   maxGroups: 0,
