@@ -26,7 +26,7 @@ import { SPORTS } from "@/data/sports";
 import { SCOPES, DEPARTMENTS, getDepartment } from "@/data/colombia";
 import { Sport, TournamentFormat, TournamentScope, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, MatchEventType, STAT_CATALOG, getDefaultStats } from "@/types";
 import { toast } from "sonner";
-import { Trash2, Plus } from "lucide-react";
+import { Plus, Minus, Trophy, ListOrdered, Network } from "lucide-react";
 import { getTournamentPriceInfo, TournamentPriceInfo, checkFreeTier, FREE_TIER_LIMITS } from "@/lib/pricing";
 import { TournamentCostDialog, FORMAT_LABELS } from "./tournament-cost-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -45,12 +45,102 @@ const phase2GroupId = (i: number) => `temp-phase2-group-${i}`;
 
 const GROUP_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
+/** Visual format picker options — plain-language explanation of each format so
+ *  organizers don't need to know the technical jargon. `paid` marks formats not
+ *  available on the free tier (only "elimination" is free; see FREE_TIER_LIMITS). */
+const FORMAT_OPTIONS: {
+  value: TournamentFormat;
+  icon: typeof Trophy;
+  title: string;
+  tagline: string;
+  description: string;
+  paid: boolean;
+}[] = [
+  {
+    value: "elimination",
+    icon: Trophy,
+    title: "Eliminación directa",
+    tagline: "Estilo copa",
+    description: "El que pierde queda fuera. Se juega por rondas hasta la final.",
+    paid: false,
+  },
+  {
+    value: "round-robin",
+    icon: ListOrdered,
+    title: "Liga",
+    tagline: "Todos contra todos",
+    description: "Todos juegan contra todos. Gana el que sume más puntos en la tabla.",
+    paid: true,
+  },
+  {
+    value: "group-playoff",
+    icon: Network,
+    title: "Grupos + Playoffs",
+    tagline: "Fase de grupos y luego copa",
+    description: "Primero grupos (todos contra todos) y los mejores pasan a una llave de eliminación.",
+    paid: true,
+  },
+];
+
 const WIZARD_STEPS = [
   { label: "Esencial" },
   { label: "Formato" },
   { label: "Detalles" },
   { label: "Confirmar" },
 ];
+
+/** Big +/- counter, friendlier than a tiny number input for older users.
+ *  Shows "—" while the value is still below `min` (i.e. not chosen yet). */
+function CountStepper({
+  value,
+  onChange,
+  min = 0,
+  max = 99,
+  size = "lg",
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  min?: number;
+  max?: number;
+  size?: "lg" | "sm";
+}) {
+  const dec = () => onChange(value <= min ? min : value - 1);
+  const inc = () => onChange(value < min ? min : Math.min(max, value + 1));
+  const big = size === "lg";
+  const btn = big ? "h-14 w-14" : "h-10 w-10";
+  const icon = big ? "h-6 w-6" : "h-4 w-4";
+  const num = big ? "min-w-[2.5rem] text-4xl" : "min-w-[1.75rem] text-2xl";
+  const gap = big ? "gap-5" : "gap-2";
+  return (
+    <div className={`flex items-center ${gap}`}>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className={`${btn} rounded-full shrink-0`}
+        onClick={dec}
+        disabled={value <= min}
+        aria-label="Quitar uno"
+      >
+        <Minus className={icon} />
+      </Button>
+      <span className={`${num} text-center font-bold tabular-nums`}>
+        {value >= min && value > 0 ? value : "—"}
+      </span>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className={`${btn} rounded-full shrink-0`}
+        onClick={inc}
+        disabled={value >= max}
+        aria-label="Agregar uno"
+      >
+        <Plus className={icon} />
+      </Button>
+    </div>
+  );
+}
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
@@ -67,6 +157,9 @@ export function CreateTournamentForm() {
   const router = useRouter();
 
   const [step, setStep] = useState(1);
+  // Sub-step within the "Formato" step: 1 = pick the format card, 2 = configure
+  // participants + groups. Keeps each screen focused and easy to read.
+  const [formatSubStep, setFormatSubStep] = useState(1);
   const [name, setName] = useState("");
   const [sport, setSport] = useState<Sport | "">("");
   const [format, setFormat] = useState<TournamentFormat | "">("");
@@ -140,20 +233,23 @@ export function CreateTournamentForm() {
   ).length;
   const canUseFree = freeTierCheck.isFree && activeFreeCount < FREE_TIER_LIMITS.maxActiveFree;
 
-  const addGroup = () => {
-    const letter = GROUP_LETTERS[groups.length] || `${groups.length + 1}`;
-    setGroups([...groups, { id: crypto.randomUUID(), name: `Grupo ${letter}` }]);
-  };
-
-  const removeGroup = (index: number) => {
-    const removed = groups[index];
-    setGroups(groups.filter((_, i) => i !== index));
-    if (removed) {
-      // Drop the per-group cupo entry for the removed group so the map doesn't
-      // leak stale ids if the user adds/removes groups multiple times.
+  // Grow/shrink the groups list to an exact count (driven by the +/- stepper).
+  // Adds new groups at the end, or trims from the end and cleans their cupos.
+  const setGroupCount = (target: number) => {
+    const n = Math.max(0, target);
+    if (n > groups.length) {
+      const next = [...groups];
+      while (next.length < n) {
+        const letter = GROUP_LETTERS[next.length] || `${next.length + 1}`;
+        next.push({ id: crypto.randomUUID(), name: `Grupo ${letter}` });
+      }
+      setGroups(next);
+    } else if (n < groups.length) {
+      const removed = groups.slice(n);
+      setGroups(groups.slice(0, n));
       setAdvance1Map((m) => {
         const next = { ...m };
-        delete next[removed.id];
+        removed.forEach((g) => delete next[g.id]);
         return next;
       });
     }
@@ -250,17 +346,37 @@ export function CreateTournamentForm() {
   };
 
   const goNext = () => {
+    // "Formato" is split into two sub-screens. From the format picker, advance to
+    // the configuration sub-screen instead of jumping to the next wizard step.
+    if (step === 2 && formatSubStep === 1) {
+      if (!format) {
+        setError("Selecciona un formato");
+        return;
+      }
+      setError("");
+      setFormatSubStep(2);
+      return;
+    }
     const err = getStepError(step);
     if (err) {
       setError(err);
       return;
     }
     setError("");
+    // Entering "Formato" from step 1 always starts on the format picker.
+    if (step === 1) setFormatSubStep(1);
     setStep((s) => Math.min(s + 1, WIZARD_STEPS.length));
   };
 
   const goBack = () => {
     setError("");
+    // From the configuration sub-screen, go back to the format picker first.
+    if (step === 2 && formatSubStep === 2) {
+      setFormatSubStep(1);
+      return;
+    }
+    // Returning to "Formato" from a later step lands on the configuration screen.
+    if (step === 3) setFormatSubStep(2);
     setStep((s) => Math.max(s - 1, 1));
   };
 
@@ -318,6 +434,9 @@ export function CreateTournamentForm() {
     const err = getAllErrors();
     if (err) {
       setStep(err.step);
+      // If the error is in "Formato", land on the right sub-screen: the picker
+      // when no format is chosen, otherwise the configuration screen.
+      if (err.step === 2) setFormatSubStep(format ? 2 : 1);
       setError(err.message);
       return;
     }
@@ -592,77 +711,165 @@ export function CreateTournamentForm() {
           {/* ===================== PASO 2 — Formato ===================== */}
           {step === 2 && (
             <div className="space-y-8">
-              <div className="space-y-4">
-                <h3 className="font-semibold text-lg">Formato</h3>
-                <div className="space-y-2">
-                  <Label>Formato del torneo</Label>
-                  <Select
-                    value={format}
-                    onValueChange={(v) => {
-                      const f = v as TournamentFormat;
-                      setFormat(f);
-                      // Clear group config when switching to a format without
-                      // groups, so phantom groups don't contaminate pricing/validation.
-                      if (f === "elimination") {
-                        setGroups([]);
-                        setHasPhase2(false);
-                        setAdvance1Map({});
-                        setAdvance2Map({});
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar formato" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="elimination">
-                        Eliminacion Directa
-                      </SelectItem>
-                      <SelectItem value="round-robin">
-                        Liga
-                      </SelectItem>
-                      <SelectItem value="group-playoff">
-                        Fase de Grupos + Playoffs
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              {/* Sub-step indicator: Formato › Configuración */}
+              <div className="flex items-center gap-2 text-xs font-medium">
+                <span className={formatSubStep === 1 ? "text-primary" : "text-muted-foreground"}>
+                  1. Formato
+                </span>
+                <span className="text-border">›</span>
+                <span className={formatSubStep === 2 ? "text-primary" : "text-muted-foreground"}>
+                  2. Configuración
+                </span>
               </div>
 
-              {/* Participants */}
+              {formatSubStep === 1 && (
               <div className="space-y-4">
-                <h3 className="font-semibold text-lg">Participantes</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="teamCount">
-                      Cantidad de {participantLabel.toLowerCase()}
-                    </Label>
-                    <Input
-                      id="teamCount"
-                      type="number"
-                      min="2"
-                      placeholder={format === "elimination" ? "2, 4, 8 o 16" : "Minimo 2"}
-                      value={teamCount}
-                      onChange={(e) => setTeamCount(e.target.value)}
-                    />
-                    {format === "elimination" && (
-                      <p className="text-xs text-muted-foreground">
-                        Debe ser potencia de 2 (2, 4, 8, 16)
-                      </p>
-                    )}
-                  </div>
+                <div className="space-y-1">
+                  <h3 className="font-semibold text-lg">¿Cómo se va a jugar?</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Elegí la forma en que se decide el campeón.
+                  </p>
                 </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {FORMAT_OPTIONS.map((opt) => {
+                    const selected = format === opt.value;
+                    const Icon = opt.icon;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => {
+                          setFormat(opt.value);
+                          // Clear group config when switching to a format without
+                          // groups, so phantom groups don't contaminate pricing/validation.
+                          if (opt.value === "elimination") {
+                            setGroups([]);
+                            setHasPhase2(false);
+                            setAdvance1Map({});
+                            setAdvance2Map({});
+                          }
+                        }}
+                        className={`relative flex flex-col items-start gap-2 rounded-lg border p-4 text-left transition-colors ${
+                          selected
+                            ? "border-primary ring-2 ring-primary/20 bg-primary/5"
+                            : "border-border hover:border-primary/50 hover:bg-muted/40"
+                        }`}
+                      >
+                        {opt.paid && (
+                          <Badge
+                            variant="secondary"
+                            className="absolute right-2 top-2 text-[10px]"
+                          >
+                            Plan pago
+                          </Badge>
+                        )}
+                        <span
+                          className={`flex h-9 w-9 items-center justify-center rounded-full ${
+                            selected
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          <Icon className="h-5 w-5" />
+                        </span>
+                        <div className="space-y-0.5">
+                          <p className="font-semibold leading-tight">{opt.title}</p>
+                          <p className="text-xs font-medium text-primary/80">{opt.tagline}</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{opt.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              )}
+
+              {formatSubStep === 2 && (
+              <div className="space-y-8">
+                {/* Recap of the chosen format + quick way back to change it */}
+                {format && (() => {
+                  const opt = FORMAT_OPTIONS.find((o) => o.value === format);
+                  if (!opt) return null;
+                  const Icon = opt.icon;
+                  return (
+                    <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <div>
+                          <p className="text-sm font-semibold leading-tight">{opt.title}</p>
+                          <p className="text-xs text-muted-foreground">{opt.tagline}</p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => {
+                          setError("");
+                          setFormatSubStep(1);
+                        }}
+                      >
+                        Cambiar
+                      </Button>
+                    </div>
+                  );
+                })()}
+
+              {/* Participants */}
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <h3 className="font-semibold text-xl">
+                    ¿Cuántos {participantLabel.toLowerCase()} van a participar?
+                  </h3>
+                  {format === "elimination" && (
+                    <p className="text-sm text-muted-foreground">
+                      En eliminación directa deben ser 2, 4, 8 o 16.
+                    </p>
+                  )}
+                </div>
+
+                {format === "elimination" ? (
+                  <div className="grid grid-cols-4 gap-2">
+                    {[2, 4, 8, 16].map((n) => {
+                      const selected = parseInt(teamCount) === n;
+                      return (
+                        <Button
+                          key={n}
+                          type="button"
+                          variant={selected ? "default" : "outline"}
+                          className="h-16 text-2xl font-bold"
+                          onClick={() => setTeamCount(String(n))}
+                        >
+                          {n}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center rounded-lg border bg-muted/20 py-5">
+                    <CountStepper
+                      value={parseInt(teamCount) || 0}
+                      min={2}
+                      max={64}
+                      onChange={(n) => setTeamCount(String(n))}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Volleyball Sets Config */}
               {sport === "volleyball" && (
-                <div className="space-y-4">
-                  <h3 className="font-semibold text-lg">Formato de Sets</h3>
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-xl">¿A cuántos sets se juega?</h3>
                   <div className="flex gap-2">
                     <Button
                       type="button"
                       variant={bestOf === 3 ? "default" : "outline"}
-                      className="flex-1"
+                      className="flex-1 h-12 text-base"
                       onClick={() => setBestOf(3)}
                     >
                       Mejor de 3
@@ -670,13 +877,13 @@ export function CreateTournamentForm() {
                     <Button
                       type="button"
                       variant={bestOf === 5 ? "default" : "outline"}
-                      className="flex-1"
+                      className="flex-1 h-12 text-base"
                       onClick={() => setBestOf(5)}
                     >
                       Mejor de 5
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     {bestOf === 3
                       ? "Gana el primero en llegar a 2 sets"
                       : "Gana el primero en llegar a 3 sets"}
@@ -687,86 +894,143 @@ export function CreateTournamentForm() {
               {/* Group Configuration */}
               {(format === "group-playoff" || format === "round-robin") && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-lg">Configuracion de Grupos</h3>
-                    <span className="text-xs text-muted-foreground">
-                      {format === "group-playoff" ? "Minimo 1 grupo" : "Opcional"}
-                    </span>
+                  <div className="space-y-1">
+                    <h3 className="font-semibold text-xl">
+                      ¿En cuántos grupos los dividimos?
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {format === "group-playoff"
+                        ? "Mínimo 1 grupo. Los " + participantLabel.toLowerCase() + " se reparten solos entre los grupos."
+                        : "Es opcional. Si lo dejas en 0, todos juegan en una sola tabla."}
+                    </p>
                   </div>
 
-                  {groups.map((group, gIdx) => (
-                    <div
-                      key={gIdx}
-                      className="border rounded-lg p-3 flex items-center justify-between"
-                    >
-                      <span className="font-medium text-sm">{group.name}</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => removeGroup(gIdx)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  ))}
+                  <div className="flex items-center justify-center rounded-lg border bg-muted/20 py-5">
+                    <CountStepper
+                      value={groups.length}
+                      min={format === "group-playoff" ? 1 : 0}
+                      max={8}
+                      onChange={setGroupCount}
+                    />
+                  </div>
 
-                  {groups.length < 8 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={addGroup}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Agregar Grupo
-                    </Button>
+                  {groups.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {groups.map((group) => {
+                        const perGroup =
+                          teamCount && groups.length > 0
+                            ? Math.floor((parseInt(teamCount) || 0) / groups.length)
+                            : 0;
+                        return (
+                          <span
+                            key={group.id}
+                            className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-sm font-medium"
+                          >
+                            {group.name}
+                            {perGroup > 0 && (
+                              <span className="text-muted-foreground">
+                                · {perGroup} {participantLabel.toLowerCase()}
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })}
+                    </div>
                   )}
 
-                  {teamCount && groups.length >= 1 && (
-                    <p className="text-xs text-muted-foreground">
-                      Los {participantLabel.toLowerCase()} se distribuiran automaticamente entre los grupos
-                    </p>
+                  {/* Phases: one (groups → playoffs) vs two (groups → groups → playoffs) */}
+                  {groups.length >= 1 && format === "group-playoff" && (
+                    <div className="space-y-3 pt-2">
+                      <div className="space-y-1">
+                        <h3 className="font-semibold text-xl">¿Cómo quieres la estructura?</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Después de los grupos, ¿se juega directo la eliminación o hay otra ronda de grupos?
+                        </p>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          aria-pressed={!hasPhase2}
+                          onClick={() => setHasPhase2(false)}
+                          className={`flex flex-col items-start gap-1.5 rounded-lg border p-4 text-left transition-colors ${
+                            !hasPhase2
+                              ? "border-primary ring-2 ring-primary/20 bg-primary/5"
+                              : "border-border hover:border-primary/50 hover:bg-muted/40"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold">Una fase</span>
+                            <Badge variant="secondary" className="text-[10px]">
+                              Lo más común
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Grupos → Playoffs (eliminación directa).
+                          </p>
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={hasPhase2}
+                          onClick={() => setHasPhase2(true)}
+                          className={`flex flex-col items-start gap-1.5 rounded-lg border p-4 text-left transition-colors ${
+                            hasPhase2
+                              ? "border-primary ring-2 ring-primary/20 bg-primary/5"
+                              : "border-border hover:border-primary/50 hover:bg-muted/40"
+                          }`}
+                        >
+                          <span className="font-semibold">Dos fases</span>
+                          <p className="text-xs text-muted-foreground">
+                            Grupos → otra ronda de grupos → Playoffs.
+                          </p>
+                        </button>
+                      </div>
+                    </div>
                   )}
 
                   {groups.length >= 1 && format === "group-playoff" && !hasPhase2 && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label>Cupos a playoffs por grupo</Label>
+                    <div className="space-y-3 pt-2">
+                      <div className="space-y-1">
+                        <h3 className="font-semibold text-xl">
+                          ¿Cuántos pasan a la siguiente ronda?
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                          Los mejores de cada grupo pasan a los playoffs (eliminación).
+                        </p>
+                      </div>
+                      {groups.length > 1 && (
                         <button
                           type="button"
-                          className="text-xs text-primary hover:underline"
+                          className="text-sm font-medium text-primary hover:underline"
                           onClick={() => applyAdvance1ToAll(DEFAULT_ADVANCE)}
                         >
-                          Aplicar {DEFAULT_ADVANCE} a todos
+                          Pasar {DEFAULT_ADVANCE} en todos los grupos
                         </button>
-                      </div>
-                      <div className="space-y-1.5 rounded-md border p-3">
+                      )}
+                      <div className="space-y-2 rounded-lg border p-3">
                         {groups.map((g) => (
-                          <div key={g.id} className="flex items-center justify-between gap-2">
-                            <span className="text-sm">{g.name}</span>
-                            <Input
-                              type="number"
+                          <div key={g.id} className="flex items-center justify-between gap-3">
+                            <span className="text-base font-medium">{g.name}</span>
+                            <CountStepper
+                              value={parseInt(readAdvance1(g.id)) || 0}
                               min={1}
                               max={(parseInt(teamCount) || 2) - 1}
-                              value={readAdvance1(g.id)}
-                              onChange={(e) => setAdvance1(g.id, e.target.value)}
-                              className="w-16 h-8 text-center text-sm"
+                              size="sm"
+                              onChange={(n) => setAdvance1(g.id, String(n))}
                             />
                           </div>
                         ))}
                       </div>
                       {advance1Total > 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          Total: {advance1Total} {participantLabel.toLowerCase()} pasan a playoffs
+                        <p className="text-sm text-muted-foreground">
+                          En total, {advance1Total} {participantLabel.toLowerCase()} pasan a playoffs
                           {(() => {
                             let p = 1;
                             while (p < advance1Total) p *= 2;
                             return p !== advance1Total
-                              ? ` (${p - advance1Total} bye${p - advance1Total > 1 ? "s" : ""} para los mejor clasificados)`
+                              ? ` (${p - advance1Total} ${(p - advance1Total) > 1 ? "avanzan" : "avanza"} directo a la siguiente ronda)`
                               : "";
                           })()}
+                          .
                         </p>
                       )}
                     </div>
@@ -789,19 +1053,7 @@ export function CreateTournamentForm() {
 
                     return (
                       <div className="space-y-3 border rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-semibold">Estructura del torneo</h4>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive h-7 text-xs"
-                            onClick={() => setHasPhase2(false)}
-                          >
-                            <Trash2 className="h-3 w-3 mr-1" />
-                            Quitar
-                          </Button>
-                        </div>
+                        <h4 className="text-sm font-semibold">Así quedaría el torneo</h4>
 
                         {/* Fase 1 */}
                         <div className="rounded-md bg-muted/40 p-3 space-y-2">
@@ -931,20 +1183,9 @@ export function CreateTournamentForm() {
                       </div>
                     );
                   })()}
-
-                  {/* Add Phase 2 button */}
-                  {groups.length >= 1 && format === "group-playoff" && !hasPhase2 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => setHasPhase2(true)}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Agregar otra Fase de Grupos
-                    </Button>
-                  )}
                 </div>
+              )}
+              </div>
               )}
             </div>
           )}
