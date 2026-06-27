@@ -27,7 +27,7 @@ import { SCOPES, DEPARTMENTS, getDepartment } from "@/data/colombia";
 import { Sport, TournamentFormat, TournamentScope, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, MatchEventType, STAT_CATALOG, getDefaultStats } from "@/types";
 import { toast } from "sonner";
 import { Plus, Minus, Trophy, ListOrdered, Network } from "lucide-react";
-import { getTournamentPriceInfo, TournamentPriceInfo, checkFreeTier, FREE_TIER_LIMITS } from "@/lib/pricing";
+import { getTournamentPriceInfo, TournamentPriceInfo, checkFreeTier, FREE_TIER_LIMITS, distributeTeamsToGroups } from "@/lib/pricing";
 import { TournamentCostDialog, FORMAT_LABELS } from "./tournament-cost-dialog";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabase";
@@ -741,9 +741,10 @@ export function CreateTournamentForm() {
                         aria-pressed={selected}
                         onClick={() => {
                           setFormat(opt.value);
-                          // Clear group config when switching to a format without
-                          // groups, so phantom groups don't contaminate pricing/validation.
-                          if (opt.value === "elimination") {
+                          // Only "group-playoff" uses groups. For elimination and liga,
+                          // clear any group config so phantom groups don't contaminate
+                          // pricing/validation/creation.
+                          if (opt.value !== "group-playoff") {
                             setGroups([]);
                             setHasPhase2(false);
                             setAdvance1Map({});
@@ -891,52 +892,62 @@ export function CreateTournamentForm() {
                 </div>
               )}
 
-              {/* Group Configuration */}
-              {(format === "group-playoff" || format === "round-robin") && (
+              {/* Liga = una sola tabla, sin grupos */}
+              {format === "round-robin" && (
+                <div className="rounded-lg border bg-muted/20 p-4">
+                  <p className="text-sm text-muted-foreground">
+                    En la liga todos juegan contra todos en una sola tabla. El que quede primero es el campeón.
+                  </p>
+                </div>
+              )}
+
+              {/* Group Configuration (solo Grupos + Playoffs) */}
+              {format === "group-playoff" && (
                 <div className="space-y-4">
                   <div className="space-y-1">
                     <h3 className="font-semibold text-xl">
                       ¿En cuántos grupos los dividimos?
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      {format === "group-playoff"
-                        ? "Mínimo 1 grupo. Los " + participantLabel.toLowerCase() + " se reparten solos entre los grupos."
-                        : "Es opcional. Si lo dejas en 0, todos juegan en una sola tabla."}
+                      Mínimo 1 grupo. Los {participantLabel.toLowerCase()} se reparten solos entre los grupos.
                     </p>
                   </div>
 
                   <div className="flex items-center justify-center rounded-lg border bg-muted/20 py-5">
                     <CountStepper
                       value={groups.length}
-                      min={format === "group-playoff" ? 1 : 0}
+                      min={1}
                       max={8}
                       onChange={setGroupCount}
                     />
                   </div>
 
-                  {groups.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {groups.map((group) => {
-                        const perGroup =
-                          teamCount && groups.length > 0
-                            ? Math.floor((parseInt(teamCount) || 0) / groups.length)
-                            : 0;
-                        return (
-                          <span
-                            key={group.id}
-                            className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-sm font-medium"
-                          >
-                            {group.name}
-                            {perGroup > 0 && (
-                              <span className="text-muted-foreground">
-                                · {perGroup} {participantLabel.toLowerCase()}
-                              </span>
-                            )}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
+                  {groups.length > 0 && (() => {
+                    // Mirror the real distribution: teams are dealt round-robin, so the
+                    // first groups get the extra when the count doesn't divide evenly.
+                    const total = parseInt(teamCount) || 0;
+                    const sizes = total > 0 ? distributeTeamsToGroups(total, groups.length) : [];
+                    return (
+                      <div className="flex flex-wrap gap-2">
+                        {groups.map((group, gIdx) => {
+                          const perGroup = sizes[gIdx]?.teamCount ?? 0;
+                          return (
+                            <span
+                              key={group.id}
+                              className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-sm font-medium"
+                            >
+                              {group.name}
+                              {perGroup > 0 && (
+                                <span className="text-muted-foreground">
+                                  · {perGroup} {participantLabel.toLowerCase()}
+                                </span>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
 
                   {/* Phases: one (groups → playoffs) vs two (groups → groups → playoffs) */}
                   {groups.length >= 1 && format === "group-playoff" && (
