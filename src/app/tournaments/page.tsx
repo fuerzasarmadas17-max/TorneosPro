@@ -12,7 +12,7 @@ import { usePageView } from "@/hooks/use-page-view";
 function TournamentsContent() {
   usePageView("browse", null, null);
   const searchParams = useSearchParams();
-  const { getFilteredTournaments } = useTournaments();
+  const { getFilteredTournaments, isLoading } = useTournaments();
   const { user } = useAuth();
 
   const filters: TournamentFiltersType = {
@@ -44,7 +44,13 @@ function TournamentsContent() {
         </p>
       </div>
       <TournamentFilters />
-      <TournamentList tournaments={tournaments} />
+      {isLoading ? (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground text-lg">Cargando torneos...</p>
+        </div>
+      ) : (
+        <TournamentList tournaments={tournaments} />
+      )}
     </div>
   );
 }
