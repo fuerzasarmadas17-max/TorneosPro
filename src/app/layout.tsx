@@ -5,6 +5,7 @@ import { Providers } from "./providers";
 import { AppShell } from "@/components/layout/app-shell";
 import { Toaster } from "@/components/ui/sonner";
 import { VersionCheck } from "@/components/version-check";
+import { PullToRefresh } from "@/components/pull-to-refresh";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -97,6 +98,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
+          <PullToRefresh />
           <AppShell>{children}</AppShell>
           <Toaster />
           <VersionCheck />
