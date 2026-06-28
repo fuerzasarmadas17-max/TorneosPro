@@ -7,6 +7,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Stepper } from "@/components/ui/stepper";
+
+// Mismos pasos visuales que el wizard de "Crear Torneo".
+const PROFILE_STEPS = [
+  { label: "Identidad" },
+  { label: "Detalles" },
+  { label: "Patrocinadores" },
+];
 import { toast } from "sonner";
 import { generateSlug } from "@/data/users";
 import { isSlugReserved } from "@/lib/reserved-slugs";
@@ -29,6 +44,7 @@ const emptyProfile: OrganizationProfile = {
 export function OrganizationProfileForm() {
   const { user, updateOrganizationProfile } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<OrganizationProfile>(emptyProfile);
 
   useEffect(() => {
@@ -45,10 +61,13 @@ export function OrganizationProfileForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Solo guardar en el último paso (Enter en pasos previos no envía).
+    if (step < PROFILE_STEPS.length) return;
     setLoading(true);
 
     if (!formData.slug || formData.slug.length < 3) {
       toast.error("El slug debe tener al menos 3 caracteres");
+      setStep(1);
       setLoading(false);
       return;
     }
@@ -57,12 +76,14 @@ export function OrganizationProfileForm() {
       toast.error(
         "El slug solo puede contener letras minusculas, numeros y guiones"
       );
+      setStep(1);
       setLoading(false);
       return;
     }
 
     if (isSlugReserved(formData.slug)) {
       toast.error("Este slug esta reservado, por favor elige otro");
+      setStep(1);
       setLoading(false);
       return;
     }
@@ -127,7 +148,23 @@ export function OrganizationProfileForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-2xl">Configuración</CardTitle>
+        <CardDescription>
+          Personaliza el perfil público de tu organización para que otros
+          encuentren tus torneos
+        </CardDescription>
+      </CardHeader>
+      <form onSubmit={handleSubmit}>
+        <CardContent className="space-y-6">
+          <Stepper steps={PROFILE_STEPS} current={step} />
+
+          {/* ===== Paso 1 — Identidad ===== */}
+          {step === 1 && (
+          <div className="space-y-4">
+            <h3 className="font-semibold text-lg">Información general</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
       {/* Organization Name */}
       <div className="space-y-2">
         <Label htmlFor="organizationName">Nombre de la Organizacion *</Label>
@@ -170,6 +207,7 @@ export function OrganizationProfileForm() {
           </p>
         )}
       </div>
+            </div>
 
       {/* Logo */}
       <div className="space-y-2">
@@ -239,7 +277,16 @@ export function OrganizationProfileForm() {
           rows={4}
         />
       </div>
+          </div>
+          )}
 
+          {/* ===== Paso 2 — Detalles y redes ===== */}
+          {step === 2 && (
+          <div className="space-y-6">
+          {/* Detalles */}
+          <div className="space-y-4">
+            <h3 className="font-semibold text-lg">Detalles</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
       {/* Location */}
       <div className="space-y-2">
         <Label htmlFor="location">Ubicacion</Label>
@@ -271,10 +318,12 @@ export function OrganizationProfileForm() {
           max={new Date().getFullYear()}
         />
       </div>
+            </div>
+          </div>
 
-      {/* Social Links */}
-      <div className="space-y-4">
-        <Label>Redes Sociales</Label>
+          {/* Redes sociales */}
+          <div className="space-y-4">
+        <h3 className="font-semibold text-lg">Redes sociales</h3>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="website" className="text-sm">
@@ -355,10 +404,13 @@ export function OrganizationProfileForm() {
           </div>
         </div>
       </div>
+          </div>
+          )}
 
-      {/* Sponsors */}
-      <div className="space-y-4">
-        <Label>Patrocinadores</Label>
+          {/* ===== Paso 3 — Patrocinadores ===== */}
+          {step === 3 && (
+          <div className="space-y-4">
+        <h3 className="font-semibold text-lg">Patrocinadores</h3>
         <p className="text-sm text-muted-foreground">
           Los patrocinadores se mostraran en tu perfil publico y en todos tus torneos
         </p>
@@ -367,10 +419,36 @@ export function OrganizationProfileForm() {
           onChange={(sponsors) => setFormData({ ...formData, sponsors })}
         />
       </div>
+          )}
 
-      <Button type="submit" disabled={loading}>
-        {loading ? "Guardando..." : "Guardar Cambios"}
-      </Button>
-    </form>
+          {/* Navegación entre pasos */}
+          <div className="flex gap-2 pt-2">
+            {step > 1 && (
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setStep((s) => Math.max(s - 1, 1))}
+              >
+                Atras
+              </Button>
+            )}
+            {step < PROFILE_STEPS.length ? (
+              <Button
+                type="button"
+                className="flex-1"
+                onClick={() => setStep((s) => Math.min(s + 1, PROFILE_STEPS.length))}
+              >
+                Siguiente
+              </Button>
+            ) : (
+              <Button type="submit" className="flex-1" disabled={loading}>
+                {loading ? "Guardando..." : "Guardar Cambios"}
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </form>
+    </Card>
   );
 }
