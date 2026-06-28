@@ -27,6 +27,11 @@ import { useTournaments } from "@/context/tournament-context";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { BaseballScoresheet } from "./baseball-scoresheet";
+import {
+  PlayerStats,
+  buildScoresheetData,
+  buildScoresheetEventsForTeam,
+} from "@/lib/baseball-scoresheet";
 
 interface EventEntry {
   type: MatchEventType;
@@ -34,58 +39,11 @@ interface EventEntry {
   playerName: string;
 }
 
-interface PlayerStats {
-  [statKey: string]: number;
-}
-
 interface MatchResultFormProps {
   match: Match;
   enabledStats?: MatchEventType[];
   sport?: Sport;
   bestOf?: 3 | 5;
-}
-
-/**
- * Rearma la matriz player×stat que usa el `BaseballScoresheet` a partir
- * de los `match.events` ya guardados. Se llama en la inicialización del
- * form cuando se entra a editar un partido completado.
- *
- * Convención MLB: la celda "H" del scoresheet representa el TOTAL de
- * hits (incluyendo 2B/3B/HR). Por eso al precargar, cualquier evento de
- * tipo hit/double/triple/home_run suma a `data[player].hit`, y los
- * extras también guardan su tipo específico. El organizer al editar ve
- * el H total y los desgloses por separado, mismo número que cargó.
- *
- * Para stats no-hit (walk, strikeout, rbi, error, etc.) cada tipo se
- * cuenta independientemente, sin agregación.
- */
-function buildScoresheetData(
-  events: MatchEvent[],
-  teamId: string | null
-): Record<string, PlayerStats> {
-  if (!teamId) return {};
-  const HIT_TYPES: MatchEventType[] = ["hit", "double", "triple", "home_run"];
-  const data: Record<string, PlayerStats> = {};
-  for (const e of events) {
-    if (e.teamId !== teamId) continue;
-    if (!data[e.playerName]) data[e.playerName] = {};
-    const player = data[e.playerName];
-    // Cualquier hit suma al total H.
-    if (HIT_TYPES.includes(e.type)) {
-      player.hit = (player.hit ?? 0) + 1;
-    }
-    // Los hits extra-base además guardan su tipo específico.
-    if (e.type === "double" || e.type === "triple" || e.type === "home_run") {
-      player[e.type] = (player[e.type] ?? 0) + 1;
-      continue;
-    }
-    // Stats no-hit (at_bat, walk, strikeout, error, rbi, run_scored,
-    // ejection, etc.): contar de a uno por type.
-    if (e.type !== "hit") {
-      player[e.type] = (player[e.type] ?? 0) + 1;
-    }
-  }
-  return data;
 }
 
 export function MatchResultForm({
@@ -192,56 +150,16 @@ export function MatchResultForm({
   };
 
   const buildEventsFromScoresheet = (): MatchEvent[] => {
-    const events: MatchEvent[] = [];
     let idx = 0;
-    const nonComputedStats = stats.filter(
-      (s) => !getStatDefinition(s)?.computed
-    );
-
-    const processTeam = (
-      data: Record<string, PlayerStats>,
-      teamId: string | null,
-      players: Player[]
-    ) => {
-      if (!teamId) return;
-      for (const player of players) {
-        const statValues = data[player.name] || {};
-        // Convención MLB: la celda "H" cargada por el organizer es el
-        // TOTAL de hits. Para no inflar el total (la app cuenta cada
-        // event de tipo hit/double/triple/home_run como hit en
-        // use-tournament-stats.ts), restamos los extras antes de
-        // generar los `hit` events. Si H_total < 2B+3B+HR, fuerza a 0
-        // — el scoresheet ya muestra una advertencia visual ante esa
-        // inconsistencia.
-        const hTotal = statValues.hit || 0;
-        const doubles = statValues.double || 0;
-        const triples = statValues.triple || 0;
-        const homeRuns = statValues.home_run || 0;
-        const singlesOnly = Math.max(0, hTotal - doubles - triples - homeRuns);
-
-        for (const statKey of nonComputedStats) {
-          let count: number;
-          if (statKey === "hit") {
-            count = singlesOnly;
-          } else {
-            count = statValues[statKey] || 0;
-          }
-          for (let i = 0; i < count; i++) {
-            events.push({
-              id: `evt-${Date.now()}-${idx++}`,
-              matchId: match.id,
-              teamId,
-              playerName: player.name,
-              type: statKey,
-            });
-          }
-        }
-      }
-    };
-
-    processTeam(homeScoresheetData, match.homeTeamId, homePlayers);
-    processTeam(awayScoresheetData, match.awayTeamId, awayPlayers);
-    return events;
+    const base = [
+      ...buildScoresheetEventsForTeam(homeScoresheetData, match.homeTeamId, homePlayers, stats),
+      ...buildScoresheetEventsForTeam(awayScoresheetData, match.awayTeamId, awayPlayers, stats),
+    ];
+    return base.map((e) => ({
+      id: `evt-${Date.now()}-${idx++}`,
+      matchId: match.id,
+      ...e,
+    }));
   };
 
   // Volleyball: compute sets won from setScores

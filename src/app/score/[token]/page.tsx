@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState, useMemo, useCallback } from "react";
 import { toast } from "sonner";
-import { Loader2, ChevronLeft, Trophy, CheckCircle2, Clock, Plus, Trash2 } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Trophy, CheckCircle2, Clock, Plus, Trash2, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,9 +10,16 @@ import { Badge } from "@/components/ui/badge";
 import {
   Sport,
   MatchEventType,
+  Player,
   getSportCategory,
   getStatDefinition,
 } from "@/types";
+import { BaseballScoresheet } from "@/components/forms/baseball-scoresheet";
+import {
+  PlayerStats,
+  buildScoresheetData,
+  buildScoresheetEventsForTeam,
+} from "@/lib/baseball-scoresheet";
 
 // ============================================================
 // Tipos del payload del endpoint
@@ -417,6 +424,47 @@ function MatchScreen({
   );
   const [submitting, setSubmitting] = useState(false);
 
+  // Béisbol/softball/wiffleball: matriz jugador×stat por equipo (la misma
+  // planilla que usa el organizador), precargada desde los eventos guardados.
+  const rawEvents = useMemo(
+    () =>
+      match.events.map((e) => ({
+        teamId: e.team_id,
+        playerName: e.player_name,
+        type: e.type,
+      })),
+    [match.events]
+  );
+  // Béisbol: planilla por pasos (1 = equipo local, 2 = visitante).
+  const [sheetStep, setSheetStep] = useState<1 | 2>(1);
+  const [homeSheet, setHomeSheet] = useState<Record<string, PlayerStats>>(() =>
+    buildScoresheetData(rawEvents, match.homeTeamId)
+  );
+  const [awaySheet, setAwaySheet] = useState<Record<string, PlayerStats>>(() =>
+    buildScoresheetData(rawEvents, match.awayTeamId)
+  );
+  const sheetChange = (
+    side: "home" | "away",
+    playerName: string,
+    stat: MatchEventType,
+    count: number
+  ) => {
+    const setter = side === "home" ? setHomeSheet : setAwaySheet;
+    setter((prev) => ({
+      ...prev,
+      [playerName]: { ...(prev[playerName] || {}), [stat]: count },
+    }));
+  };
+  // Players con teamId para el componente de planilla (espera Player[]).
+  const homeSheetPlayers: Player[] = (home?.players ?? []).map((p) => ({
+    ...p,
+    teamId: home?.id ?? "",
+  }));
+  const awaySheetPlayers: Player[] = (away?.players ?? []).map((p) => ({
+    ...p,
+    teamId: away?.id ?? "",
+  }));
+
   // Catálogo de stats habilitadas (excluyendo computed como goals_against).
   const enabledStats = useMemo(() => {
     return tournament.enabledStats.filter((key) => {
@@ -465,13 +513,29 @@ function MatchScreen({
       toast.error("Marcador inválido");
       return;
     }
-    // Validar eventos: cada uno debe tener teamId y playerName.
-    for (const e of eventEntries) {
-      if (!e.teamId || !e.playerName.trim()) {
-        toast.error("Hay eventos sin equipo o jugador");
-        return;
+    // Validar eventos manuales: cada uno debe tener equipo y jugador.
+    // (Béisbol no usa eventos manuales — se arman desde la planilla.)
+    if (!isBaseball) {
+      for (const e of eventEntries) {
+        if (!e.teamId || !e.playerName.trim()) {
+          toast.error("Hay eventos sin equipo o jugador");
+          return;
+        }
       }
     }
+
+    // Béisbol: expandir la planilla a eventos individuales con la misma
+    // convención que usa el organizador. Otros deportes: eventos manuales.
+    const outEvents = isBaseball
+      ? [
+          ...buildScoresheetEventsForTeam(homeSheet, match.homeTeamId, homeSheetPlayers, enabledStats),
+          ...buildScoresheetEventsForTeam(awaySheet, match.awayTeamId, awaySheetPlayers, enabledStats),
+        ]
+      : eventEntries.map((e) => ({
+          teamId: e.teamId,
+          playerName: e.playerName.trim(),
+          type: e.type,
+        }));
 
     setSubmitting(true);
     try {
@@ -485,9 +549,9 @@ function MatchScreen({
             homeScore: hs,
             awayScore: as,
             sets: isVolleyball ? sets : undefined,
-            events: eventEntries.map((e) => ({
+            events: outEvents.map((e) => ({
               teamId: e.teamId,
-              playerName: e.playerName.trim(),
+              playerName: e.playerName,
               type: e.type,
               paid: false,
             })),
@@ -509,22 +573,26 @@ function MatchScreen({
     }
   };
 
-  if (isBaseball) {
-    return (
-      <div className="max-w-md mx-auto px-4 py-6 space-y-4">
-        <BackHeader onBack={onBack} />
-        <p className="text-sm text-muted-foreground text-center py-12">
-          La carga de stats de béisbol desde link de anotador aún no está
-          disponible. Pedile al organizador que cargue este partido.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-md mx-auto px-4 py-6 space-y-5">
+    <div className="max-w-md md:max-w-2xl mx-auto px-4 py-6 space-y-4">
       <BackHeader onBack={onBack} />
 
+      {/* Béisbol/softball/wiffleball tienen muchas estadísticas y no se pueden
+          anotar cómodo en celular: en mobile bloqueamos con un aviso y solo
+          dejamos anotar desde desktop (md+). El resto del UI va oculto en
+          mobile via `hidden md:block`. */}
+      {isBaseball && (
+        <div className="md:hidden rounded-lg border bg-card p-6 text-center space-y-3">
+          <Monitor className="h-10 w-10 mx-auto text-muted-foreground" />
+          <p className="font-semibold">Usá una pantalla más grande</p>
+          <p className="text-sm text-muted-foreground">
+            Los partidos de este deporte tienen muchas estadísticas. Para
+            anotarlos, abrí este mismo enlace desde una computadora o portátil.
+          </p>
+        </div>
+      )}
+
+      <div className={`space-y-5 ${isBaseball ? "hidden md:block" : ""}`}>
       <div className="text-center space-y-1">
         <p className="text-xs text-muted-foreground">{match.date} · {match.time}</p>
         <h1 className="text-xl font-bold">
@@ -533,33 +601,91 @@ function MatchScreen({
         </h1>
       </div>
 
-      {/* Score input */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label className="text-xs">{home?.name ?? "Local"}</Label>
-          <Input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            max={999}
-            value={homeScore}
-            onChange={(e) => setHomeScore(e.target.value)}
-            className="text-2xl font-bold text-center h-14"
-          />
+      {/* Score input. En béisbol solo se muestra en el paso 1 (con el
+          equipo local); el paso 2 es solo la planilla del visitante. */}
+      {(!isBaseball || sheetStep === 1) && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">{home?.name ?? "Local"}</Label>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={999}
+              value={homeScore}
+              onChange={(e) => setHomeScore(e.target.value)}
+              className="text-2xl font-bold text-center h-14"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">{away?.name ?? "Visitante"}</Label>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={999}
+              value={awayScore}
+              onChange={(e) => setAwayScore(e.target.value)}
+              className="text-2xl font-bold text-center h-14"
+            />
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">{away?.name ?? "Visitante"}</Label>
-          <Input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            max={999}
-            value={awayScore}
-            onChange={(e) => setAwayScore(e.target.value)}
-            className="text-2xl font-bold text-center h-14"
+      )}
+
+      {/* Béisbol/softball/wiffleball: la misma planilla del organizador, por
+          pasos (equipo local → siguiente → visitante). Solo visible en desktop
+          (el wrapper la oculta en mobile). */}
+      {isBaseball && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">Estadísticas individuales</p>
+            <span className="text-sm text-muted-foreground">Paso {sheetStep} de 2</span>
+          </div>
+
+          <BaseballScoresheet
+            key={sheetStep === 1 ? "home" : "away"}
+            teamName={sheetStep === 1 ? home?.name ?? "Local" : away?.name ?? "Visitante"}
+            teamId={(sheetStep === 1 ? home?.id : away?.id) ?? ""}
+            players={sheetStep === 1 ? homeSheetPlayers : awaySheetPlayers}
+            stats={enabledStats}
+            values={sheetStep === 1 ? homeSheet : awaySheet}
+            onChange={(p, s, c) => sheetChange(sheetStep === 1 ? "home" : "away", p, s, c)}
           />
+
+          <div className="flex gap-2">
+            {sheetStep === 1 ? (
+              <>
+                <Button variant="outline" className="flex-1 h-12" onClick={onBack}>
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Volver
+                </Button>
+                <Button
+                  className="flex-1 h-12"
+                  onClick={() => {
+                    const hs = Number(homeScore);
+                    const as = Number(awayScore);
+                    if (!Number.isInteger(hs) || !Number.isInteger(as) || hs < 0 || as < 0) {
+                      toast.error("Ingresá el marcador (carreras) válido");
+                      return;
+                    }
+                    setSheetStep(2);
+                  }}
+                >
+                  {away?.name ?? "Equipo 2"} <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" className="flex-1 h-12" onClick={() => setSheetStep(1)}>
+                  <ChevronLeft className="h-4 w-4 mr-1" /> {home?.name ?? "Equipo 1"}
+                </Button>
+                <Button className="flex-1 h-12" onClick={handleSave} disabled={submitting}>
+                  {submitting ? "Guardando..." : "Guardar resultado"}
+                </Button>
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Volleyball sets */}
       {isVolleyball && (
@@ -600,8 +726,8 @@ function MatchScreen({
         </div>
       )}
 
-      {/* Events / stats */}
-      {enabledStats.length > 0 && (
+      {/* Events / stats (deportes con eventos manuales: fútbol, básquet, etc.) */}
+      {!isBaseball && enabledStats.length > 0 && (
         <div className="space-y-2 rounded-lg border bg-card p-3">
           <p className="text-sm font-medium">Eventos / Stats</p>
           <div className="flex flex-wrap gap-1.5">
@@ -651,31 +777,44 @@ function MatchScreen({
                   (e.teamId === home?.id && (home?.players.length ?? 0) > 0) ||
                   (e.teamId === away?.id && (away?.players.length ?? 0) > 0);
                 return (
-                  <div key={i} className="flex items-center gap-1.5">
-                    <Badge variant="secondary" className="text-[10px] shrink-0">
-                      {def?.label ?? e.type}
-                    </Badge>
-                    <select
-                      value={e.teamId}
-                      onChange={(ev) => updateEvent(i, { teamId: ev.target.value })}
-                      className="h-8 rounded-md border bg-background px-2 text-xs"
-                    >
-                      <option value={home?.id ?? ""}>{home?.name ?? "Local"}</option>
-                      <option value={away?.id ?? ""}>{away?.name ?? "Visit."}</option>
-                    </select>
-                    <input
-                      type="text"
-                      list={teamHasRoster ? `scorer-players-${e.teamId}` : undefined}
-                      value={e.playerName}
-                      onChange={(ev) => updateEvent(i, { playerName: ev.target.value })}
-                      placeholder="Jugador"
-                      className="h-8 text-xs flex-1 rounded-md border bg-background px-2"
-                      maxLength={60}
-                      autoComplete="off"
-                    />
-                    <Button size="sm" variant="ghost" onClick={() => removeEvent(i)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                  <div key={i} className="space-y-1.5 rounded-md border bg-background p-2">
+                    {/* Fila 1: etiqueta del evento + eliminar (siempre dentro de la tarjeta) */}
+                    <div className="flex items-center justify-between gap-2">
+                      <Badge variant="secondary" className="text-[10px]">
+                        {def?.label ?? e.type}
+                      </Badge>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0 text-muted-foreground"
+                        onClick={() => removeEvent(i)}
+                        aria-label="Quitar evento"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    {/* Fila 2: equipo + jugador. min-w-0 deja que ambos se encojan
+                        para que nada se desborde de la tarjeta en mobile. */}
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={e.teamId}
+                        onChange={(ev) => updateEvent(i, { teamId: ev.target.value })}
+                        className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
+                      >
+                        <option value={home?.id ?? ""}>{home?.name ?? "Local"}</option>
+                        <option value={away?.id ?? ""}>{away?.name ?? "Visit."}</option>
+                      </select>
+                      <input
+                        type="text"
+                        list={teamHasRoster ? `scorer-players-${e.teamId}` : undefined}
+                        value={e.playerName}
+                        onChange={(ev) => updateEvent(i, { playerName: ev.target.value })}
+                        placeholder="Jugador"
+                        className="h-8 min-w-0 flex-[1.4] rounded-md border bg-background px-2 text-xs"
+                        maxLength={60}
+                        autoComplete="off"
+                      />
+                    </div>
                   </div>
                 );
               })}
@@ -684,18 +823,21 @@ function MatchScreen({
         </div>
       )}
 
-      {/* Save */}
-      <Button
-        onClick={handleSave}
-        disabled={submitting}
-        className="w-full h-12 text-base"
-      >
-        {submitting ? "Guardando..." : "Guardar resultado"}
-      </Button>
+      {/* Save (béisbol guarda desde los botones del paso 2). */}
+      {!isBaseball && (
+        <Button
+          onClick={handleSave}
+          disabled={submitting}
+          className="w-full h-12 text-base"
+        >
+          {submitting ? "Guardando..." : "Guardar resultado"}
+        </Button>
+      )}
 
       <p className="text-xs text-muted-foreground text-center">
         Quedará registrado como cargado por <span className="font-medium">{scorerName}</span>.
       </p>
+      </div>
     </div>
   );
 }
