@@ -6,6 +6,7 @@ import { fetchTournamentById } from "@/lib/db/tournaments";
 import { supabase } from "@/lib/supabase";
 import { getSportInfo } from "@/data/sports";
 import { TournamentDetailClient } from "./tournament-detail-client";
+import { AdModal } from "@/components/ads/ad-modal";
 
 // Metadata por torneo para los previews de WhatsApp/Twitter. La IMAGEN de
 // la tarjeta la genera el archivo `opengraph-image.tsx` de esta ruta; aquí
@@ -68,5 +69,13 @@ export default async function TournamentDetailPage({
     );
   }
 
-  return <TournamentDetailClient initialData={initialData} />;
+  return (
+    <>
+      <TournamentDetailClient initialData={initialData} />
+      {/* Modal de publicidad (Pieza 2). Ruta pública/compartible del torneo:
+          es donde está la audiencia real (links de WhatsApp). El modal resuelve
+          y cuenta client-side, así que no interfiere con el edge cache. */}
+      <AdModal tournamentId={id} />
+    </>
+  );
 }

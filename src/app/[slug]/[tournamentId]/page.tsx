@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrganizationProfile } from "@/types";
 import { TournamentDetail } from "@/components/tournaments/tournament-detail";
+import { AdModal } from "@/components/ads/ad-modal";
 import { getUserBySlug } from "@/data/users";
 import { useTournaments } from "@/context/tournament-context";
 import { usePageView } from "@/hooks/use-page-view";
@@ -129,6 +130,7 @@ export default function ProfileTournamentPage() {
         </Link>
       </Button>
       <TournamentDetail tournament={tournament} canEdit={false} orgSponsors={user.organizationProfile.sponsors} />
+      <AdModal tournamentId={params.tournamentId} />
     </div>
   );
 }
