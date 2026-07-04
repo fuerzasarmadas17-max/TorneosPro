@@ -12,7 +12,7 @@ import { trackEvent } from "@/lib/analytics";
  * `/api/ads/resolve` qué anuncio mostrar — el pick ponderado por monto ocurre
  * server-side. Si no hay campaña que aplique, no renderiza nada.
  *
- * Cerrable después de 2s (antes muestra la cuenta regresiva en el botón).
+ * Cerrable después de 3s (antes muestra la cuenta regresiva en el botón).
  * Cuenta `ad_impression` al mostrarse y `ad_click` al tocarse, reutilizando
  * `analytics_events` vía trackEvent.
  */
@@ -23,7 +23,7 @@ interface ResolvedAd {
   linkUrl: string;
 }
 
-const CLOSE_DELAY_MS = 2000;
+const CLOSE_DELAY_MS = 3000;
 
 interface AdModalProps {
   tournamentId: string;
@@ -97,7 +97,7 @@ export function AdModal({ tournamentId }: AdModalProps) {
       aria-label="Publicidad"
     >
       <div className="relative w-full max-w-sm">
-        {/* Botón de cierre: cuenta regresiva → X a los 2s. */}
+        {/* Botón de cierre: cuenta regresiva → X a los 3s. */}
         <button
           type="button"
           aria-label={canClose ? "Cerrar anuncio" : "Espera para cerrar"}
