@@ -373,7 +373,10 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
         </Card>
       )}
 
-      {hasCardStats && visibleCards.length === 0 && cardEntries.length > 0 && !hasFilter && (
+      {/* "Todas las sanciones están pagadas" es info para el organizador.
+          El público solo debe ver la tabla de Sanciones cuando hay
+          expulsiones activas (sin pagar); si no hay, no se le muestra nada. */}
+      {canEdit && hasCardStats && visibleCards.length === 0 && cardEntries.length > 0 && !hasFilter && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Sanciones</CardTitle>
