@@ -1,6 +1,11 @@
 import { useMemo } from "react";
 import { MatchEventType, Tournament, getStatDefinition, getSportCategory } from "@/types";
 
+// Apariciones al plato requeridas por partido jugado para calificar al
+// ranking de bateadores (beisbol/softball/wiffleball). La MLB usa 3.1
+// (502 PA en 162 juegos); bajamos a 2.7 por lo corto de estas ligas.
+const QUALIFY_RATE = 2.7;
+
 export interface PlayerStatEntry {
   playerName: string;
   teamId: string;
@@ -50,14 +55,12 @@ export interface BaseballPlayerStats {
   ops: number;
   // PA = apariciones al plato aproximadas (AB + BB). Se muestra en la tabla.
   pa: number;
-  // OPS ajustado por volumen de oportunidades: OPS * sqrt(PA / PA_max).
-  // El factor sqrt(PA/PA_max) se calcula internamente (NO se muestra) y
-  // castiga muestras chicas — un jugador con muchos PA y buen OPS sube
-  // por encima de uno con OPS inflado en pocos turnos. PA_max es el PA
-  // más alto entre todos los jugadores listados, así que este valor se
-  // re-escala solo a medida que avanzan los juegos. Es el criterio de
-  // orden principal del ranking de bateadores.
-  opsAdjusted: number;
+  // ¿Califica al ranking? Estándar MLB: necesita QUALIFY_RATE apariciones al
+  // plato por cada partido que jugó su equipo (acumulado en todo el torneo).
+  // Los que no califican no encabezan el ranking; se ordenan por OPS puro
+  // solo entre los calificados, evitando que un OPS inflado en muestra chica
+  // se trepe a la cima. El umbral crece solo a medida que avanzan los juegos.
+  qualified: boolean;
 }
 
 export function useTournamentStats(tournament: Tournament) {
@@ -204,8 +207,19 @@ export function useTournamentStats(tournament: Tournament) {
     // Baseball / softball / wiffleball: per-player AVG / OBP / SLG / OPS
     const isBaseball = getSportCategory(tournament.sport) === "baseball";
     const baseballMap = new Map<string, BaseballPlayerStats>();
+    // Partidos completados por equipo (acumulado en todo el torneo, incluye
+    // fase de grupos + playoffs). Es la base del umbral de calificación al
+    // ranking, estilo MLB (apariciones al plato por partido jugado).
+    const teamGames = new Map<string, number>();
 
     if (isBaseball) {
+      for (const match of tournament.matches) {
+        if (match.status !== "completed") continue;
+        if (match.homeTeamId)
+          teamGames.set(match.homeTeamId, (teamGames.get(match.homeTeamId) || 0) + 1);
+        if (match.awayTeamId)
+          teamGames.set(match.awayTeamId, (teamGames.get(match.awayTeamId) || 0) + 1);
+      }
       for (const match of tournament.matches) {
         if (match.status !== "completed" || !match.events) continue;
         for (const event of match.events) {
@@ -218,7 +232,7 @@ export function useTournamentStats(tournament: Tournament) {
               ab: 0, h: 0, singles: 0, doubles: 0, triples: 0, hr: 0,
               bb: 0, k: 0, rbi: 0, r: 0,
               avg: 0, obp: 0, slg: 0, ops: 0,
-              pa: 0, opsAdjusted: 0,
+              pa: 0, qualified: false,
             };
             baseballMap.set(key, entry);
           }
@@ -252,17 +266,23 @@ export function useTournamentStats(tournament: Tournament) {
       (e) => e.ab > 0 || e.bb > 0 || e.h > 0
     );
 
-    // OPS ajustado por volumen: OPS * sqrt(PA / PA_max). PA_max se toma
-    // sobre los mismos jugadores listados, así que el factor se recalibra
-    // dinámicamente con cada nuevo juego. El ranking se ordena por este
-    // valor (de mayor a menor) para que muchas oportunidades + buen
-    // rendimiento pesen más que un OPS alto en muestra chica.
-    const maxPA = baseballPlayerStats.reduce((m, e) => Math.max(m, e.pa), 0);
+    // Calificación al ranking, estándar MLB: un bateador califica si acumula
+    // al menos QUALIFY_RATE apariciones al plato por cada partido que jugó
+    // su equipo. En la MLB son 3.1 PA/juego (502 en 162 juegos); bajamos a
+    // 2.7 porque las ligas de este tipo son mucho más cortas y 3.1 dejaría
+    // la tabla casi vacía. El umbral es dinámico: crece con los partidos, así
+    // que en la jornada 1 casi cualquier titular califica y para playoffs
+    // (acumulado) solo los que jugaron con regularidad. El orden es por OPS
+    // puro; los calificados van primero y los no calificados después (también
+    // por OPS), para que nadie encabece por un OPS inflado en muestra chica.
     for (const e of baseballPlayerStats) {
-      const factor = maxPA > 0 ? Math.sqrt(e.pa / maxPA) : 0;
-      e.opsAdjusted = e.ops * factor;
+      const games = teamGames.get(e.teamId) || 0;
+      e.qualified = games > 0 && e.pa >= QUALIFY_RATE * games;
     }
-    baseballPlayerStats.sort((a, b) => b.opsAdjusted - a.opsAdjusted);
+    baseballPlayerStats.sort((a, b) => {
+      if (a.qualified !== b.qualified) return a.qualified ? -1 : 1;
+      return b.ops - a.ops;
+    });
 
     return { leaderboards, hasStats, cardEntries, baseballPlayerStats };
   }, [tournament.matches, tournament.enabledStats, tournament.teamIds, tournament.sport]);

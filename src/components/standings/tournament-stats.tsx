@@ -44,11 +44,13 @@ const TOP_PREVIEW = 5;
 const TOP_MODAL = 10;
 const TOP_BASEBALL_EXPANDED = 20;
 
-// Turnos al bate mínimos para aparecer en la tabla general de estadísticas
-// individuales (beisbol/softball/wiffleball). Evita que un bateador con 1 AB
-// y 1 HR (OPS 5.000) encabece el ranking por muestra chica. Solo aplica a la
-// tabla general; al filtrar por equipo se muestran todos los jugadores.
-const MIN_AB_QUALIFY = 5;
+// El ranking de bateadores (beisbol/softball/wiffleball) usa calificación
+// estilo MLB: un jugador "califica" si acumuló suficientes apariciones al
+// plato según los partidos que jugó su equipo (lógica en use-tournament-stats).
+// - Tabla general (sin filtro): solo se listan jugadores calificados,
+//   ordenados por OPS puro. Así un OPS inflado en 1-2 turnos no encabeza.
+// - Con filtro de equipo: se muestran TODOS los jugadores del equipo; los
+//   que no califican van al final, atenuados y marcados con "*".
 
 // Abreviación de stats para mostrar en mobile como header de columna.
 // El título de la card (lb.pluralLabel = "Bases por bolas") queda intacto
@@ -147,15 +149,16 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
     (lb) => lb.leaders.length > 0 || lb.teamLeaders.length > 0
   );
 
-  // Tabla general: solo jugadores que llegaron al mínimo de turnos (calificados),
-  // ya ordenados por OPS ajustado (OPS * sqrt(PA/PA_max)) desde el hook. Al
-  // filtrar por equipo NO se aplica el mínimo.
+  // Tabla general: solo jugadores calificados (umbral MLB por partidos),
+  // ya ordenados por OPS puro desde el hook. Al filtrar por equipo NO se
+  // aplica el filtro de calificación (se muestran todos, marcando los no
+  // calificados).
   const generalQualifiedPlayers = useMemo(
-    () => baseballPlayerStats.filter((p) => p.ab >= MIN_AB_QUALIFY),
+    () => baseballPlayerStats.filter((p) => p.qualified),
     [baseballPlayerStats]
   );
   // Tabla individual de béisbol filtrada + paginada:
-  // - con filtro: todos los jugadores del equipo, sin slice ni mínimo de AB.
+  // - con filtro: todos los jugadores del equipo, sin slice ni filtro de calificación.
   // - sin filtro: top 5 inicial (o top 20 si baseballExpanded), solo calificados.
   const filteredBaseballPlayers = useMemo(() => {
     if (hasFilter) {
@@ -382,7 +385,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
               <p className="text-sm text-muted-foreground py-4 text-center">
                 {hasFilter
                   ? "Este equipo aún no tiene estadísticas de bateo."
-                  : `Aún no hay jugadores con al menos ${MIN_AB_QUALIFY} turnos al bate.`}
+                  : "Aún no hay bateadores que califiquen al ranking (turnos insuficientes según los partidos jugados)."}
               </p>
             ) : (
             <div className="relative">
@@ -407,19 +410,30 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                     <TableHead className="text-center w-14">AVG</TableHead>
                     <TableHead className="text-center w-14">OBP</TableHead>
                     <TableHead className="text-center w-14">SLG</TableHead>
-                    <TableHead className="text-center w-14">OPS</TableHead>
-                    <TableHead className="text-center w-16 font-bold whitespace-nowrap">OPS Aj.</TableHead>
+                    <TableHead className="text-center w-14 font-bold">OPS</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredBaseballPlayers.map((p, index) => {
                     const team = getTeamById(p.teamId);
+                    // Los calificados van primero (orden del hook), así que su
+                    // índice ya es su ranking. Los no calificados (solo visibles
+                    // al filtrar por equipo) van al final: sin número, atenuados
+                    // y con "*".
                     return (
-                      <TableRow key={`${p.playerName}-${p.teamId}`}>
-                        <TableCell className="font-medium">{index + 1}</TableCell>
+                      <TableRow
+                        key={`${p.playerName}-${p.teamId}`}
+                        className={p.qualified ? "" : "opacity-55"}
+                      >
+                        <TableCell className="font-medium">
+                          {p.qualified ? index + 1 : "–"}
+                        </TableCell>
                         <TableCell className="font-medium whitespace-nowrap">
                           <span className="sm:hidden">{getShortName(p.playerName)}</span>
                           <span className="hidden sm:inline">{p.playerName}</span>
+                          {!p.qualified && (
+                            <span className="text-muted-foreground" title="No califica al ranking (turnos insuficientes)"> *</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {team?.name || p.teamId}
@@ -438,8 +452,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                         <TableCell className="text-center">{fmt(p.avg)}</TableCell>
                         <TableCell className="text-center">{fmt(p.obp)}</TableCell>
                         <TableCell className="text-center">{fmt(p.slg)}</TableCell>
-                        <TableCell className="text-center">{fmt(p.ops)}</TableCell>
-                        <TableCell className="text-center font-bold">{fmt(p.opsAdjusted)}</TableCell>
+                        <TableCell className="text-center font-bold">{fmt(p.ops)}</TableCell>
                       </TableRow>
                     );
                   })}
@@ -447,6 +460,12 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
               </Table>
               <ScrollBar orientation="horizontal" />
             </ScrollArea>
+            {filteredBaseballPlayers.some((p) => !p.qualified) && (
+              <p className="text-xs text-muted-foreground mt-2 relative z-10">
+                * No califica al ranking todavía: le faltan turnos al bate
+                según los partidos jugados por su equipo.
+              </p>
+            )}
             </div>
             )}
           </CardContent>

@@ -136,7 +136,6 @@ export async function downloadStatsPdf(
           "OBP",
           "SLG",
           "OPS",
-          "OPS Aj.",
         ],
       ],
       body: baseballRows.map((p, i) => [
@@ -157,7 +156,6 @@ export async function downloadStatsPdf(
         fmt(p.obp),
         fmt(p.slg),
         fmt(p.ops),
-        fmt(p.opsAdjusted),
       ]),
       styles: { fontSize: 7, cellPadding: 1.2 },
       headStyles: { fillColor: [30, 30, 30], textColor: 255, fontSize: 7 },
