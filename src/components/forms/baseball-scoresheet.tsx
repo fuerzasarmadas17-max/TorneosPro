@@ -33,6 +33,11 @@ interface PlayerStats {
   [statKey: string]: number;
 }
 
+// Stats binarios por partido: en un mismo juego solo pueden ser 0 o 1
+// (un pitcher gana o no; un jugador es expulsado o no). Se muestran como
+// checkbox sí/no y se guardan como 1 evento al marcarlos.
+const BINARY_STATS: MatchEventType[] = ["winning_pitcher", "ejection"];
+
 interface BaseballScoresheetProps {
   teamName: string;
   teamId: string;
@@ -168,20 +173,36 @@ export function BaseballScoresheet({
                   </TableCell>
                   {filteredStats.map((statKey, colIdx) => (
                     <TableCell key={statKey} className="p-1">
-                      <Input
-                        id={`bs-${teamId}-${section}-${idx}-${colIdx}`}
-                        type="number"
-                        min="0"
-                        value={playerValues[statKey] || ""}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value) || 0;
-                          onChange(player.name, statKey, val);
-                        }}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => handleCellKeyDown(e, idx, colIdx)}
-                        className="h-8 w-14 text-center text-sm mx-auto [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        placeholder="0"
-                      />
+                      {BINARY_STATS.includes(statKey) ? (
+                        // Stats binarios por partido (pitcher ganador,
+                        // expulsión): sí/no. Se guardan como 1 evento cuando
+                        // están marcados, 0 si no.
+                        <input
+                          id={`bs-${teamId}-${section}-${idx}-${colIdx}`}
+                          type="checkbox"
+                          checked={(playerValues[statKey] || 0) > 0}
+                          onChange={(e) =>
+                            onChange(player.name, statKey, e.target.checked ? 1 : 0)
+                          }
+                          onKeyDown={(e) => handleCellKeyDown(e, idx, colIdx)}
+                          className="h-5 w-5 mx-auto block cursor-pointer accent-primary"
+                        />
+                      ) : (
+                        <Input
+                          id={`bs-${teamId}-${section}-${idx}-${colIdx}`}
+                          type="number"
+                          min="0"
+                          value={playerValues[statKey] || ""}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            onChange(player.name, statKey, val);
+                          }}
+                          onFocus={(e) => e.target.select()}
+                          onKeyDown={(e) => handleCellKeyDown(e, idx, colIdx)}
+                          className="h-8 w-14 text-center text-sm mx-auto [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          placeholder="0"
+                        />
+                      )}
                     </TableCell>
                   ))}
                 </TableRow>
