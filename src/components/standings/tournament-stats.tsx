@@ -148,7 +148,8 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
   );
 
   // Tabla general: solo jugadores que llegaron al mínimo de turnos (calificados),
-  // ordenados por OPS desde el hook. Al filtrar por equipo NO se aplica el mínimo.
+  // ya ordenados por OPS ajustado (OPS * sqrt(PA/PA_max)) desde el hook. Al
+  // filtrar por equipo NO se aplica el mínimo.
   const generalQualifiedPlayers = useMemo(
     () => baseballPlayerStats.filter((p) => p.ab >= MIN_AB_QUALIFY),
     [baseballPlayerStats]
@@ -402,10 +403,12 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                     <TableHead className="text-center w-12">K</TableHead>
                     <TableHead className="text-center w-12">RBI</TableHead>
                     <TableHead className="text-center w-12">R</TableHead>
+                    <TableHead className="text-center w-12">PA</TableHead>
                     <TableHead className="text-center w-14">AVG</TableHead>
                     <TableHead className="text-center w-14">OBP</TableHead>
                     <TableHead className="text-center w-14">SLG</TableHead>
-                    <TableHead className="text-center w-14 font-bold">OPS</TableHead>
+                    <TableHead className="text-center w-14">OPS</TableHead>
+                    <TableHead className="text-center w-16 font-bold whitespace-nowrap">OPS Aj.</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -431,10 +434,12 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                         <TableCell className="text-center">{p.k}</TableCell>
                         <TableCell className="text-center">{p.rbi}</TableCell>
                         <TableCell className="text-center">{p.r}</TableCell>
+                        <TableCell className="text-center">{p.pa}</TableCell>
                         <TableCell className="text-center">{fmt(p.avg)}</TableCell>
                         <TableCell className="text-center">{fmt(p.obp)}</TableCell>
                         <TableCell className="text-center">{fmt(p.slg)}</TableCell>
-                        <TableCell className="text-center font-bold">{fmt(p.ops)}</TableCell>
+                        <TableCell className="text-center">{fmt(p.ops)}</TableCell>
+                        <TableCell className="text-center font-bold">{fmt(p.opsAdjusted)}</TableCell>
                       </TableRow>
                     );
                   })}

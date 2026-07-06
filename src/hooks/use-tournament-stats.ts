@@ -48,6 +48,16 @@ export interface BaseballPlayerStats {
   obp: number;
   slg: number;
   ops: number;
+  // PA = apariciones al plato aproximadas (AB + BB). Se muestra en la tabla.
+  pa: number;
+  // OPS ajustado por volumen de oportunidades: OPS * sqrt(PA / PA_max).
+  // El factor sqrt(PA/PA_max) se calcula internamente (NO se muestra) y
+  // castiga muestras chicas — un jugador con muchos PA y buen OPS sube
+  // por encima de uno con OPS inflado en pocos turnos. PA_max es el PA
+  // más alto entre todos los jugadores listados, así que este valor se
+  // re-escala solo a medida que avanzan los juegos. Es el criterio de
+  // orden principal del ranking de bateadores.
+  opsAdjusted: number;
 }
 
 export function useTournamentStats(tournament: Tournament) {
@@ -208,6 +218,7 @@ export function useTournamentStats(tournament: Tournament) {
               ab: 0, h: 0, singles: 0, doubles: 0, triples: 0, hr: 0,
               bb: 0, k: 0, rbi: 0, r: 0,
               avg: 0, obp: 0, slg: 0, ops: 0,
+              pa: 0, opsAdjusted: 0,
             };
             baseballMap.set(key, entry);
           }
@@ -232,12 +243,26 @@ export function useTournamentStats(tournament: Tournament) {
         const totalBases = e.singles + 2 * e.doubles + 3 * e.triples + 4 * e.hr;
         e.slg = e.ab > 0 ? totalBases / e.ab : 0;
         e.ops = e.obp + e.slg;
+        // Apariciones al plato aproximadas.
+        e.pa = e.ab + e.bb;
       }
     }
 
-    const baseballPlayerStats = Array.from(baseballMap.values())
-      .filter((e) => e.ab > 0 || e.bb > 0 || e.h > 0)
-      .sort((a, b) => b.ops - a.ops);
+    const baseballPlayerStats = Array.from(baseballMap.values()).filter(
+      (e) => e.ab > 0 || e.bb > 0 || e.h > 0
+    );
+
+    // OPS ajustado por volumen: OPS * sqrt(PA / PA_max). PA_max se toma
+    // sobre los mismos jugadores listados, así que el factor se recalibra
+    // dinámicamente con cada nuevo juego. El ranking se ordena por este
+    // valor (de mayor a menor) para que muchas oportunidades + buen
+    // rendimiento pesen más que un OPS alto en muestra chica.
+    const maxPA = baseballPlayerStats.reduce((m, e) => Math.max(m, e.pa), 0);
+    for (const e of baseballPlayerStats) {
+      const factor = maxPA > 0 ? Math.sqrt(e.pa / maxPA) : 0;
+      e.opsAdjusted = e.ops * factor;
+    }
+    baseballPlayerStats.sort((a, b) => b.opsAdjusted - a.opsAdjusted);
 
     return { leaderboards, hasStats, cardEntries, baseballPlayerStats };
   }, [tournament.matches, tournament.enabledStats, tournament.teamIds, tournament.sport]);
