@@ -73,7 +73,7 @@ interface TournamentStatsProps {
 }
 
 export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
-  const { leaderboards, hasStats, cardEntries, baseballPlayerStats } = useTournamentStats(tournament);
+  const { leaderboards, hasStats, cardEntries, baseballPlayerStats, baseballFieldingStats } = useTournamentStats(tournament);
   const { getTeamById, updateEventPaid } = useTournaments();
   // Which leaderboard is being shown expanded in the dialog.
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -83,12 +83,15 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
   // "Ver más" inline para la tabla de béisbol (sin filtro). Cuando hay
   // filtro de equipo este flag se ignora — siempre mostramos todos.
   const [baseballExpanded, setBaseballExpanded] = useState(false);
+  // "Ver más" inline para la tabla defensiva (mismo comportamiento).
+  const [fieldingExpanded, setFieldingExpanded] = useState(false);
   // Diálogo para elegir top N al descargar PDF sin filtro de equipo.
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfTopN, setPdfTopN] = useState<string>("10");
 
   const isBaseball = getSportCategory(tournament.sport) === "baseball";
   const showBaseballTable = isBaseball && baseballPlayerStats.length > 0;
+  const showFieldingTable = isBaseball && baseballFieldingStats.length > 0;
   const hasFilter = selectedTeamId !== "all";
 
   // Opciones del dropdown de equipo: todos los del torneo, ordenados
@@ -172,7 +175,25 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
   const hasMoreBaseball =
     !hasFilter && generalQualifiedPlayers.length > TOP_PREVIEW;
 
-  if (!hasStats && visibleCardsAll.length === 0 && !showBaseballTable) {
+  // Fildeo (Líderes Defensiva): mismo patrón que bateo, pero con calificación
+  // por juegos participados y orden por FLD% (desde el hook).
+  const generalQualifiedFielders = useMemo(
+    () => baseballFieldingStats.filter((f) => f.qualified),
+    [baseballFieldingStats]
+  );
+  const filteredFielders = useMemo(() => {
+    if (hasFilter) {
+      return baseballFieldingStats.filter((f) => f.teamId === selectedTeamId);
+    }
+    return generalQualifiedFielders.slice(
+      0,
+      fieldingExpanded ? TOP_BASEBALL_EXPANDED : TOP_PREVIEW
+    );
+  }, [baseballFieldingStats, generalQualifiedFielders, hasFilter, selectedTeamId, fieldingExpanded]);
+  const hasMoreFielding =
+    !hasFilter && generalQualifiedFielders.length > TOP_PREVIEW;
+
+  if (!hasStats && visibleCardsAll.length === 0 && !showBaseballTable && !showFieldingTable) {
     return (
       <Card>
         <CardContent className="py-8 text-center">
@@ -214,7 +235,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
     // dispara sola cuando termina.
     await downloadStatsPdf(
       tournament,
-      { leaderboards, cardEntries, baseballPlayerStats },
+      { leaderboards, cardEntries, baseballPlayerStats, baseballFieldingStats },
       teamsMap,
       {
         filterTeamId: hasFilter ? selectedTeamId : null,
@@ -235,9 +256,10 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
           <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
           <Select value={selectedTeamId} onValueChange={(v) => {
             setSelectedTeamId(v);
-            // Resetear el toggle inline cuando se cambia el filtro —
+            // Resetear los toggles inline cuando se cambia el filtro —
             // así al volver a "Todos" arrancamos en preview otra vez.
             setBaseballExpanded(false);
+            setFieldingExpanded(false);
           }}>
             <SelectTrigger className="h-9 w-full sm:w-64">
               <SelectValue placeholder="Filtrar por equipo" />
@@ -368,7 +390,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
       {showBaseballTable && filteredBaseballPlayers.length > 0 && (
         <Card>
           <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Estadisticas individuales</CardTitle>
+            <CardTitle className="text-base">Líderes de Bateo</CardTitle>
             {hasMoreBaseball && (
               <Button
                 variant="ghost"
@@ -468,6 +490,84 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
             )}
             </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Líderes Defensiva: fildeo por jugador (PO / A / E / Lances / FLD%),
+          ordenado por % de fildeo entre calificados (participación por juegos). */}
+      {showFieldingTable && filteredFielders.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Líderes Defensiva</CardTitle>
+            {hasMoreFielding && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setFieldingExpanded((v) => !v)}
+              >
+                {fieldingExpanded ? "Ver menos" : "Ver más"}
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent>
+            <div className="relative">
+            <TableWatermark />
+            <ScrollArea className="w-full relative z-10">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">#</TableHead>
+                    <TableHead>Jugador</TableHead>
+                    <TableHead>Equipo</TableHead>
+                    <TableHead className="text-center w-12" title="Outs (putouts)">PO</TableHead>
+                    <TableHead className="text-center w-12" title="Asistencias">A</TableHead>
+                    <TableHead className="text-center w-12" title="Errores">E</TableHead>
+                    <TableHead className="text-center w-16" title="Lances totales (PO + A + E)">Lances</TableHead>
+                    <TableHead className="text-center w-16 font-bold" title="% de fildeo">FLD%</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredFielders.map((f, index) => {
+                    const team = getTeamById(f.teamId);
+                    return (
+                      <TableRow
+                        key={`${f.playerName}-${f.teamId}`}
+                        className={f.qualified ? "" : "opacity-55"}
+                      >
+                        <TableCell className="font-medium">
+                          {f.qualified ? index + 1 : "–"}
+                        </TableCell>
+                        <TableCell className="font-medium whitespace-nowrap">
+                          <span className="sm:hidden">{getShortName(f.playerName)}</span>
+                          <span className="hidden sm:inline">{f.playerName}</span>
+                          {!f.qualified && (
+                            <span className="text-muted-foreground" title="No califica al ranking (pocos juegos)"> *</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {team?.name || f.teamId}
+                        </TableCell>
+                        <TableCell className="text-center">{f.po}</TableCell>
+                        <TableCell className="text-center">{f.a}</TableCell>
+                        <TableCell className="text-center">{f.e}</TableCell>
+                        <TableCell className="text-center">{f.tc}</TableCell>
+                        <TableCell className="text-center font-bold">{fmt(f.fld)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+              <ScrollBar orientation="horizontal" />
+            </ScrollArea>
+            {filteredFielders.some((f) => !f.qualified) && (
+              <p className="text-xs text-muted-foreground mt-2 relative z-10">
+                * No califica al ranking defensivo todavía: participó en pocos
+                juegos respecto a los que jugó su equipo.
+              </p>
+            )}
+            </div>
           </CardContent>
         </Card>
       )}

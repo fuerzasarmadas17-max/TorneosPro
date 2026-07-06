@@ -31,6 +31,9 @@ import {
   PlayerStats,
   buildScoresheetData,
   buildScoresheetEventsForTeam,
+  BASEBALL_SCORESHEET_STATS,
+  BASEBALL_OFFENSIVE_STATS,
+  BASEBALL_DEFENSIVE_STATS,
 } from "@/lib/baseball-scoresheet";
 
 interface EventEntry {
@@ -76,7 +79,9 @@ export function MatchResultForm({
     }))
   );
   const [error, setError] = useState("");
-  const [scoresheetStep, setScoresheetStep] = useState<1 | 2>(1);
+  // 4 pasos de planilla: 1=local ofensiva, 2=local defensiva,
+  // 3=visitante ofensiva, 4=visitante defensiva.
+  const [scoresheetStep, setScoresheetStep] = useState<1 | 2 | 3 | 4>(1);
 
   const homeTeam = match.homeTeamId ? getTeamById(match.homeTeamId) : null;
   const awayTeam = match.awayTeamId ? getTeamById(match.awayTeamId) : null;
@@ -151,9 +156,11 @@ export function MatchResultForm({
 
   const buildEventsFromScoresheet = (): MatchEvent[] => {
     let idx = 0;
+    // Serializamos con el set COMPLETO de béisbol (no `stats`/enabledStats)
+    // para no perder ninguna columna cargada en la planilla — se captura todo.
     const base = [
-      ...buildScoresheetEventsForTeam(homeScoresheetData, match.homeTeamId, homePlayers, stats),
-      ...buildScoresheetEventsForTeam(awayScoresheetData, match.awayTeamId, awayPlayers, stats),
+      ...buildScoresheetEventsForTeam(homeScoresheetData, match.homeTeamId, homePlayers, BASEBALL_SCORESHEET_STATS),
+      ...buildScoresheetEventsForTeam(awayScoresheetData, match.awayTeamId, awayPlayers, BASEBALL_SCORESHEET_STATS),
     ];
     return base.map((e) => ({
       id: `evt-${Date.now()}-${idx++}`,
@@ -504,8 +511,9 @@ export function MatchResultForm({
             </div>
           )}
 
-          {/* Baseball scoresheet mode - step by step */}
-          {useScoresheet && stats.length > 0 && (
+          {/* Baseball scoresheet mode - step by step. Siempre se muestra
+              completa (no depende de enabledStats). */}
+          {useScoresheet && (
             <>
               <Separator />
               <div className="flex items-center justify-between">
@@ -513,38 +521,41 @@ export function MatchResultForm({
                   Estadisticas Individuales
                 </Label>
                 <span className="text-sm text-muted-foreground">
-                  Paso {scoresheetStep} de 2
+                  Paso {scoresheetStep} de 4
                 </span>
               </div>
 
-              <BaseballScoresheet
-                key={scoresheetStep === 1 ? "home" : "away"}
-                teamName={
-                  scoresheetStep === 1
-                    ? homeTeam?.name || "Local"
-                    : awayTeam?.name || "Visitante"
-                }
-                teamId={
-                  (scoresheetStep === 1
-                    ? match.homeTeamId
-                    : match.awayTeamId) || ""
-                }
-                players={scoresheetStep === 1 ? homePlayers : awayPlayers}
-                stats={stats}
-                values={
-                  scoresheetStep === 1
-                    ? homeScoresheetData
-                    : awayScoresheetData
-                }
-                onChange={(playerName, stat, count) =>
-                  handleScoresheetChange(
-                    scoresheetStep === 1 ? "home" : "away",
-                    playerName,
-                    stat,
-                    count
-                  )
-                }
-              />
+              {(() => {
+                const isHome = scoresheetStep <= 2;
+                const isOffensive = scoresheetStep === 1 || scoresheetStep === 3;
+                const side = isHome ? "home" : "away";
+                const teamName = isHome
+                  ? homeTeam?.name || "Local"
+                  : awayTeam?.name || "Visitante";
+                const teamId = (isHome ? match.homeTeamId : match.awayTeamId) || "";
+                const players = isHome ? homePlayers : awayPlayers;
+                const values = isHome ? homeScoresheetData : awayScoresheetData;
+                const onChange = (
+                  playerName: string,
+                  stat: MatchEventType,
+                  count: number
+                ) => handleScoresheetChange(side, playerName, stat, count);
+                // Una planilla por paso: primero ofensiva del equipo, luego
+                // defensiva, y después el otro equipo. Ambas escriben en la
+                // misma matriz de valores del equipo.
+                return (
+                  <BaseballScoresheet
+                    key={`${side}-${isOffensive ? "off" : "def"}`}
+                    teamName={teamName}
+                    teamId={teamId}
+                    section={isOffensive ? "Ofensiva" : "Defensiva"}
+                    statKeys={isOffensive ? BASEBALL_OFFENSIVE_STATS : BASEBALL_DEFENSIVE_STATS}
+                    players={players}
+                    values={values}
+                    onChange={onChange}
+                  />
+                );
+              })()}
             </>
           )}
 
@@ -683,54 +694,68 @@ export function MatchResultForm({
           )}
         </CardContent>
         <CardFooter className="flex gap-2 pt-6">
-          {useScoresheet && scoresheetStep === 2 ? (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
-                onClick={() => setScoresheetStep(1)}
-              >
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                {homeTeam?.name || "Equipo 1"}
-              </Button>
-              <Button type="button" className="flex-1" onClick={handleSave}>
-                {isEditing ? "Sobrescribir resultado" : "Guardar Resultado"}
-              </Button>
-            </>
-          ) : useScoresheet && scoresheetStep === 1 ? (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
-                onClick={() => router.back()}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="button"
-                className="flex-1"
-                onClick={() => {
-                  setError("");
-                  const home = parseInt(homeScore);
-                  const away = parseInt(awayScore);
-                  if (isNaN(home) || isNaN(away)) {
-                    setError("Ingresa marcadores validos");
-                    return;
-                  }
-                  if (home < 0 || away < 0) {
-                    setError("Los marcadores no pueden ser negativos");
-                    return;
-                  }
-                  setScoresheetStep(2);
-                }}
-              >
-                {awayTeam?.name || "Equipo 2"}
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            </>
-          ) : (
+          {useScoresheet ? (() => {
+            const step = scoresheetStep;
+            // Validación de marcadores solo al salir del primer paso.
+            const validateScores = () => {
+              setError("");
+              const home = parseInt(homeScore);
+              const away = parseInt(awayScore);
+              if (isNaN(home) || isNaN(away)) {
+                setError("Ingresa marcadores validos");
+                return false;
+              }
+              if (home < 0 || away < 0) {
+                setError("Los marcadores no pueden ser negativos");
+                return false;
+              }
+              return true;
+            };
+            const goNext = () => {
+              if (step === 1 && !validateScores()) return;
+              setScoresheetStep((step + 1) as 1 | 2 | 3 | 4);
+            };
+            const goBack = () =>
+              step === 1
+                ? router.back()
+                : setScoresheetStep((step - 1) as 1 | 2 | 3 | 4);
+            // Etiqueta del botón "siguiente" según a dónde va.
+            const nextLabel =
+              step === 1
+                ? "Defensiva"
+                : step === 2
+                ? awayTeam?.name || "Visitante"
+                : "Defensiva"; // step 3 → visitante defensiva
+            const backLabel =
+              step === 1
+                ? "Cancelar"
+                : step === 3
+                ? homeTeam?.name || "Local"
+                : "Ofensiva"; // steps 2 y 4 → ofensiva del mismo equipo
+            return (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={goBack}
+                >
+                  {step > 1 && <ChevronLeft className="h-4 w-4 mr-1" />}
+                  {backLabel}
+                </Button>
+                {step === 4 ? (
+                  <Button type="button" className="flex-1" onClick={handleSave}>
+                    {isEditing ? "Sobrescribir resultado" : "Guardar Resultado"}
+                  </Button>
+                ) : (
+                  <Button type="button" className="flex-1" onClick={goNext}>
+                    {nextLabel}
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                )}
+              </>
+            );
+          })() : (
             <>
               <Button
                 type="button"

@@ -26,6 +26,34 @@ export interface ScoresheetEvent {
 const HIT_TYPES: MatchEventType[] = ["hit", "double", "triple", "home_run"];
 
 /**
+ * La planilla de béisbol/softball/wiffleball se divide en dos:
+ *  - OFENSIVA (bateo): turnos, hits, extrabases, BB, K, RBI, carreras.
+ *  - DEFENSIVA (fildeo + pitcheo + disciplina): outs, asistencias, errores,
+ *    pitcher ganador y expulsión.
+ * La planilla SIEMPRE captura todo (ambos sets), sin importar qué stats
+ * eligió el organizador; `enabledStats` solo decide qué se muestra al público.
+ * El orden de cada array define el orden de columnas en su planilla.
+ */
+export const BASEBALL_OFFENSIVE_STATS: MatchEventType[] = [
+  "at_bat", "hit", "double", "triple", "home_run",
+  "walk", "strikeout", "rbi", "run_scored",
+];
+
+export const BASEBALL_DEFENSIVE_STATS: MatchEventType[] = [
+  "putout", "assist", "error", "winning_pitcher", "ejection",
+];
+
+/**
+ * Set completo (ofensiva + defensiva). Es el que se usa al SERIALIZAR los
+ * eventos, para no perder ninguna columna cargada en ninguna de las dos
+ * planillas.
+ */
+export const BASEBALL_SCORESHEET_STATS: MatchEventType[] = [
+  ...BASEBALL_OFFENSIVE_STATS,
+  ...BASEBALL_DEFENSIVE_STATS,
+];
+
+/**
  * Reconstruye la matriz jugador×stat desde los eventos guardados de un equipo.
  * Cualquier hit suma al total `H`; los extra-base además guardan su tipo.
  */

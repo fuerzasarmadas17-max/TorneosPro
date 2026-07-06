@@ -36,8 +36,14 @@ interface PlayerStats {
 interface BaseballScoresheetProps {
   teamName: string;
   teamId: string;
+  /** Sección de la planilla ("Ofensiva" | "Defensiva"). Sirve de subtítulo y
+   *  namespacea los ids de celda para que las dos planillas del mismo equipo
+   *  no colisionen en el DOM ni en la navegación por teclado. */
+  section: string;
+  /** Columnas a mostrar. La planilla siempre captura todo; el organizador no
+   *  recorta estas columnas (eso solo afecta la vista pública). */
+  statKeys: MatchEventType[];
   players: Player[];
-  stats: MatchEventType[];
   values: Record<string, PlayerStats>;
   onChange: (playerName: string, stat: MatchEventType, count: number) => void;
 }
@@ -45,29 +51,22 @@ interface BaseballScoresheetProps {
 export function BaseballScoresheet({
   teamName,
   teamId,
+  section,
+  statKeys,
   players,
-  stats,
   values,
   onChange,
 }: BaseballScoresheetProps) {
-  // Fixed order for baseball stats - only show enabled ones, in this order
-  const BASEBALL_STAT_ORDER: MatchEventType[] = [
-    "at_bat", "hit", "double", "triple", "home_run",
-    "walk", "rbi", "run_scored",
-    "error", "strikeout", "ejection",
-  ];
-
-  const enabledSet = new Set(stats);
-  const filteredStats = BASEBALL_STAT_ORDER.filter(
-    (s) => enabledSet.has(s) && !getStatDefinition(s)?.computed
+  const filteredStats = statKeys.filter(
+    (s) => !getStatDefinition(s)?.computed
   );
 
   // Navegación por teclado en la planilla. Cada celda tiene id
-  // `bs-{teamId}-{fila}-{columna}`. Al enfocar se selecciona el valor
-  // (escribir lo reemplaza; pasar de largo lo conserva — recomendación A).
+  // `bs-{teamId}-{section}-{fila}-{columna}`. Al enfocar se selecciona el
+  // valor (escribir lo reemplaza; pasar de largo lo conserva).
   const focusCell = (row: number, col: number) => {
     const el = document.getElementById(
-      `bs-${teamId}-${row}-${col}`
+      `bs-${teamId}-${section}-${row}-${col}`
     ) as HTMLInputElement | null;
     if (el) {
       el.focus();
@@ -104,7 +103,7 @@ export function BaseballScoresheet({
 
   // H > AB is logically impossible; surface it without blocking the save —
   // the scorer might be entering hits before AB and will reconcile later.
-  const inconsistentPlayers = enabledSet.has("at_bat")
+  const inconsistentPlayers = filteredStats.includes("at_bat")
     ? players.filter((p) => {
         const v = values[p.name] || {};
         return totalHits(v) > (v.at_bat ?? 0) && (v.at_bat ?? 0) > 0;
@@ -133,7 +132,9 @@ export function BaseballScoresheet({
 
   return (
     <div className="space-y-2">
-      <h3 className="font-semibold text-sm">{teamName}</h3>
+      <h3 className="font-semibold text-sm">
+        {teamName} <span className="text-muted-foreground font-normal">· {section}</span>
+      </h3>
       <div className="border rounded-md overflow-x-auto">
         <Table>
           <TableHeader>
@@ -168,7 +169,7 @@ export function BaseballScoresheet({
                   {filteredStats.map((statKey, colIdx) => (
                     <TableCell key={statKey} className="p-1">
                       <Input
-                        id={`bs-${teamId}-${idx}-${colIdx}`}
+                        id={`bs-${teamId}-${section}-${idx}-${colIdx}`}
                         type="number"
                         min="0"
                         value={playerValues[statKey] || ""}
@@ -218,6 +219,8 @@ function getShortLabel(statKey: string): string {
     error: "E",
     strikeout: "K",
     ejection: "EXP",
+    putout: "PO",
+    winning_pitcher: "PG",
     goal: "G",
     assist: "A",
     yellow_card: "TA",

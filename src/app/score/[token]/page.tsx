@@ -19,6 +19,9 @@ import {
   PlayerStats,
   buildScoresheetData,
   buildScoresheetEventsForTeam,
+  BASEBALL_SCORESHEET_STATS,
+  BASEBALL_OFFENSIVE_STATS,
+  BASEBALL_DEFENSIVE_STATS,
 } from "@/lib/baseball-scoresheet";
 
 // ============================================================
@@ -436,7 +439,9 @@ function MatchScreen({
     [match.events]
   );
   // Béisbol: planilla por pasos (1 = equipo local, 2 = visitante).
-  const [sheetStep, setSheetStep] = useState<1 | 2>(1);
+  // 4 pasos: 1=local ofensiva, 2=local defensiva, 3=visitante ofensiva,
+  // 4=visitante defensiva.
+  const [sheetStep, setSheetStep] = useState<1 | 2 | 3 | 4>(1);
   const [homeSheet, setHomeSheet] = useState<Record<string, PlayerStats>>(() =>
     buildScoresheetData(rawEvents, match.homeTeamId)
   );
@@ -528,8 +533,10 @@ function MatchScreen({
     // convención que usa el organizador. Otros deportes: eventos manuales.
     const outEvents = isBaseball
       ? [
-          ...buildScoresheetEventsForTeam(homeSheet, match.homeTeamId, homeSheetPlayers, enabledStats),
-          ...buildScoresheetEventsForTeam(awaySheet, match.awayTeamId, awaySheetPlayers, enabledStats),
+          // Set completo (no enabledStats): la planilla captura todo y se
+          // guarda todo, aunque el público solo vea las stats seleccionadas.
+          ...buildScoresheetEventsForTeam(homeSheet, match.homeTeamId, homeSheetPlayers, BASEBALL_SCORESHEET_STATS),
+          ...buildScoresheetEventsForTeam(awaySheet, match.awayTeamId, awaySheetPlayers, BASEBALL_SCORESHEET_STATS),
         ]
       : eventEntries.map((e) => ({
           teamId: e.teamId,
@@ -639,50 +646,81 @@ function MatchScreen({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium">Estadísticas individuales</p>
-            <span className="text-sm text-muted-foreground">Paso {sheetStep} de 2</span>
+            <span className="text-sm text-muted-foreground">Paso {sheetStep} de 4</span>
           </div>
 
-          <BaseballScoresheet
-            key={sheetStep === 1 ? "home" : "away"}
-            teamName={sheetStep === 1 ? home?.name ?? "Local" : away?.name ?? "Visitante"}
-            teamId={(sheetStep === 1 ? home?.id : away?.id) ?? ""}
-            players={sheetStep === 1 ? homeSheetPlayers : awaySheetPlayers}
-            stats={enabledStats}
-            values={sheetStep === 1 ? homeSheet : awaySheet}
-            onChange={(p, s, c) => sheetChange(sheetStep === 1 ? "home" : "away", p, s, c)}
-          />
+          {(() => {
+            const isHome = sheetStep <= 2;
+            const isOffensive = sheetStep === 1 || sheetStep === 3;
+            const side = isHome ? "home" : "away";
+            const teamName = isHome ? home?.name ?? "Local" : away?.name ?? "Visitante";
+            const teamId = (isHome ? home?.id : away?.id) ?? "";
+            const players = isHome ? homeSheetPlayers : awaySheetPlayers;
+            const values = isHome ? homeSheet : awaySheet;
+            const onChange = (p: string, s: MatchEventType, c: number) =>
+              sheetChange(side, p, s, c);
+            // Una planilla por paso: ofensiva → defensiva del mismo equipo,
+            // luego el otro equipo. Todas escriben la misma matriz del equipo.
+            return (
+              <BaseballScoresheet
+                key={`${side}-${isOffensive ? "off" : "def"}`}
+                teamName={teamName}
+                teamId={teamId}
+                section={isOffensive ? "Ofensiva" : "Defensiva"}
+                statKeys={isOffensive ? BASEBALL_OFFENSIVE_STATS : BASEBALL_DEFENSIVE_STATS}
+                players={players}
+                values={values}
+                onChange={onChange}
+              />
+            );
+          })()}
 
           <div className="flex gap-2">
-            {sheetStep === 1 ? (
-              <>
-                <Button variant="outline" className="flex-1 h-12" onClick={onBack}>
-                  <ChevronLeft className="h-4 w-4 mr-1" /> Volver
-                </Button>
-                <Button
-                  className="flex-1 h-12"
-                  onClick={() => {
-                    const hs = Number(homeScore);
-                    const as = Number(awayScore);
-                    if (!Number.isInteger(hs) || !Number.isInteger(as) || hs < 0 || as < 0) {
-                      toast.error("Ingresá el marcador (carreras) válido");
-                      return;
-                    }
-                    setSheetStep(2);
-                  }}
-                >
-                  {away?.name ?? "Equipo 2"} <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button variant="outline" className="flex-1 h-12" onClick={() => setSheetStep(1)}>
-                  <ChevronLeft className="h-4 w-4 mr-1" /> {home?.name ?? "Equipo 1"}
-                </Button>
-                <Button className="flex-1 h-12" onClick={handleSave} disabled={submitting}>
-                  {submitting ? "Guardando..." : "Guardar resultado"}
-                </Button>
-              </>
-            )}
+            {(() => {
+              const step = sheetStep;
+              const goBack = () =>
+                step === 1 ? onBack() : setSheetStep((step - 1) as 1 | 2 | 3 | 4);
+              const goNext = () => {
+                // Validar marcador solo al salir del primer paso.
+                if (step === 1) {
+                  const hs = Number(homeScore);
+                  const as = Number(awayScore);
+                  if (!Number.isInteger(hs) || !Number.isInteger(as) || hs < 0 || as < 0) {
+                    toast.error("Ingresá el marcador (carreras) válido");
+                    return;
+                  }
+                }
+                setSheetStep((step + 1) as 1 | 2 | 3 | 4);
+              };
+              const backLabel =
+                step === 1
+                  ? "Volver"
+                  : step === 3
+                  ? home?.name ?? "Equipo 1"
+                  : "Ofensiva";
+              const nextLabel =
+                step === 1
+                  ? "Defensiva"
+                  : step === 2
+                  ? away?.name ?? "Equipo 2"
+                  : "Defensiva";
+              return (
+                <>
+                  <Button variant="outline" className="flex-1 h-12" onClick={goBack}>
+                    <ChevronLeft className="h-4 w-4 mr-1" /> {backLabel}
+                  </Button>
+                  {step === 4 ? (
+                    <Button className="flex-1 h-12" onClick={handleSave} disabled={submitting}>
+                      {submitting ? "Guardando..." : "Guardar resultado"}
+                    </Button>
+                  ) : (
+                    <Button className="flex-1 h-12" onClick={goNext}>
+                      {nextLabel} <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

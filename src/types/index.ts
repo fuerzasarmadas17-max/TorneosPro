@@ -84,7 +84,8 @@ export type MatchEventType =
   | "block" | "point" | "steal" | "rebound"
   | "goals_against" | "strikeout" | "ejection"
   | "blue_card"
-  | "at_bat" | "walk" | "rbi" | "run_scored";
+  | "at_bat" | "walk" | "rbi" | "run_scored"
+  | "putout" | "winning_pitcher";
 
 export interface MatchEvent {
   id: string;
@@ -126,7 +127,7 @@ export interface StatDefinition {
 
 export const STAT_CATALOG: StatDefinition[] = [
   { key: "goal", label: "Gol", pluralLabel: "Goles", sportDefaults: ["futbol", "futsal", "microfutbol"] },
-  { key: "assist", label: "Asistencia", pluralLabel: "Asistencias", sportDefaults: ["futbol", "futsal", "microfutbol", "basketball"] },
+  { key: "assist", label: "Asistencia", pluralLabel: "Asistencias", sportDefaults: ["futbol", "futsal", "microfutbol", "basketball", "beisbol", "softball", "wiffleball"] },
   { key: "yellow_card", label: "Tarjeta Amarilla", pluralLabel: "Tarjetas Amarillas", sportDefaults: ["futbol", "futsal", "microfutbol", "volleyball"] },
   { key: "red_card", label: "Tarjeta Roja", pluralLabel: "Tarjetas Rojas", sportDefaults: ["futbol", "futsal", "microfutbol", "volleyball"] },
   { key: "blue_card", label: "Tarjeta Azul", pluralLabel: "Tarjetas Azules", sportDefaults: ["microfutbol"] },
@@ -140,6 +141,8 @@ export const STAT_CATALOG: StatDefinition[] = [
   { key: "rbi", label: "Carrera impulsada", pluralLabel: "Carreras impulsadas", sportDefaults: ["beisbol", "softball", "wiffleball"] },
   { key: "run_scored", label: "Carrera anotada", pluralLabel: "Carreras anotadas", sportDefaults: ["beisbol", "softball", "wiffleball"] },
   { key: "error", label: "Error", pluralLabel: "Errores", sportDefaults: ["beisbol", "softball", "wiffleball"] },
+  { key: "putout", label: "Out", pluralLabel: "Outs", sportDefaults: ["beisbol", "softball", "wiffleball"] },
+  { key: "winning_pitcher", label: "Pitcher ganador", pluralLabel: "Pitchers ganadores", sportDefaults: ["beisbol", "softball", "wiffleball"] },
   { key: "ace", label: "Ace", pluralLabel: "Aces", sportDefaults: [] },
   { key: "double_fault", label: "Doble Falta", pluralLabel: "Dobles Faltas", sportDefaults: [] },
   { key: "winner", label: "Winner", pluralLabel: "Winners", sportDefaults: [] },

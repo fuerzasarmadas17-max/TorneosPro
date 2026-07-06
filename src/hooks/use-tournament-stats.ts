@@ -6,6 +6,14 @@ import { MatchEventType, Tournament, getStatDefinition, getSportCategory } from 
 // (502 PA en 162 juegos); bajamos a 2.7 por lo corto de estas ligas.
 const QUALIFY_RATE = 2.7;
 
+// Fracción de los partidos del equipo en que un jugador debe haber
+// participado para calificar al ranking DEFENSIVO (Líderes Defensiva). A
+// diferencia del bateo, la defensa NO se puede calificar por volumen de
+// lances (PO+A+E) porque dependen mucho de la posición: un jardinero
+// recibe pocas bolas aunque sea titular. Por eso la base es "participó en
+// suficientes juegos", no "manejó suficientes lances".
+const DEFENSE_QUALIFY_PCT = 0.6;
+
 export interface PlayerStatEntry {
   playerName: string;
   teamId: string;
@@ -61,6 +69,19 @@ export interface BaseballPlayerStats {
   // solo entre los calificados, evitando que un OPS inflado en muestra chica
   // se trepe a la cima. El umbral crece solo a medida que avanzan los juegos.
   qualified: boolean;
+}
+
+// Fildeo por jugador (beisbol/softball/wiffleball): PO/A/E y % de fildeo.
+export interface BaseballFieldingStats {
+  playerName: string;
+  teamId: string;
+  po: number; // outs (putouts)
+  a: number;  // asistencias
+  e: number;  // errores
+  tc: number; // lances totales = PO + A + E
+  fld: number; // % de fildeo = (PO + A) / TC
+  gamesAppeared: number; // partidos completados en que el jugador tuvo algún evento
+  qualified: boolean;    // participó en >= DEFENSE_QUALIFY_PCT de los juegos del equipo
 }
 
 export function useTournamentStats(tournament: Tournament) {
@@ -207,6 +228,10 @@ export function useTournamentStats(tournament: Tournament) {
     // Baseball / softball / wiffleball: per-player AVG / OBP / SLG / OPS
     const isBaseball = getSportCategory(tournament.sport) === "baseball";
     const baseballMap = new Map<string, BaseballPlayerStats>();
+    const fieldingMap = new Map<string, BaseballFieldingStats>();
+    // Partidos en que cada jugador participó (tuvo >= 1 evento). Base del
+    // umbral de calificación DEFENSIVA.
+    const playerGames = new Map<string, number>();
     // Partidos completados por equipo (acumulado en todo el torneo, incluye
     // fase de grupos + playoffs). Es la base del umbral de calificación al
     // ranking, estilo MLB (apariciones al plato por partido jugado).
@@ -222,8 +247,15 @@ export function useTournamentStats(tournament: Tournament) {
       }
       for (const match of tournament.matches) {
         if (match.status !== "completed" || !match.events) continue;
+        // Jugadores ya contados como "participó" en ESTE partido, para no
+        // sumar el mismo juego dos veces al tener varios eventos.
+        const seenThisMatch = new Set<string>();
         for (const event of match.events) {
           const key = `${event.playerName}::${event.teamId}`;
+          if (!seenThisMatch.has(key)) {
+            seenThisMatch.add(key);
+            playerGames.set(key, (playerGames.get(key) || 0) + 1);
+          }
           let entry = baseballMap.get(key);
           if (!entry) {
             entry = {
@@ -246,6 +278,23 @@ export function useTournamentStats(tournament: Tournament) {
             case "strikeout": entry.k++; break;
             case "rbi": entry.rbi++; break;
             case "run_scored": entry.r++; break;
+          }
+
+          // Fildeo (defensiva): PO / A / E por jugador.
+          if (event.type === "putout" || event.type === "assist" || event.type === "error") {
+            let f = fieldingMap.get(key);
+            if (!f) {
+              f = {
+                playerName: event.playerName,
+                teamId: event.teamId,
+                po: 0, a: 0, e: 0, tc: 0, fld: 0,
+                gamesAppeared: 0, qualified: false,
+              };
+              fieldingMap.set(key, f);
+            }
+            if (event.type === "putout") f.po++;
+            else if (event.type === "assist") f.a++;
+            else f.e++;
           }
         }
       }
@@ -284,6 +333,26 @@ export function useTournamentStats(tournament: Tournament) {
       return b.ops - a.ops;
     });
 
-    return { leaderboards, hasStats, cardEntries, baseballPlayerStats };
+    // Fildeo: % = (PO + A) / lances. Calificación por juegos participados
+    // (no por lances, para no castigar a jardineros/pitchers por posición).
+    // Orden: calificados primero, luego por FLD% desc, desempate por más
+    // lances (más trabajo defenido con el mismo % vale más).
+    const baseballFieldingStats = Array.from(fieldingMap.values()).filter(
+      (f) => f.po > 0 || f.a > 0 || f.e > 0
+    );
+    for (const f of baseballFieldingStats) {
+      f.tc = f.po + f.a + f.e;
+      f.fld = f.tc > 0 ? (f.po + f.a) / f.tc : 0;
+      f.gamesAppeared = playerGames.get(`${f.playerName}::${f.teamId}`) || 0;
+      const games = teamGames.get(f.teamId) || 0;
+      f.qualified = games > 0 && f.gamesAppeared >= DEFENSE_QUALIFY_PCT * games;
+    }
+    baseballFieldingStats.sort((a, b) => {
+      if (a.qualified !== b.qualified) return a.qualified ? -1 : 1;
+      if (b.fld !== a.fld) return b.fld - a.fld;
+      return b.tc - a.tc;
+    });
+
+    return { leaderboards, hasStats, cardEntries, baseballPlayerStats, baseballFieldingStats };
   }, [tournament.matches, tournament.enabledStats, tournament.teamIds, tournament.sport]);
 }

@@ -1,5 +1,5 @@
 import { Tournament, Team, getSportCategory } from "@/types";
-import { StatLeaderboard, CardEntry, BaseballPlayerStats } from "@/hooks/use-tournament-stats";
+import { StatLeaderboard, CardEntry, BaseballPlayerStats, BaseballFieldingStats } from "@/hooks/use-tournament-stats";
 import { BASEBALL_LEADERBOARD_ORDER } from "@/lib/baseball-order";
 
 const fmt = (v: number) => v.toFixed(3).replace(/^0/, "");
@@ -18,6 +18,7 @@ interface StatsData {
   leaderboards: StatLeaderboard[];
   cardEntries: CardEntry[];
   baseballPlayerStats: BaseballPlayerStats[];
+  baseballFieldingStats: BaseballFieldingStats[];
 }
 
 /**
@@ -114,7 +115,7 @@ export async function downloadStatsPdf(
     : data.baseballPlayerStats.slice(0, topN);
 
   if (baseballRows.length > 0) {
-    writeSection("Estadísticas individuales");
+    writeSection("Líderes de Bateo");
     autoTable(doc, {
       startY: cursorY + 2,
       head: [
@@ -159,6 +160,37 @@ export async function downloadStatsPdf(
       ]),
       styles: { fontSize: 7, cellPadding: 1.2 },
       headStyles: { fillColor: [30, 30, 30], textColor: 255, fontSize: 7 },
+      margin: { left: margin, right: margin },
+      theme: "grid",
+    });
+    cursorY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+  }
+
+  // ============================================================
+  // 1b. Líderes Defensiva (fildeo: PO / A / E / Lances / FLD%)
+  // ============================================================
+
+  const fieldingRows = hasFilter
+    ? data.baseballFieldingStats.filter((f) => f.teamId === filterTeamId)
+    : data.baseballFieldingStats.slice(0, topN);
+
+  if (fieldingRows.length > 0) {
+    writeSection("Líderes Defensiva");
+    autoTable(doc, {
+      startY: cursorY + 2,
+      head: [["#", "Jugador", "Equipo", "PO", "A", "E", "Lances", "FLD%"]],
+      body: fieldingRows.map((f, i) => [
+        String(i + 1),
+        f.playerName,
+        teamsById.get(f.teamId)?.name ?? f.teamId,
+        String(f.po),
+        String(f.a),
+        String(f.e),
+        String(f.tc),
+        fmt(f.fld),
+      ]),
+      styles: { fontSize: 8, cellPadding: 1.5 },
+      headStyles: { fillColor: [30, 30, 30], textColor: 255, fontSize: 8 },
       margin: { left: margin, right: margin },
       theme: "grid",
     });
