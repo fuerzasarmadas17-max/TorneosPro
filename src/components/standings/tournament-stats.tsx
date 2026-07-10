@@ -153,7 +153,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
   );
 
   // Tabla general: solo jugadores calificados (umbral MLB por partidos),
-  // ya ordenados por OPS puro desde el hook. Al filtrar por equipo NO se
+  // ya ordenados por AVG (desempate por OPS) desde el hook. Al filtrar por equipo NO se
   // aplica el filtro de calificación (se muestran todos, marcando los no
   // calificados).
   const generalQualifiedPlayers = useMemo(

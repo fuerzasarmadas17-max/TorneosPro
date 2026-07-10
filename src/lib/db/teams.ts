@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { Team, Player } from "@/types";
+import { dedupePlayersByName } from "@/lib/name-utils";
 import { mapTeam } from "./mappers";
 
 export async function fetchTeamsByIds(
@@ -48,9 +49,10 @@ export async function createTeams(
     const teamId = teamRow.id as string;
     insertedIds.push(teamId);
 
-    if (team.players.length > 0) {
+    const teamPlayers = dedupePlayersByName(team.players);
+    if (teamPlayers.length > 0) {
       await supabase.from("players").insert(
-        team.players.map((p) => ({
+        teamPlayers.map((p) => ({
           team_id: teamId,
           name: p.name,
           age: p.age ?? null,
@@ -82,13 +84,18 @@ export async function updateTeamPlayers(
   teamId: string,
   players: Player[]
 ): Promise<boolean> {
+  // Deduplicar ANTES de borrar: el delete+insert no es transaccional, así que
+  // un insert que falle (p.ej. contra el unique de (team_id, name)) dejaría al
+  // equipo sin jugadores.
+  const unique = dedupePlayersByName(players);
+
   // Delete existing players
   await supabase.from("players").delete().eq("team_id", teamId);
 
-  if (players.length === 0) return true;
+  if (unique.length === 0) return true;
 
   const { error } = await supabase.from("players").insert(
-    players.map((p) => ({
+    unique.map((p) => ({
       team_id: teamId,
       name: p.name,
       age: p.age ?? null,

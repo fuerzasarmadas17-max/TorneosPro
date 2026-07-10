@@ -321,15 +321,17 @@ export function useTournamentStats(tournament: Tournament) {
     // 2.7 porque las ligas de este tipo son mucho más cortas y 3.1 dejaría
     // la tabla casi vacía. El umbral es dinámico: crece con los partidos, así
     // que en la jornada 1 casi cualquier titular califica y para playoffs
-    // (acumulado) solo los que jugaron con regularidad. El orden es por OPS
-    // puro; los calificados van primero y los no calificados después (también
-    // por OPS), para que nadie encabece por un OPS inflado en muestra chica.
+    // (acumulado) solo los que jugaron con regularidad. El orden es por AVG,
+    // y el OPS desempata a los que comparten promedio; los calificados van
+    // primero y los no calificados después (con el mismo criterio), para que
+    // nadie encabece por un promedio inflado en muestra chica.
     for (const e of baseballPlayerStats) {
       const games = teamGames.get(e.teamId) || 0;
       e.qualified = games > 0 && e.pa >= QUALIFY_RATE * games;
     }
     baseballPlayerStats.sort((a, b) => {
       if (a.qualified !== b.qualified) return a.qualified ? -1 : 1;
+      if (b.avg !== a.avg) return b.avg - a.avg;
       return b.ops - a.ops;
     });
 

@@ -23,3 +23,25 @@ export function getShortName(fullName: string): string {
   // 4+: tomamos posición 0 (primer nombre) y 2 (primer apellido).
   return `${parts[0]} ${parts[2]}`;
 }
+
+/**
+ * Quita jugadores con nombre repetido, conservando el primero.
+ *
+ * La identidad de un jugador es su nombre: `match_events` guarda
+ * `player_name` (texto) y no `player_id`, y la planilla indexa sus celdas
+ * por nombre. Dos filas de nómina con el mismo nombre apuntan entonces a la
+ * MISMA celda, y al serializar la planilla se emitiría un evento por cada
+ * fila: cada turno se guardaría dos veces. Peor, la planilla se reconstruye
+ * leyendo los eventos, así que cada nuevo guardado volvía a duplicar lo ya
+ * duplicado (×2, ×4, ×8...). Ver `buildScoresheetEventsForTeam`.
+ */
+export function dedupePlayersByName<T extends { name: string }>(
+  players: ReadonlyArray<T>
+): T[] {
+  const seen = new Set<string>();
+  return players.filter((p) => {
+    if (seen.has(p.name)) return false;
+    seen.add(p.name);
+    return true;
+  });
+}
