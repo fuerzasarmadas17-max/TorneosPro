@@ -35,6 +35,7 @@ import {
   BASEBALL_OFFENSIVE_STATS,
   BASEBALL_DEFENSIVE_STATS,
 } from "@/lib/baseball-scoresheet";
+import { dedupePlayersByName } from "@/lib/name-utils";
 
 interface EventEntry {
   type: MatchEventType;
@@ -86,8 +87,10 @@ export function MatchResultForm({
   const homeTeam = match.homeTeamId ? getTeamById(match.homeTeamId) : null;
   const awayTeam = match.awayTeamId ? getTeamById(match.awayTeamId) : null;
 
-  const homePlayers = homeTeam?.players || [];
-  const awayPlayers = awayTeam?.players || [];
+  // Dedupe: un nombre repetido en la nómina pinta dos filas que editan la
+  // misma celda de la planilla y al guardar duplican los eventos.
+  const homePlayers = dedupePlayersByName(homeTeam?.players || []);
+  const awayPlayers = dedupePlayersByName(awayTeam?.players || []);
 
   const stats = enabledStats || [];
   const isBaseball = sport ? getSportCategory(sport) === "baseball" : false;

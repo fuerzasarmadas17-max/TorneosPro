@@ -23,6 +23,7 @@ import {
   BASEBALL_OFFENSIVE_STATS,
   BASEBALL_DEFENSIVE_STATS,
 } from "@/lib/baseball-scoresheet";
+import { dedupePlayersByName } from "@/lib/name-utils";
 
 // ============================================================
 // Tipos del payload del endpoint
@@ -461,11 +462,13 @@ function MatchScreen({
     }));
   };
   // Players con teamId para el componente de planilla (espera Player[]).
-  const homeSheetPlayers: Player[] = (home?.players ?? []).map((p) => ({
+  // Sin dedupe, un nombre repetido en la nómina pinta dos filas que editan la
+  // misma celda: se ven como espejo y al guardar duplican los eventos.
+  const homeSheetPlayers: Player[] = dedupePlayersByName(home?.players ?? []).map((p) => ({
     ...p,
     teamId: home?.id ?? "",
   }));
-  const awaySheetPlayers: Player[] = (away?.players ?? []).map((p) => ({
+  const awaySheetPlayers: Player[] = dedupePlayersByName(away?.players ?? []).map((p) => ({
     ...p,
     teamId: away?.id ?? "",
   }));

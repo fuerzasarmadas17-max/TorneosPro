@@ -1,4 +1,5 @@
 import { MatchEventType, getStatDefinition } from "@/types";
+import { dedupePlayersByName } from "@/lib/name-utils";
 
 /**
  * Lógica compartida de la planilla (scoresheet) de béisbol/softball/wiffleball.
@@ -96,7 +97,9 @@ export function buildScoresheetEventsForTeam(
   if (!teamId) return [];
   const nonComputedStats = stats.filter((s) => !getStatDefinition(s)?.computed);
   const events: ScoresheetEvent[] = [];
-  for (const player of players) {
+  // Un nombre repetido en la nómina apunta a la misma celda de `data`;
+  // emitir sus eventos una vez por fila duplicaría cada turno.
+  for (const player of dedupePlayersByName(players)) {
     const v = data[player.name] || {};
     const hTotal = v.hit || 0;
     const singlesOnly = Math.max(
