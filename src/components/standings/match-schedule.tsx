@@ -83,6 +83,29 @@ export function MatchSchedule({ tournament, canEdit, isAuthenticated = false }: 
 
   const isRoundRobinType = tournament.format === "round-robin" || tournament.format === "group-playoff";
 
+  // --- Manual builder ---
+  // Se mantiene montado mientras manualMode esté activo, sin importar cuántos
+  // partidos existan. Antes vivía dentro del bloque `matches.length === 0`, así
+  // que se desmontaba solo al agregar el PRIMER cruce: el organizador quedaba
+  // encerrado en una única jornada y sin forma de volver a entrar.
+  if (manualMode && canEdit && isRoundRobinType) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">Programar Manualmente</h3>
+          <Button variant="ghost" size="sm" onClick={() => setManualMode(false)}>
+            {tournament.matches.length > 0 ? "Listo" : "Volver"}
+          </Button>
+        </div>
+        {tournament.format === "group-playoff" && tournament.groups ? (
+          <GroupJornadaBuilder tournament={tournament} />
+        ) : (
+          <JornadaBuilder tournament={tournament} />
+        )}
+      </div>
+    );
+  }
+
   // --- Empty state ---
   if (tournament.matches.length === 0 && canEdit) {
     // Elimination: bracket options
@@ -90,23 +113,6 @@ export function MatchSchedule({ tournament, canEdit, isAuthenticated = false }: 
       return <EliminationEmptySchedule tournament={tournament} />;
     }
     // Liga / Groups: jornada options
-    if (manualMode) {
-      return (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold">Programar Manualmente</h3>
-            <Button variant="ghost" size="sm" onClick={() => setManualMode(false)}>
-              Volver
-            </Button>
-          </div>
-          {tournament.format === "group-playoff" && tournament.groups ? (
-            <GroupJornadaBuilder tournament={tournament} />
-          ) : (
-            <JornadaBuilder tournament={tournament} />
-          )}
-        </div>
-      );
-    }
     return <RoundRobinEmptySchedule tournament={tournament} onManual={() => setManualMode(true)} />;
   }
 
@@ -124,8 +130,40 @@ export function MatchSchedule({ tournament, canEdit, isAuthenticated = false }: 
   // partidos ya programados / completos / aplazados — la duplicación
   // anterior generaba ruido visual y confundía al organizador.
 
+  // Cruces que todavía no están en ninguna jornada. Mientras queden pendientes
+  // el organizador tiene que poder reabrir el builder: antes, una vez creado el
+  // primer partido, no había ninguna vía de vuelta desde acá.
+  const hasPendingMatchups = (() => {
+    if (!isRoundRobinType) return false;
+    if (tournament.format === "group-playoff" && tournament.groups) {
+      return tournament.groups.some(
+        (g) =>
+          getPendingMatchups(
+            g.teamIds,
+            tournament.matches.filter((m) => m.phase === "group" && m.groupId === g.id),
+            tournament.doubleRoundRobin
+          ).length > 0
+      );
+    }
+    return (
+      getPendingMatchups(
+        tournament.teamIds,
+        tournament.matches.filter((m) => !m.phase),
+        tournament.doubleRoundRobin
+      ).length > 0
+    );
+  })();
+
   return (
     <div className="space-y-6">
+      {canEdit && hasPendingMatchups && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={() => setManualMode(true)}>
+            <LayoutList className="h-4 w-4 mr-1.5" />
+            Agregar jornadas
+          </Button>
+        </div>
+      )}
       <MatchDisplay
         tournament={tournament}
         canEdit={canEdit}
