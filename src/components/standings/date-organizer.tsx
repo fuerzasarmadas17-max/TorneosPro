@@ -85,7 +85,14 @@ export function DateOrganizer({ tournament, phaseFilter }: DateOrganizerProps) {
   const allUnscheduled = tournament.matches.filter(
     (m) => m.status === "unscheduled" && matchBelongsToPhase(m)
   );
-  if (allUnscheduled.length === 0) return null;
+  // Sin partidos esperando fecha no hay nada que organizar, pero el builder de
+  // abajo sigue haciendo falta para armar la próxima jornada. Antes acá había
+  // un `return null` seco que se llevaba puesto el "Agregar más partidos",
+  // dejando al organizador sin ninguna pantalla para crear la Jornada 2.
+  // (JornadaBuilderSection ya se auto-oculta si no quedan cruces pendientes.)
+  if (allUnscheduled.length === 0) {
+    return <JornadaBuilderSection tournament={tournament} />;
+  }
 
   // Team filter: lets the organizer quickly see which crossings are still
   // pending for a given team.
