@@ -939,20 +939,36 @@ export function fillPhase2Groups(
 }
 
 /**
- * Generate incremental round-robin matches when new teams are added to an
- * existing group. Produces matches between each new team and every existing
- * team, plus matches among the new teams themselves.
+ * Generate incremental round-robin matches when new teams are added to a
+ * tournament that ALREADY has a calendar. Produces matches between each new
+ * team and every existing team, plus matches among the new teams themselves.
+ *
+ * Los partidos salen con `round: 0`, que el tab Fechas muestra como "Extras"
+ * (date-organizer.tsx), y como `unscheduled` para que el organizador les
+ * asigne día y hora.
+ *
+ * `scope` los ata a un grupo; sin `scope` quedan sin `phase`/`groupId`, que es
+ * lo que espera una liga plana (round-robin sin grupos).
+ *
+ * Nunca regenera el calendario existente: solo agrega. Rehacerlo borraría los
+ * partidos ya jugados y sus resultados.
  */
-export function generateIncrementalMatchesForGroup(
-  groupId: string,
+export function generateIncrementalMatches(
   newTeamIds: string[],
   existingTeamIds: string[],
   tournamentId: string,
   matchCounterStart: number,
-  doubleRoundRobin?: boolean
+  doubleRoundRobin?: boolean,
+  scope?: { phase: "group"; groupId: string }
 ): Match[] {
   const matches: Match[] = [];
   let counter = matchCounterStart;
+
+  // Defensa: según cuándo haya refrescado el estado, el caller puede pasarnos
+  // los equipos nuevos también dentro de `existingTeamIds`. Sin este filtro
+  // generaríamos partidos de un equipo contra sí mismo y cruces duplicados.
+  const isNew = new Set(newTeamIds);
+  const existing = existingTeamIds.filter((id) => !isNew.has(id));
 
   const push = (home: string, away: string) => {
     matches.push({
@@ -966,15 +982,14 @@ export function generateIncrementalMatchesForGroup(
       awayScore: null,
       winnerId: null,
       status: "unscheduled",
-      phase: "group",
-      groupId,
+      ...(scope ? { phase: scope.phase, groupId: scope.groupId } : {}),
     });
     counter++;
   };
 
   // New teams vs existing teams
   for (const newId of newTeamIds) {
-    for (const existingId of existingTeamIds) {
+    for (const existingId of existing) {
       push(newId, existingId);
       if (doubleRoundRobin) push(existingId, newId);
     }
@@ -989,4 +1004,23 @@ export function generateIncrementalMatchesForGroup(
   }
 
   return matches;
+}
+
+/** Variante scopeada a un grupo. Wrapper sobre `generateIncrementalMatches`. */
+export function generateIncrementalMatchesForGroup(
+  groupId: string,
+  newTeamIds: string[],
+  existingTeamIds: string[],
+  tournamentId: string,
+  matchCounterStart: number,
+  doubleRoundRobin?: boolean
+): Match[] {
+  return generateIncrementalMatches(
+    newTeamIds,
+    existingTeamIds,
+    tournamentId,
+    matchCounterStart,
+    doubleRoundRobin,
+    { phase: "group", groupId }
+  );
 }

@@ -1,7 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { createTournament as dbCreateTournament } from "@/lib/db/tournaments";
 import { toDbMatch } from "@/lib/db/mappers";
-import { generateIncrementalMatchesForGroup } from "@/data/helpers";
+import {
+  generateIncrementalMatches,
+  generateIncrementalMatchesForGroup,
+} from "@/data/helpers";
 import {
   Tournament,
   TournamentGroup,
@@ -391,6 +394,59 @@ async function upgradeTournamentFromPayment(
         }
         if (newMatches.length > 0) {
           await supabaseAdmin.from("matches").insert(newMatches.map(toDbMatch));
+        }
+      }
+    } else if (dbTeamIds.length > 0) {
+      // Liga plana (round-robin sin grupos): el bloque de arriba solo corre si
+      // vinieron `groupAssignments`. Sin esta rama, pagar por equipos nuevos en
+      // una liga simple los dejaba SIN un solo partido — mismo agujero que en
+      // add-teams-dialog, pero del lado del servidor.
+      const { data: tRow } = await supabaseAdmin
+        .from("tournaments")
+        .select("format, double_round_robin")
+        .eq("id", tournamentId)
+        .single();
+
+      // Eliminación queda afuera: el bracket tiene tamaño fijo.
+      if (tRow?.format === "round-robin") {
+        const { data: matchRows } = await supabaseAdmin
+          .from("matches")
+          .select("match_number, phase")
+          .eq("tournament_id", tournamentId);
+
+        // Sin calendario todavía no hay nada que extender.
+        const flatMatches = (matchRows ?? []).filter((m) => !m.phase);
+        if (flatMatches.length > 0) {
+          const { data: teamRows } = await supabaseAdmin
+            .from("tournament_teams")
+            .select("team_id")
+            .eq("tournament_id", tournamentId);
+
+          // `tournament_teams` ya incluye a los recién insertados: los sacamos
+          // para que no se generen partidos de un equipo contra sí mismo.
+          const existingIds = (teamRows ?? [])
+            .map((t) => t.team_id as string)
+            .filter((id) => !dbTeamIds.includes(id));
+
+          const counter =
+            Math.max(
+              0,
+              ...(matchRows ?? []).map((m) => Number(m.match_number) || 0)
+            ) + 1;
+
+          const newMatches = generateIncrementalMatches(
+            dbTeamIds,
+            existingIds,
+            tournamentId,
+            counter,
+            Boolean(tRow?.double_round_robin)
+          );
+
+          if (newMatches.length > 0) {
+            await supabaseAdmin
+              .from("matches")
+              .insert(newMatches.map(toDbMatch));
+          }
         }
       }
     }

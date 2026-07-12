@@ -28,7 +28,10 @@ import {
   TIER_LABELS,
   formatCOP,
 } from "@/lib/pricing";
-import { generateIncrementalMatchesForGroup } from "@/data/helpers";
+import {
+  generateIncrementalMatches,
+  generateIncrementalMatchesForGroup,
+} from "@/data/helpers";
 import { redirectToWompiCheckout, paymentReturnUrl } from "@/lib/payments/wompi-redirect";
 import { Tournament, Team, TournamentGroup } from "@/types";
 import { toast } from "sonner";
@@ -207,6 +210,37 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
     }
   };
 
+  // Liga plana (round-robin sin grupos). Hasta ahora esta rama NO existía: al
+  // agregar un equipo no se generaba ni un partido, así que quedaba en la tabla
+  // de posiciones con PJ 0 para siempre y nadie avisaba. Extendemos el
+  // calendario igual que en la rama de grupos.
+  const generateLigaMatches = async (newTeamIds: string[]) => {
+    // Eliminación queda afuera a propósito: el bracket tiene un tamaño fijo y
+    // re-armarlo pisaría llaves ya definidas.
+    if (tournament.format !== "round-robin") return;
+
+    // Sin calendario todavía no hay nada que extender: los cruces se generan
+    // enteros cuando el organizador arme el fixture.
+    const existingMatches = tournament.matches.filter((m) => !m.phase);
+    if (existingMatches.length === 0) return;
+
+    const counter =
+      Math.max(0, ...tournament.matches.map((m) => m.matchNumber)) + 1;
+
+    const newMatches = generateIncrementalMatches(
+      newTeamIds,
+      tournament.teamIds,
+      tournament.id,
+      counter,
+      tournament.doubleRoundRobin
+    );
+
+    if (newMatches.length > 0) {
+      await addMatchesToTournament(tournament.id, newMatches);
+      toast.success(`${newMatches.length} partidos nuevos generados`);
+    }
+  };
+
   // Free add (no payment): genuine free add, or a 100%-bono upgrade.
   const handleFreeAdd = async (setNewTier: boolean) => {
     // Defensa: aunque el botón "Confirmar" está disabled si !allAssigned,
@@ -226,6 +260,8 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
     }
     if (hasGroups) {
       await assignToGroupsAndGenerateMatches(teamIds);
+    } else {
+      await generateLigaMatches(teamIds);
     }
     if (setNewTier || (currentTier && getTier(newTotal) !== currentTier)) {
       await updateTournamentProps(tournament.id, {
