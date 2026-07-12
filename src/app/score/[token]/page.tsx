@@ -417,14 +417,16 @@ function MatchScreen({
       playerName: e.player_name,
     }))
   );
+  // Los puntos se guardan como texto: con number el campo arranca en 0 y no se
+  // puede vaciar para escribir encima (todo intento vuelve a 0).
   const [sets, setSets] = useState(() =>
     match.sets.length > 0
       ? match.sets.map((s) => ({
           setNumber: s.set_number,
-          homePoints: s.home_points,
-          awayPoints: s.away_points,
+          homePoints: String(s.home_points),
+          awayPoints: String(s.away_points),
         }))
-      : [{ setNumber: 1, homePoints: 0, awayPoints: 0 }]
+      : [{ setNumber: 1, homePoints: "", awayPoints: "" }]
   );
   const [submitting, setSubmitting] = useState(false);
 
@@ -501,11 +503,11 @@ function MatchScreen({
   const addSet = () => {
     setSets((prev) => [
       ...prev,
-      { setNumber: prev.length + 1, homePoints: 0, awayPoints: 0 },
+      { setNumber: prev.length + 1, homePoints: "", awayPoints: "" },
     ]);
   };
 
-  const updateSet = (idx: number, patch: Partial<{ homePoints: number; awayPoints: number }>) => {
+  const updateSet = (idx: number, patch: Partial<{ homePoints: string; awayPoints: string }>) => {
     setSets((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
   };
 
@@ -547,6 +549,32 @@ function MatchScreen({
           type: e.type,
         }));
 
+    // Voley: los sets vacíos se ignoran; uno a medio cargar es un error.
+    // El servidor exige enteros 0-99, así que convertimos acá.
+    const outSets: { setNumber: number; homePoints: number; awayPoints: number }[] = [];
+    if (isVolleyball) {
+      for (const s of sets) {
+        const hp = s.homePoints.trim();
+        const ap = s.awayPoints.trim();
+        if (hp === "" && ap === "") continue;
+        const hpNum = Number(hp);
+        const apNum = Number(ap);
+        if (
+          hp === "" || ap === "" ||
+          !Number.isInteger(hpNum) || !Number.isInteger(apNum) ||
+          hpNum < 0 || apNum < 0 || hpNum > 99 || apNum > 99
+        ) {
+          toast.error(`Set ${s.setNumber}: ingresá los puntos de ambos equipos`);
+          return;
+        }
+        outSets.push({
+          setNumber: outSets.length + 1,
+          homePoints: hpNum,
+          awayPoints: apNum,
+        });
+      }
+    }
+
     setSubmitting(true);
     try {
       const res = await fetch(
@@ -558,7 +586,7 @@ function MatchScreen({
             scorerName,
             homeScore: hs,
             awayScore: as,
-            sets: isVolleyball ? sets : undefined,
+            sets: isVolleyball ? outSets : undefined,
             events: outEvents.map((e) => ({
               teamId: e.teamId,
               playerName: e.playerName,
@@ -622,8 +650,10 @@ function MatchScreen({
               inputMode="numeric"
               min={0}
               max={999}
+              placeholder="0"
               value={homeScore}
               onChange={(e) => setHomeScore(e.target.value)}
+              onFocus={(e) => e.target.select()}
               className="text-2xl font-bold text-center h-14"
             />
           </div>
@@ -634,8 +664,10 @@ function MatchScreen({
               inputMode="numeric"
               min={0}
               max={999}
+              placeholder="0"
               value={awayScore}
               onChange={(e) => setAwayScore(e.target.value)}
+              onFocus={(e) => e.target.select()}
               className="text-2xl font-bold text-center h-14"
             />
           </div>
@@ -742,19 +774,25 @@ function MatchScreen({
               <Badge variant="secondary" className="shrink-0">Set {s.setNumber}</Badge>
               <Input
                 type="number"
+                inputMode="numeric"
                 min={0}
                 max={99}
+                placeholder="0"
                 value={s.homePoints}
-                onChange={(e) => updateSet(i, { homePoints: Number(e.target.value) || 0 })}
+                onChange={(e) => updateSet(i, { homePoints: e.target.value })}
+                onFocus={(e) => e.target.select()}
                 className="text-center"
               />
               <span className="text-muted-foreground">-</span>
               <Input
                 type="number"
+                inputMode="numeric"
                 min={0}
                 max={99}
+                placeholder="0"
                 value={s.awayPoints}
-                onChange={(e) => updateSet(i, { awayPoints: Number(e.target.value) || 0 })}
+                onChange={(e) => updateSet(i, { awayPoints: e.target.value })}
+                onFocus={(e) => e.target.select()}
                 className="text-center"
               />
               {sets.length > 1 && (
