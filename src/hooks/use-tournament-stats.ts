@@ -189,10 +189,11 @@ export function useTournamentStats(tournament: Tournament) {
           const teamMap = teamMaps.get(statKey);
           if (!teamMap) return null;
           // goals_against: sort ascending (fewer is better)
+          // Sin recortar: quien consume decide cuántos mostrar. Recortar acá
+          // rompía el filtro por equipo (ver `leaders` más abajo).
           const teamLeaders = Array.from(teamMap.values())
             .filter((t) => t.matchesPlayed > 0)
-            .sort((a, b) => a.value - b.value)
-            .slice(0, 10);
+            .sort((a, b) => a.value - b.value);
 
           return {
             statKey,
@@ -206,9 +207,13 @@ export function useTournamentStats(tournament: Tournament) {
 
         const statMap = maps.get(statKey);
         if (!statMap) return null;
+        // Lista completa ordenada, sin recortar. El recorte lo hace cada
+        // consumidor: la card muestra top 5, el modal top 10, el PDF el topN
+        // elegido, y al filtrar por equipo se muestran todos sus jugadores.
+        // Recortar acá dejaba fuera del filtro por equipo a los jugadores que
+        // no entraban en el top 10 global del torneo.
         const leaders = Array.from(statMap.values())
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 10);
+          .sort((a, b) => b.count - a.count);
 
         return {
           statKey,
