@@ -9,6 +9,9 @@ export interface Sponsor {
   // apunta a un item de la biblioteca, editar la imagen de la biblioteca se
   // propaga a todos los usos. La URL (linkUrl) sigue siendo por-torneo.
   librarySponsorId?: string;
+  // Solo para sponsors de organización (biblioteca): si aparece en el perfil
+  // público del organizador. El organizador lo elige explícitamente.
+  showOnProfile?: boolean;
 }
 
 export type Sport =

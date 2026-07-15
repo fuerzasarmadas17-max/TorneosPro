@@ -76,6 +76,7 @@ export function mapSponsor(row: Record<string, unknown>): Sponsor {
     linkUrl: row.link_url as string,
     name: (row.name as string) || undefined,
     librarySponsorId: (row.library_sponsor_id as string) ?? undefined,
+    showOnProfile: (row.show_on_profile as boolean) ?? false,
   };
 }
 

@@ -27,7 +27,7 @@ import { generateSlug } from "@/data/users";
 import { isSlugReserved } from "@/lib/reserved-slugs";
 import Link from "next/link";
 import { ExternalLink, Upload, Trash2 } from "lucide-react";
-import { SponsorForm } from "@/components/sponsors/sponsor-form";
+import { ProfileSponsorsCuration } from "@/components/profile/profile-sponsors-curation";
 import { supabase } from "@/lib/supabase";
 
 const emptyProfile: OrganizationProfile = {
@@ -88,7 +88,11 @@ export function OrganizationProfileForm() {
       return;
     }
 
-    const result = await updateOrganizationProfile(formData);
+    // La biblioteca de patrocinadores NO se gestiona acá (se gestiona en la
+    // sección Logos, y la selección para el perfil vive en el flag
+    // show_on_profile que persiste al toque). Pasamos sponsors: undefined para
+    // que el guardado del perfil no reescriba/borre la biblioteca.
+    const result = await updateOrganizationProfile({ ...formData, sponsors: undefined });
 
     if (result.success) {
       toast.success("Perfil actualizado exitosamente");
@@ -407,19 +411,8 @@ export function OrganizationProfileForm() {
           </div>
           )}
 
-          {/* ===== Paso 3 — Patrocinadores ===== */}
-          {step === 3 && (
-          <div className="space-y-4">
-        <h3 className="font-semibold text-lg">Patrocinadores</h3>
-        <p className="text-sm text-muted-foreground">
-          Los patrocinadores se mostraran en tu perfil publico y en todos tus torneos
-        </p>
-        <SponsorForm
-          sponsors={formData.sponsors || []}
-          onChange={(sponsors) => setFormData({ ...formData, sponsors })}
-        />
-      </div>
-          )}
+          {/* ===== Paso 3 — Patrocinadores del perfil ===== */}
+          {step === 3 && <ProfileSponsorsCuration />}
 
           {/* Navegación entre pasos */}
           <div className="flex gap-2 pt-2">

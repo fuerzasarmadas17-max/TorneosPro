@@ -52,11 +52,18 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-background">
       <ProfileHeader profile={user.organizationProfile} />
-      {user.organizationProfile.sponsors && user.organizationProfile.sponsors.length > 0 && (
-        <div className="container mx-auto px-4 pt-6">
-          <SponsorBanner sponsors={user.organizationProfile.sponsors} orgId={user.id} />
-        </div>
-      )}
+      {(() => {
+        // El perfil público muestra SOLO los patrocinadores marcados por el
+        // organizador (show_on_profile). La biblioteca completa no se publica.
+        const profileSponsors = (user.organizationProfile.sponsors || []).filter(
+          (s) => s.showOnProfile
+        );
+        return profileSponsors.length > 0 ? (
+          <div className="container mx-auto px-4 pt-6">
+            <SponsorBanner sponsors={profileSponsors} orgId={user.id} />
+          </div>
+        ) : null;
+      })()}
       <div className="container mx-auto px-4 py-8">
         <ProfileTournaments
           tournaments={userTournaments}

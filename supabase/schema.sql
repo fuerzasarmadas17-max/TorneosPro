@@ -96,6 +96,9 @@ CREATE TABLE sponsors (
   image_url TEXT NOT NULL,
   link_url TEXT NOT NULL,
   name TEXT DEFAULT '', -- nombre opcional para la biblioteca (ej. "Coca-Cola")
+  -- Solo para sponsors de organización: si se muestra en el perfil público.
+  -- El perfil muestra únicamente los marcados; agregar a un torneo no lo marca.
+  show_on_profile BOOLEAN NOT NULL DEFAULT false,
   -- Sponsor puede pertenecer a una org, a un torneo, o a ambos
   organization_profile_id UUID REFERENCES organization_profiles(id) ON DELETE CASCADE,
   tournament_id UUID, -- FK se agrega despues de crear la tabla tournaments
