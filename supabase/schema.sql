@@ -95,9 +95,14 @@ CREATE TABLE sponsors (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   image_url TEXT NOT NULL,
   link_url TEXT NOT NULL,
+  name TEXT DEFAULT '', -- nombre opcional para la biblioteca (ej. "Coca-Cola")
   -- Sponsor puede pertenecer a una org, a un torneo, o a ambos
   organization_profile_id UUID REFERENCES organization_profiles(id) ON DELETE CASCADE,
   tournament_id UUID, -- FK se agrega despues de crear la tabla tournaments
+  -- Referencia al logo canónico de la biblioteca (fila a nivel organización).
+  -- Cuando está seteado, la imagen se propaga desde la biblioteca; la URL de
+  -- destino sigue siendo la de esta fila (independiente por torneo).
+  library_sponsor_id UUID REFERENCES sponsors(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
   CONSTRAINT sponsor_has_owner CHECK (
@@ -107,6 +112,7 @@ CREATE TABLE sponsors (
 
 CREATE INDEX idx_sponsors_org ON sponsors(organization_profile_id);
 CREATE INDEX idx_sponsors_tournament ON sponsors(tournament_id);
+CREATE INDEX idx_sponsors_library_ref ON sponsors(library_sponsor_id);
 
 -- ========================
 -- TEAMS
@@ -116,10 +122,29 @@ CREATE TABLE teams (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   logo_url TEXT,
+  -- Referencia al logo canónico de la biblioteca de clubes. La imagen se
+  -- propaga desde club_logos; logo_url queda como copia para render rápido.
+  club_logo_id UUID, -- FK se agrega después de crear club_logos
   primary_color TEXT,
   secondary_color TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX idx_teams_club_logo ON teams(club_logo_id);
+
+-- Biblioteca de logos de clubes (a nivel organización). Un club juega en varias
+-- categorías (varias filas en teams); su logo se carga una vez acá y se reutiliza.
+CREATE TABLE club_logos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_profile_id UUID NOT NULL REFERENCES organization_profiles(id) ON DELETE CASCADE,
+  name TEXT NOT NULL DEFAULT '',
+  image_url TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_club_logos_org ON club_logos(organization_profile_id);
+
+ALTER TABLE teams
+  ADD CONSTRAINT teams_club_logo_fk
+  FOREIGN KEY (club_logo_id) REFERENCES club_logos(id) ON DELETE SET NULL;
 
 -- ========================
 -- PLAYERS
@@ -341,6 +366,7 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organization_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE social_links ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sponsors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE club_logos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE players ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tournaments ENABLE ROW LEVEL SECURITY;
@@ -526,6 +552,25 @@ CREATE POLICY "Creador gestiona sponsors de org"
     OR
     tournament_id IN (
       SELECT id FROM tournaments WHERE created_by = auth.uid()
+    )
+  );
+
+-- Club logos: visibles para todos; gestionados por su organización / admin.
+CREATE POLICY "Club logos visibles"
+  ON club_logos FOR SELECT
+  USING (true);
+
+CREATE POLICY "Admin gestiona club logos"
+  ON club_logos FOR ALL
+  USING (
+    EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin')
+  );
+
+CREATE POLICY "Creador gestiona club logos de org"
+  ON club_logos FOR ALL
+  USING (
+    organization_profile_id IN (
+      SELECT id FROM organization_profiles WHERE user_id = auth.uid()
     )
   );
 

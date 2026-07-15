@@ -214,6 +214,8 @@ export async function createTournament(
       tournament.sponsors.map((s) => ({
         image_url: s.imageUrl,
         link_url: s.linkUrl,
+        name: s.name ?? "",
+        library_sponsor_id: s.librarySponsorId ?? null,
         tournament_id: tournamentId,
       }))
     );
@@ -311,8 +313,8 @@ export async function updatePlayoffConfig(
 
 export async function updateTournamentSponsors(
   tournamentId: string,
-  sponsors: { imageUrl: string; linkUrl: string }[]
-): Promise<{ id: string; imageUrl: string; linkUrl: string }[] | null> {
+  sponsors: { imageUrl: string; linkUrl: string; name?: string; librarySponsorId?: string }[]
+): Promise<{ id: string; imageUrl: string; linkUrl: string; name?: string; librarySponsorId?: string }[] | null> {
   // Delete existing tournament sponsors
   await supabase
     .from("sponsors")
@@ -325,9 +327,11 @@ export async function updateTournamentSponsors(
     sponsors.map((s) => ({
       image_url: s.imageUrl,
       link_url: s.linkUrl,
+      name: s.name ?? "",
+      library_sponsor_id: s.librarySponsorId ?? null,
       tournament_id: tournamentId,
     }))
-  ).select("id, image_url, link_url");
+  ).select("id, image_url, link_url, name, library_sponsor_id");
 
   if (error) return null;
 
@@ -335,6 +339,8 @@ export async function updateTournamentSponsors(
     id: row.id as string,
     imageUrl: row.image_url as string,
     linkUrl: row.link_url as string,
+    name: (row.name as string) || undefined,
+    librarySponsorId: (row.library_sponsor_id as string) ?? undefined,
   }));
 }
 

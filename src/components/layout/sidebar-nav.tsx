@@ -16,12 +16,14 @@ import {
   Ticket,
   BarChart3,
   Megaphone,
+  Images,
 } from "lucide-react";
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Torneos", href: "/tournaments", icon: Trophy },
   { label: "Crear Torneo", href: "/tournaments/create", icon: PlusCircle },
+  { label: "Logos", href: "/dashboard/logos", icon: Images },
   { label: "Configuracion", href: "/dashboard/settings", icon: Settings },
 ];
 
@@ -55,7 +57,13 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
       {/* Nav links */}
       <nav className="flex-1 px-3 py-4 space-y-1">
         {navItems
-          .filter((item) => !(user?.role === "admin" && item.href === "/dashboard/settings"))
+          .filter(
+            (item) =>
+              !(
+                user?.role === "admin" &&
+                (item.href === "/dashboard/settings" || item.href === "/dashboard/logos")
+              )
+          )
           .map((item) => {
           const Icon = item.icon;
           const isActive =

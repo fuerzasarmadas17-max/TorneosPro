@@ -42,6 +42,9 @@ import { getSportCategory, Tournament, Sponsor, Match } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { SponsorBanner } from "@/components/sponsors/sponsor-banner";
 import { SponsorForm } from "@/components/sponsors/sponsor-form";
+import { SponsorPicker } from "@/components/sponsors/sponsor-picker";
+import { ensureLibrarySponsor } from "@/lib/db/sponsors";
+import { TeamMark } from "@/components/teams/team-mark";
 import { AddTeamsDialog } from "@/components/tournaments/add-teams-dialog";
 import {
   DropdownMenu,
@@ -266,18 +269,7 @@ function TeamsRosterSection({
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    {(team.primaryColor || team.secondaryColor) && (
-                      <div className="w-6 h-6 rounded border border-border overflow-hidden flex shrink-0">
-                        <div
-                          className="w-1/2 h-full"
-                          style={{ backgroundColor: team.primaryColor || "#fff" }}
-                        />
-                        <div
-                          className="w-1/2 h-full"
-                          style={{ backgroundColor: team.secondaryColor || "#000" }}
-                        />
-                      </div>
-                    )}
+                    <TeamMark team={team} size={32} />
                     <CardTitle className="text-base">{team.name}</CardTitle>
                     {dq && (
                       <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
@@ -600,15 +592,35 @@ export function TournamentDetail({
   })();
 
   // Combine org sponsors + tournament sponsors (no duplicates by id)
-  const allSponsors = (() => {
-    const combined = [...(orgSponsors || []), ...(tournament.sponsors || [])];
-    const seen = new Set<string>();
-    return combined.filter((s) => {
-      if (seen.has(s.id)) return false;
-      seen.add(s.id);
-      return true;
+  // Agrega sponsors elegidos en el picker a la lista del torneo. Para cada uno
+  // que no venga ya linkeado a la biblioteca (los subidos nuevos), aseguramos
+  // su logo canónico en la biblioteca (dedup por imageUrl) y lo dejamos linkeado
+  // vía librarySponsorId → así todo lo que se coloca queda reutilizable y editar
+  // la imagen en la biblioteca luego se propaga a este torneo.
+  const handleAddSponsors = async (picked: Sponsor[]) => {
+    const orgId = user?.organizationProfile?.id;
+    const resolved = await Promise.all(
+      picked.map(async (s) => {
+        if (s.librarySponsorId || !orgId) return s;
+        const libId = await ensureLibrarySponsor(orgId, {
+          imageUrl: s.imageUrl,
+          linkUrl: s.linkUrl,
+          name: s.name,
+        });
+        return libId ? { ...s, librarySponsorId: libId } : s;
+      })
+    );
+    updateTournamentProps(tournament.id, {
+      sponsors: [...(tournament.sponsors || []), ...resolved],
     });
-  })();
+  };
+
+  // Cada torneo muestra SOLO sus propios patrocinadores (los que se le
+  // agregaron explícitamente). Antes se anteponían los de la organización, lo
+  // que los hacía aparecer en todos los torneos. Ahora la biblioteca (org) es
+  // solo el catálogo para elegir en el picker (prop `orgSponsors`), no se
+  // auto-muestra. Ver biblioteca-de-logos: "cada torneo elige cuáles".
+  const allSponsors = tournament.sponsors || [];
 
   return (
     <div className="space-y-6">
@@ -783,13 +795,31 @@ export function TournamentDetail({
       {/* Edit tournament sponsors */}
       {(canEditSponsors ?? canEdit) && (
         <div className="space-y-2">
-          <p className="text-sm font-medium">Patrocinadores del torneo</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium">Patrocinadores del torneo</p>
+            {(tournament.sponsors?.length ?? 0) < 6 && (
+              <SponsorPicker
+                library={orgSponsors || []}
+                existingUrls={(tournament.sponsors || []).map((s) => s.imageUrl)}
+                remainingSlots={6 - (tournament.sponsors?.length ?? 0)}
+                onAdd={handleAddSponsors}
+                trigger={
+                  <Button type="button" variant="outline" size="sm">
+                    <Plus className="mr-1 h-4 w-4" />
+                    Añadir patrocinador
+                  </Button>
+                }
+              />
+            )}
+          </div>
           <SponsorForm
             sponsors={tournament.sponsors || []}
             onChange={(sponsors) =>
               updateTournamentProps(tournament.id, { sponsors })
             }
             maxSponsors={6}
+            hideAdd
+            hideName
           />
         </div>
       )}

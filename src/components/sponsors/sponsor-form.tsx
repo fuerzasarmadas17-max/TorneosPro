@@ -30,6 +30,14 @@ interface SponsorFormProps {
   sponsors: Sponsor[];
   onChange: (sponsors: Sponsor[]) => void;
   maxSponsors?: number;
+  // Oculta la sección de "agregar nuevo". Se usa en el torneo, donde el alta
+  // pasa por el picker de biblioteca (para que todo lo agregado quede linkeado
+  // a la biblioteca). La lista de edición (URL/nombre/orden/borrar) se mantiene.
+  hideAdd?: boolean;
+  // Oculta el campo de nombre en cada fila, dejando solo la URL. Se usa en el
+  // torneo: el nombre es canónico de la biblioteca (se edita en Logos) y acá
+  // sumaría ruido con 6 patrocinadores. La URL de destino sigue editable.
+  hideName?: boolean;
 }
 
 function SortableSponsor({
@@ -37,13 +45,17 @@ function SortableSponsor({
   index,
   onReplace: triggerReplace,
   onUrlChange,
+  onNameChange,
   onRemove,
+  hideName = false,
 }: {
   sponsor: Sponsor;
   index: number;
   onReplace: (index: number) => void;
   onUrlChange: (index: number, url: string) => void;
+  onNameChange: (index: number, name: string) => void;
   onRemove: (index: number) => void;
+  hideName?: boolean;
 }) {
   const {
     attributes,
@@ -93,13 +105,30 @@ function SortableSponsor({
         </div>
       </button>
 
-      {/* URL input */}
-      <Input
-        value={sponsor.linkUrl}
-        onChange={(e) => onUrlChange(index, e.target.value)}
-        placeholder="URL del patrocinador"
-        className="h-8 text-xs flex-1"
-      />
+      {/* Inputs: en el torneo (hideName) solo la URL; en la biblioteca, nombre + URL */}
+      {hideName ? (
+        <Input
+          value={sponsor.linkUrl}
+          onChange={(e) => onUrlChange(index, e.target.value)}
+          placeholder="URL del patrocinador (opcional)"
+          className="h-8 text-xs flex-1 min-w-0"
+        />
+      ) : (
+        <div className="flex flex-col gap-1 flex-1 min-w-0">
+          <Input
+            value={sponsor.name ?? ""}
+            onChange={(e) => onNameChange(index, e.target.value)}
+            placeholder="Nombre (ej. Coca-Cola)"
+            className="h-8 text-xs"
+          />
+          <Input
+            value={sponsor.linkUrl}
+            onChange={(e) => onUrlChange(index, e.target.value)}
+            placeholder="URL del patrocinador (opcional)"
+            className="h-8 text-xs"
+          />
+        </div>
+      )}
 
       {/* Delete */}
       <Button
@@ -119,10 +148,13 @@ export function SponsorForm({
   sponsors,
   onChange,
   maxSponsors = 10,
+  hideAdd = false,
+  hideName = false,
 }: SponsorFormProps) {
   const [imageUrl, setImageUrl] = useState("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [linkUrl, setLinkUrl] = useState("");
+  const [name, setName] = useState("");
   const [uploading, setUploading] = useState(false);
   const [replacingIndex, setReplacingIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -208,16 +240,18 @@ export function SponsorForm({
   };
 
   const handleAdd = () => {
-    if (!imageUrl.trim()) return;
+    if (!imageUrl.trim() || !name.trim()) return;
     const newSponsor: Sponsor = {
       id: `sponsor-${Date.now()}`,
       imageUrl: imageUrl.trim(),
       linkUrl: linkUrl.trim() || "",
+      name: name.trim() || undefined,
     };
     onChange([...sponsors, newSponsor]);
     setImageUrl("");
     setImagePreview(null);
     setLinkUrl("");
+    setName("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -228,6 +262,12 @@ export function SponsorForm({
   const handleUrlChange = (index: number, url: string) => {
     const updated = [...sponsors];
     updated[index] = { ...updated[index], linkUrl: url };
+    onChange(updated);
+  };
+
+  const handleNameChange = (index: number, value: string) => {
+    const updated = [...sponsors];
+    updated[index] = { ...updated[index], name: value || undefined };
     onChange(updated);
   };
 
@@ -270,7 +310,9 @@ export function SponsorForm({
                     replaceInputRef.current?.click();
                   }}
                   onUrlChange={handleUrlChange}
+                  onNameChange={handleNameChange}
                   onRemove={handleRemove}
+                  hideName={hideName}
                 />
               ))}
             </div>
@@ -279,7 +321,7 @@ export function SponsorForm({
       )}
 
       {/* Add new */}
-      {sponsors.length < maxSponsors && (
+      {!hideAdd && sponsors.length < maxSponsors && (
         <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
           {/* Image upload */}
           <div className="space-y-1.5">
@@ -331,6 +373,16 @@ export function SponsorForm({
             )}
           </div>
 
+          {/* Name (obligatorio) */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Nombre <span className="text-destructive">*</span></Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="ej. Coca-Cola"
+            />
+          </div>
+
           {/* Link URL */}
           <div className="space-y-1.5">
             <Label className="text-xs">URL de destino (opcional)</Label>
@@ -347,7 +399,7 @@ export function SponsorForm({
             variant="outline"
             size="sm"
             onClick={handleAdd}
-            disabled={!imageUrl.trim() || uploading}
+            disabled={!imageUrl.trim() || !name.trim() || uploading}
           >
             <Plus className="h-4 w-4 mr-2" />
             Agregar Patrocinador
@@ -355,7 +407,7 @@ export function SponsorForm({
         </div>
       )}
 
-      {sponsors.length >= maxSponsors && (
+      {!hideAdd && sponsors.length >= maxSponsors && (
         <p className="text-xs text-muted-foreground">
           Maximo de {maxSponsors} patrocinadores alcanzado
         </p>

@@ -15,8 +15,10 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Team, Player } from "@/types";
 import { useTournaments } from "@/context/tournament-context";
+import { useAuth } from "@/context/auth-context";
+import { TeamLogoPicker } from "@/components/logos/team-logo-picker";
 import { toast } from "sonner";
-import { Plus, Trash2, Users, Upload, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, Users, Upload, ChevronDown, ChevronUp, ImagePlus } from "lucide-react";
 import * as XLSX from "xlsx";
 
 interface TeamRosterDialogProps {
@@ -33,10 +35,14 @@ interface PlayerEntry {
 
 export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
   const { updateTeamPlayers, updateTeam } = useTournaments();
+  const { user } = useAuth();
+  const orgId = user?.organizationProfile?.id;
   const [open, setOpen] = useState(false);
   const [teamName, setTeamName] = useState(team.name);
   const [primaryColor, setPrimaryColor] = useState(team.primaryColor || "#ffffff");
   const [secondaryColor, setSecondaryColor] = useState(team.secondaryColor || "#000000");
+  const [logoUrl, setLogoUrl] = useState<string>(team.logoUrl || "");
+  const [clubLogoId, setClubLogoId] = useState<string>(team.clubLogoId || "");
   const [playerEntries, setPlayerEntries] = useState<PlayerEntry[]>(
     team.players.map((p) => ({ name: p.name, age: p.age ? String(p.age) : "", documentNumber: p.documentNumber || "", eps: p.eps || "", birthDate: p.birthDate || "" }))
   );
@@ -182,6 +188,8 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
       name: teamName.trim() || team.name,
       primaryColor,
       secondaryColor,
+      logoUrl,
+      clubLogoId,
     });
 
     // Save players
@@ -208,6 +216,8 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
       setTeamName(team.name);
       setPrimaryColor(team.primaryColor || "#ffffff");
       setSecondaryColor(team.secondaryColor || "#000000");
+      setLogoUrl(team.logoUrl || "");
+      setClubLogoId(team.clubLogoId || "");
       setPlayerEntries(
         team.players.map((p) => ({ name: p.name, age: p.age ? String(p.age) : "", documentNumber: p.documentNumber || "", eps: p.eps || "", birthDate: p.birthDate || "" }))
       );
@@ -240,6 +250,51 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
               onChange={(e) => setTeamName(e.target.value)}
               placeholder="Nombre del equipo"
             />
+          </div>
+
+          {/* Logo del club */}
+          <div className="space-y-2">
+            <Label>Logo del club (opcional)</Label>
+            <div className="flex items-center gap-3">
+              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border bg-muted/30">
+                {logoUrl ? (
+                  <img src={logoUrl} alt="Logo" className="h-full w-full object-contain p-1.5" />
+                ) : (
+                  <ImagePlus className="h-4 w-4 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <TeamLogoPicker
+                  orgId={orgId}
+                  currentClubLogoId={clubLogoId || undefined}
+                  onSelect={(sel) => {
+                    setLogoUrl(sel.imageUrl);
+                    setClubLogoId(sel.clubLogoId);
+                  }}
+                  trigger={
+                    <Button type="button" variant="outline" size="sm">
+                      <Upload className="mr-1 h-3.5 w-3.5" />
+                      {logoUrl ? "Cambiar logo" : "Elegir logo"}
+                    </Button>
+                  }
+                />
+                {logoUrl && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-destructive hover:text-destructive"
+                    onClick={() => {
+                      setLogoUrl("");
+                      setClubLogoId("");
+                    }}
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    Quitar
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Colors */}

@@ -350,21 +350,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         );
       }
 
-      // Sync sponsors: delete existing and re-insert
+      // Sync sponsors de la biblioteca (org) con UPSERT EN SU LUGAR.
+      //
+      // Antes esto hacía delete + reinsert, lo que regeneraba los ids en cada
+      // guardado y rompía las referencias `library_sponsor_id` de los torneos.
+      // Ahora: actualizamos las filas existentes por id (los ids se conservan),
+      // insertamos las nuevas, y borramos solo las que el usuario quitó.
+      //
+      // Además, si cambió la IMAGEN de un logo de la biblioteca, la propagamos a
+      // todos los usos de torneo que lo referencian (la URL de cada torneo NO se
+      // toca — es independiente).
       if (profile.sponsors !== undefined) {
-        await supabase
-          .from("sponsors")
-          .delete()
-          .eq("organization_profile_id", profileId);
+        const isUuid = (id: string) =>
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
-        if (profile.sponsors && profile.sponsors.length > 0) {
-          await supabase.from("sponsors").insert(
-            profile.sponsors.map((s) => ({
+        const { data: existingRows } = await supabase
+          .from("sponsors")
+          .select("id, image_url")
+          .eq("organization_profile_id", profileId);
+        const existing = new Map(
+          (existingRows ?? []).map((r) => [r.id as string, r.image_url as string])
+        );
+
+        const incoming = profile.sponsors ?? [];
+        const keptIds = new Set<string>();
+
+        for (const s of incoming) {
+          if (isUuid(s.id) && existing.has(s.id)) {
+            // Fila existente: update en su lugar (preserva id → refs válidas).
+            keptIds.add(s.id);
+            await supabase
+              .from("sponsors")
+              .update({
+                image_url: s.imageUrl,
+                link_url: s.linkUrl,
+                name: s.name ?? "",
+              })
+              .eq("id", s.id);
+            // Propagar SOLO la imagen a los usos de torneo que la referencian.
+            if (existing.get(s.id) !== s.imageUrl) {
+              await supabase
+                .from("sponsors")
+                .update({ image_url: s.imageUrl })
+                .eq("library_sponsor_id", s.id);
+            }
+          } else {
+            // Logo nuevo en la biblioteca.
+            await supabase.from("sponsors").insert({
               image_url: s.imageUrl,
               link_url: s.linkUrl,
+              name: s.name ?? "",
               organization_profile_id: profileId,
-            }))
-          );
+            });
+          }
+        }
+
+        // Borrar los que el usuario quitó de la biblioteca. Los usos de torneo
+        // que los referenciaban quedan con library_sponsor_id = NULL (ON DELETE
+        // SET NULL) y conservan su última imagen — no se pierde nada.
+        const toDelete = [...existing.keys()].filter((id) => !keptIds.has(id));
+        if (toDelete.length > 0) {
+          await supabase.from("sponsors").delete().in("id", toDelete);
         }
       }
 

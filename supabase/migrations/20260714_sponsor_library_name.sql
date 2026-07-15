@@ -1,0 +1,12 @@
+-- Biblioteca de logos de patrocinadores (v1): agrega el campo `name` a sponsors.
+--
+-- Cambio 100% ADITIVO y SEGURO:
+--   * Columna nullable con default '' (NUNCA NOT NULL).
+--   * No toca ninguna fila ni archivo existente.
+--   * Los sponsors actuales (de organización y de torneo) quedan intactos,
+--     simplemente con name = '' hasta que el organizador los etiquete.
+--
+-- No hay backfill: los patrocinadores ya cargados en producción no se mueven
+-- ni se duplican. La biblioteca arranca con los sponsors de la organización
+-- que ya existen + lo que se suba de ahora en adelante.
+ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS name TEXT DEFAULT '';

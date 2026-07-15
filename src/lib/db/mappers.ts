@@ -2,6 +2,7 @@ import {
   User,
   OrganizationProfile,
   Sponsor,
+  ClubLogo,
   Team,
   Player,
   Tournament,
@@ -48,6 +49,7 @@ export function mapOrganizationProfile(
   const sponsorsRows = row.sponsors as Record<string, unknown>[] | undefined;
 
   return {
+    id: (row.id as string) ?? undefined,
     slug: row.slug as string,
     organizationName: row.organization_name as string,
     bio: (row.bio as string) ?? undefined,
@@ -72,6 +74,8 @@ export function mapSponsor(row: Record<string, unknown>): Sponsor {
     id: row.id as string,
     imageUrl: row.image_url as string,
     linkUrl: row.link_url as string,
+    name: (row.name as string) || undefined,
+    librarySponsorId: (row.library_sponsor_id as string) ?? undefined,
   };
 }
 
@@ -81,9 +85,18 @@ export function mapTeam(row: Record<string, unknown>): Team {
     id: row.id as string,
     name: row.name as string,
     logoUrl: (row.logo_url as string) ?? undefined,
+    clubLogoId: (row.club_logo_id as string) ?? undefined,
     primaryColor: (row.primary_color as string) ?? undefined,
     secondaryColor: (row.secondary_color as string) ?? undefined,
     players: playersRows ? playersRows.map(mapPlayer) : [],
+  };
+}
+
+export function mapClubLogo(row: Record<string, unknown>): ClubLogo {
+  return {
+    id: row.id as string,
+    name: (row.name as string) || undefined,
+    imageUrl: row.image_url as string,
   };
 }
 

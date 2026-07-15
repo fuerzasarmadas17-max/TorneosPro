@@ -124,7 +124,7 @@ interface TournamentContextType {
     patch: Partial<Match>
   ) => void;
   updateTeamPlayers: (teamId: string, players: Player[]) => Promise<void>;
-  updateTeam: (teamId: string, updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor">>) => Promise<void>;
+  updateTeam: (teamId: string, updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor" | "logoUrl" | "clubLogoId">>) => Promise<void>;
   updateEventPaid: (tournamentId: string, matchId: string, eventId: string, paid: boolean) => Promise<void>;
   assignTeamsToGroupFn: (groupId: string, teamIds: string[]) => Promise<boolean>;
   addMatchesToTournament: (tournamentId: string, newMatches: Match[]) => Promise<void>;
@@ -575,7 +575,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       if (updates.sponsors !== undefined) {
         const result = await updateTournamentSponsors(
           tournamentId,
-          updates.sponsors.map((s) => ({ imageUrl: s.imageUrl, linkUrl: s.linkUrl }))
+          updates.sponsors.map((s) => ({ imageUrl: s.imageUrl, linkUrl: s.linkUrl, name: s.name, librarySponsorId: s.librarySponsorId }))
         );
         if (result) savedSponsors = result;
       }
@@ -1353,7 +1353,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     setTeams(teamsData);
   }, []);
 
-  const updateTeam = useCallback(async (teamId: string, updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor">>) => {
+  const updateTeam = useCallback(async (teamId: string, updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor" | "logoUrl" | "clubLogoId">>) => {
     await dbUpdateTeam(teamId, updates);
     setTeams((prev) =>
       prev.map((t) => (t.id === teamId ? { ...t, ...updates } : t))

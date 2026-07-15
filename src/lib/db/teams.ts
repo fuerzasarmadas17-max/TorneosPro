@@ -69,12 +69,14 @@ export async function createTeams(
 
 export async function updateTeam(
   id: string,
-  updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor">>
+  updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor" | "logoUrl" | "clubLogoId">>
 ): Promise<boolean> {
   const dbUpdates: Record<string, unknown> = {};
   if (updates.name !== undefined) dbUpdates.name = updates.name;
   if (updates.primaryColor !== undefined) dbUpdates.primary_color = updates.primaryColor;
   if (updates.secondaryColor !== undefined) dbUpdates.secondary_color = updates.secondaryColor;
+  if (updates.logoUrl !== undefined) dbUpdates.logo_url = updates.logoUrl || null;
+  if (updates.clubLogoId !== undefined) dbUpdates.club_logo_id = updates.clubLogoId || null;
 
   const { error } = await supabase.from("teams").update(dbUpdates).eq("id", id);
   return !error;

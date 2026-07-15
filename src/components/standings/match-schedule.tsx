@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { TeamMark } from "@/components/teams/team-mark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -437,12 +438,7 @@ function MatchDisplay({
           <div className="flex sm:hidden flex-col gap-2">
             {/* Home team */}
             <div className="flex items-center gap-2">
-              {home && (home.primaryColor || home.secondaryColor) && (
-                <div className="w-6 h-6 rounded border border-border overflow-hidden flex shrink-0">
-                  <div className="w-1/2 h-full" style={{ backgroundColor: home.primaryColor || "#fff" }} />
-                  <div className="w-1/2 h-full" style={{ backgroundColor: home.secondaryColor || "#000" }} />
-                </div>
-              )}
+              <TeamMark team={home} size={32} />
               <span className="font-semibold text-base flex-1">{home?.name || "TBD"}</span>
               {isCompleted && (
                 <span className="font-bold text-lg tabular-nums">{match.homeScore}</span>
@@ -450,12 +446,7 @@ function MatchDisplay({
             </div>
             {/* Away team */}
             <div className="flex items-center gap-2">
-              {away && (away.primaryColor || away.secondaryColor) && (
-                <div className="w-6 h-6 rounded border border-border overflow-hidden flex shrink-0">
-                  <div className="w-1/2 h-full" style={{ backgroundColor: away.primaryColor || "#fff" }} />
-                  <div className="w-1/2 h-full" style={{ backgroundColor: away.secondaryColor || "#000" }} />
-                </div>
-              )}
+              <TeamMark team={away} size={32} />
               <span className="font-semibold text-base flex-1">{away?.name || "TBD"}</span>
               {isCompleted && (
                 <span className="font-bold text-lg tabular-nums">{match.awayScore}</span>
@@ -487,12 +478,7 @@ function MatchDisplay({
           <div className="hidden sm:flex items-center justify-between gap-2">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <div className="flex items-center gap-1.5 truncate">
-                {home && (home.primaryColor || home.secondaryColor) && (
-                  <div className="w-5 h-5 rounded border border-border overflow-hidden flex shrink-0">
-                    <div className="w-1/2 h-full" style={{ backgroundColor: home.primaryColor || "#fff" }} />
-                    <div className="w-1/2 h-full" style={{ backgroundColor: home.secondaryColor || "#000" }} />
-                  </div>
-                )}
+                <TeamMark team={home} size={28} />
                 <span className="font-medium truncate">{home?.name || "TBD"}</span>
               </div>
 
@@ -513,12 +499,7 @@ function MatchDisplay({
 
               <div className="flex items-center gap-1.5 truncate">
                 <span className="font-medium truncate">{away?.name || "TBD"}</span>
-                {away && (away.primaryColor || away.secondaryColor) && (
-                  <div className="w-5 h-5 rounded border border-border overflow-hidden flex shrink-0">
-                    <div className="w-1/2 h-full" style={{ backgroundColor: away.primaryColor || "#fff" }} />
-                    <div className="w-1/2 h-full" style={{ backgroundColor: away.secondaryColor || "#000" }} />
-                  </div>
-                )}
+                <TeamMark team={away} size={28} />
               </div>
             </div>
 

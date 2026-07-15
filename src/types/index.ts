@@ -2,6 +2,13 @@ export interface Sponsor {
   id: string;
   imageUrl: string;
   linkUrl: string;
+  // Nombre opcional para la biblioteca de logos (ej. "Coca-Cola"). Los
+  // sponsors viejos no lo tienen y quedan sin etiquetar.
+  name?: string;
+  // Referencia al logo canónico de la biblioteca. Cuando un sponsor de torneo
+  // apunta a un item de la biblioteca, editar la imagen de la biblioteca se
+  // propaga a todos los usos. La URL (linkUrl) sigue siendo por-torneo.
+  librarySponsorId?: string;
 }
 
 export type Sport =
@@ -27,7 +34,17 @@ export type TournamentScope = "nacional" | "departamental" | "municipal";
 
 export type MatchStatus = "unscheduled" | "scheduled" | "postponed" | "completed";
 
+// Logo de club en la biblioteca del organizador (reutilizable entre equipos).
+export interface ClubLogo {
+  id: string;
+  name?: string;
+  imageUrl: string;
+}
+
 export interface OrganizationProfile {
+  // id de la fila organization_profiles. Se usa para gestionar la biblioteca
+  // de logos (insertar/propagar). Opcional porque no todas las vistas lo cargan.
+  id?: string;
   slug: string;
   organizationName: string;
   bio?: string;
@@ -72,6 +89,10 @@ export interface Team {
   id: string;
   name: string;
   logoUrl?: string;
+  // Referencia al logo de club en la biblioteca. Al elegirlo se copia la
+  // imagen en logoUrl; editar el logo en la biblioteca propaga a todos los
+  // equipos (categorías) que lo referencian.
+  clubLogoId?: string;
   primaryColor?: string;
   secondaryColor?: string;
   players: Player[];
