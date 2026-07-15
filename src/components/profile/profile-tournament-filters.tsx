@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Sport, TournamentStatus } from "@/types";
 import { Input } from "@/components/ui/input";
 import {
@@ -9,10 +10,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { SPORTS } from "@/data/sports";
 import { DEPARTMENTS, getDepartment } from "@/data/colombia";
 import { Button } from "@/components/ui/button";
-import { X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { SlidersHorizontal, X } from "lucide-react";
 
 interface Filters {
   sport?: Sport;
@@ -31,19 +40,28 @@ export function ProfileTournamentFilters({
   filters,
   onFiltersChange,
 }: ProfileTournamentFiltersProps) {
-  const hasActive = filters.sport || (filters.status && filters.status !== "in-progress") || filters.search || filters.department;
+  // Controla el modal de filtros en mobile.
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
-  return (
-    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4">
-      <Input
-        placeholder="Buscar torneos..."
-        value={filters.search || ""}
-        onChange={(e) =>
-          onFiltersChange({ ...filters, search: e.target.value || undefined })
-        }
-        className="sm:max-w-xs"
-      />
+  const hasActive =
+    filters.sport ||
+    (filters.status && filters.status !== "in-progress") ||
+    filters.search ||
+    filters.department;
 
+  // Conteo de filtros activos para el badge del ícono (el buscador no
+  // entra: vive en la barra). El estado por defecto es "in-progress".
+  const activeCount =
+    (filters.sport ? 1 : 0) +
+    (filters.status && filters.status !== "in-progress" ? 1 : 0) +
+    (filters.department ? 1 : 0) +
+    (filters.municipality ? 1 : 0);
+
+  // Los selects se renderizan tanto inline (desktop) como dentro del modal
+  // (mobile). El `value` de cada uno refleja el filtro en curso, por lo que
+  // al abrir el modal la opción activa ya aparece marcada.
+  const filterControls = (
+    <>
       <Select
         value={filters.sport || "all"}
         onValueChange={(v) =>
@@ -53,7 +71,7 @@ export function ProfileTournamentFilters({
           })
         }
       >
-        <SelectTrigger className="sm:w-[180px]">
+        <SelectTrigger className="w-full sm:w-[180px]">
           <SelectValue placeholder="Deporte" />
         </SelectTrigger>
         <SelectContent>
@@ -75,7 +93,7 @@ export function ProfileTournamentFilters({
           })
         }
       >
-        <SelectTrigger className="sm:w-[180px]">
+        <SelectTrigger className="w-full sm:w-[180px]">
           <SelectValue placeholder="Estado" />
         </SelectTrigger>
         <SelectContent>
@@ -96,7 +114,7 @@ export function ProfileTournamentFilters({
           })
         }
       >
-        <SelectTrigger className="sm:w-[180px]">
+        <SelectTrigger className="w-full sm:w-[180px]">
           <SelectValue placeholder="Departamento" />
         </SelectTrigger>
         <SelectContent>
@@ -119,7 +137,7 @@ export function ProfileTournamentFilters({
             })
           }
         >
-          <SelectTrigger className="sm:w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="Municipio" />
           </SelectTrigger>
           <SelectContent>
@@ -143,6 +161,52 @@ export function ProfileTournamentFilters({
           Limpiar
         </Button>
       )}
+    </>
+  );
+
+  return (
+    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4">
+      {/* Barra de búsqueda: siempre visible. En mobile comparte fila con el
+          botón de filtros. */}
+      <div className="flex gap-3">
+        <Input
+          placeholder="Buscar torneos..."
+          value={filters.search || ""}
+          onChange={(e) =>
+            onFiltersChange({ ...filters, search: e.target.value || undefined })
+          }
+          className="flex-1 sm:max-w-xs"
+        />
+        {/* Botón de filtros: solo en mobile. Abre el modal centrado con los selects. */}
+        <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <DialogTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              className="relative shrink-0 sm:hidden"
+              aria-label="Filtros"
+            >
+              <SlidersHorizontal className="size-4" />
+              {activeCount > 0 && (
+                <Badge className="absolute -right-1.5 -top-1.5 size-4 justify-center rounded-full p-0 text-[10px] leading-none">
+                  {activeCount}
+                </Badge>
+              )}
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[360px]">
+            <DialogHeader>
+              <DialogTitle>Filtrar torneos</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-3">{filterControls}</div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* Filtros inline: solo desktop. En mobile viven dentro del modal. */}
+      <div className="hidden sm:flex sm:flex-wrap sm:items-center sm:gap-4">
+        {filterControls}
+      </div>
     </div>
   );
 }
