@@ -258,7 +258,7 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
             <div className="flex items-center gap-3">
               <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border bg-muted/30">
                 {logoUrl ? (
-                  <img src={logoUrl} alt="Logo" className="h-full w-full object-contain p-1.5" />
+                  <img src={logoUrl} alt="Logo" loading="lazy" decoding="async" className="h-full w-full object-contain p-1.5" />
                 ) : (
                   <ImagePlus className="h-4 w-4 text-muted-foreground" />
                 )}

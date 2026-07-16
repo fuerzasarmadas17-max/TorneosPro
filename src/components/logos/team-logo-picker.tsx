@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ClubLogo } from "@/types";
 import { supabase } from "@/lib/supabase";
+import {
+  resizeImageForUpload,
+  IMAGE_SIZES,
+  MAX_UPLOAD_BYTES,
+  isImageFile,
+} from "@/lib/images";
 import { fetchClubLogos, createClubLogo } from "@/lib/db/club-logos";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,19 +28,21 @@ import { Check, Upload, Search, ImageOff, Loader2 } from "lucide-react";
 const PREVIEW = 6;
 
 async function uploadClubLogo(file: File): Promise<string | null> {
-  const validExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "heif"];
-  const ext = file.name.split(".").pop()?.toLowerCase() || "";
-  const isImage = file.type.startsWith("image/") || validExts.includes(ext);
-  if (!isImage) {
+  if (!isImageFile(file)) {
     toast.error("El archivo debe ser una imagen (PNG, JPG, etc.)");
     return null;
   }
-  if (file.size > 2 * 1024 * 1024) {
-    toast.error("La imagen no debe superar los 2MB");
+  if (file.size > MAX_UPLOAD_BYTES) {
+    toast.error("La imagen no debe superar los 12MB");
     return null;
   }
+  const { blob, ext } = await resizeImageForUpload(file, {
+    maxDim: IMAGE_SIZES.clubLogo,
+  });
   const path = `logos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const { error } = await supabase.storage.from("images").upload(path, file);
+  const { error } = await supabase.storage
+    .from("images")
+    .upload(path, blob, { contentType: blob.type });
   if (error) {
     toast.error("Error al subir el logo: " + error.message);
     return null;
@@ -177,7 +185,7 @@ export function TeamLogoPicker({ orgId, currentClubLogoId, onSelect, trigger }: 
                           title={logo.name || undefined}
                         >
                           <div className="aspect-square w-full overflow-hidden rounded bg-muted/30">
-                            <img src={logo.imageUrl} alt={logo.name || "Logo"} className="h-full w-full object-contain p-1" />
+                            <img src={logo.imageUrl} alt={logo.name || "Logo"} loading="lazy" decoding="async" className="h-full w-full object-contain p-1" />
                           </div>
                           <span className="w-full truncate text-[11px] text-muted-foreground">{logo.name || "Sin nombre"}</span>
                           {isCurrent && (
@@ -209,7 +217,7 @@ export function TeamLogoPicker({ orgId, currentClubLogoId, onSelect, trigger }: 
                   onClick={() => fileRef.current?.click()}
                   className="h-24 w-24 shrink-0 overflow-hidden rounded-lg border bg-muted/40"
                 >
-                  <img src={preview} alt="Preview" className="h-full w-full object-contain p-1.5" />
+                  <img src={preview} alt="Preview" decoding="async" className="h-full w-full object-contain p-1.5" />
                 </button>
               ) : (
                 <button
@@ -223,7 +231,7 @@ export function TeamLogoPicker({ orgId, currentClubLogoId, onSelect, trigger }: 
               )}
               <p className="text-xs text-muted-foreground">
                 Usá una imagen <strong>cuadrada (1:1)</strong> — mismo ancho y alto, ej. 500×500px —
-                así el logo se ve centrado y sin recortes. Ideal PNG con fondo transparente, máx 2MB.
+                así el logo se ve centrado y sin recortes. Ideal PNG con fondo transparente. Lo optimizamos solo.
                 Queda guardado en tu biblioteca de clubes.
               </p>
             </div>

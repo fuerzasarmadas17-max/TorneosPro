@@ -7,6 +7,12 @@ import { getFinalSeriesChampion } from "@/data/helpers";
 import { useTournaments } from "@/context/tournament-context";
 import { supabase } from "@/lib/supabase";
 import {
+  resizeImageForUpload,
+  IMAGE_SIZES,
+  MAX_UPLOAD_BYTES,
+  isImageFile,
+} from "@/lib/images";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -96,26 +102,28 @@ export function TournamentChampionModal({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const validExts = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif"];
-    const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    const isImage = file.type.startsWith("image/") || validExts.includes(ext);
-    if (!isImage) {
+    if (!isImageFile(file)) {
       toast.error("El archivo debe ser una imagen (PNG, JPG, etc.)");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("La imagen no debe superar los 5MB");
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.error("La imagen no debe superar los 12MB");
       return;
     }
 
     setUploading(true);
+    const { blob, ext } = await resizeImageForUpload(file, {
+      maxDim: IMAGE_SIZES.photo,
+    });
     // Requires the storage RLS policy `Usuarios suben imagenes` to whitelist
     // the `champions/` prefix (migration 20260607_storage_champions_prefix).
     const path = `champions/${tournament.id}-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2)}.${ext}`;
 
-    const { error } = await supabase.storage.from("images").upload(path, file);
+    const { error } = await supabase.storage
+      .from("images")
+      .upload(path, blob, { contentType: blob.type });
     if (error) {
       console.error("Storage upload error:", error);
       toast.error("Error al subir la foto: " + error.message);
@@ -178,6 +186,8 @@ export function TournamentChampionModal({
             <img
               src={photoUrl}
               alt={`Campeón ${championName}`}
+              loading="lazy"
+              decoding="async"
               className="absolute inset-0 w-full h-full object-cover"
             />
           </div>

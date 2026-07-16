@@ -39,6 +39,8 @@ export function ChampionSponsorsStrip({
             <img
               src={sponsor.imageUrl}
               alt="Patrocinador"
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-contain p-1.5"
             />
           );

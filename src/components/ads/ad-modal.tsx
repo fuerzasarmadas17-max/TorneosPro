@@ -132,6 +132,8 @@ export function AdModal({ tournamentId }: AdModalProps) {
           <img
             src={ad.imageUrl}
             alt="Publicidad"
+            loading="lazy"
+            decoding="async"
             className="h-auto w-full object-contain"
           />
           {/* Disclosure: es publicidad + indica que es clickeable. */}

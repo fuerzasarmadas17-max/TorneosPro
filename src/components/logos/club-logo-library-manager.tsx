@@ -5,6 +5,12 @@ import { ClubLogo } from "@/types";
 import { useAuth } from "@/context/auth-context";
 import { supabase } from "@/lib/supabase";
 import {
+  resizeImageForUpload,
+  IMAGE_SIZES,
+  MAX_UPLOAD_BYTES,
+  isImageFile,
+} from "@/lib/images";
+import {
   fetchClubLogos,
   createClubLogo,
   updateClubLogo,
@@ -25,19 +31,21 @@ import {
 import { Search, Plus, Upload, ImagePlus, Trash2, Shield, Loader2 } from "lucide-react";
 
 async function uploadClubLogo(file: File): Promise<string | null> {
-  const validExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "heif"];
-  const ext = file.name.split(".").pop()?.toLowerCase() || "";
-  const isImage = file.type.startsWith("image/") || validExts.includes(ext);
-  if (!isImage) {
+  if (!isImageFile(file)) {
     toast.error("El archivo debe ser una imagen (PNG, JPG, etc.)");
     return null;
   }
-  if (file.size > 2 * 1024 * 1024) {
-    toast.error("La imagen no debe superar los 2MB");
+  if (file.size > MAX_UPLOAD_BYTES) {
+    toast.error("La imagen no debe superar los 12MB");
     return null;
   }
+  const { blob, ext } = await resizeImageForUpload(file, {
+    maxDim: IMAGE_SIZES.clubLogo,
+  });
   const path = `logos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const { error } = await supabase.storage.from("images").upload(path, file);
+  const { error } = await supabase.storage
+    .from("images")
+    .upload(path, blob, { contentType: blob.type });
   if (error) {
     toast.error("Error al subir el logo: " + error.message);
     return null;
@@ -263,7 +271,7 @@ export function ClubLogoLibraryManager() {
                 {busyId === logo.id ? (
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 ) : (
-                  <img src={logo.imageUrl} alt={logo.name || "Logo"} className="max-h-full max-w-full object-contain p-3" />
+                  <img src={logo.imageUrl} alt={logo.name || "Logo"} loading="lazy" decoding="async" className="max-h-full max-w-full object-contain p-3" />
                 )}
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/55 text-white opacity-0 transition-opacity group-hover:opacity-100">
                   <ImagePlus className="h-5 w-5" />
@@ -319,7 +327,7 @@ export function ClubLogoLibraryManager() {
                   className="h-24 w-24 shrink-0 overflow-hidden rounded-lg border bg-muted/40"
                   title="Cambiar imagen"
                 >
-                  <img src={newPreview} alt="Preview" className="h-full w-full object-contain p-1.5" />
+                  <img src={newPreview} alt="Preview" decoding="async" className="h-full w-full object-contain p-1.5" />
                 </button>
               ) : (
                 <button
@@ -333,7 +341,7 @@ export function ClubLogoLibraryManager() {
               )}
               <p className="text-xs text-muted-foreground">
                 Usá una imagen <strong>cuadrada (1:1)</strong> — mismo ancho y alto, ej. 500×500px —
-                así el logo se ve centrado y sin recortes. Ideal PNG con fondo transparente, máx 2MB.
+                así el logo se ve centrado y sin recortes. Ideal PNG con fondo transparente. Lo optimizamos solo.
               </p>
             </div>
             <div className="space-y-1.5">
@@ -364,7 +372,7 @@ export function ClubLogoLibraryManager() {
           <div className="flex items-center gap-3">
             {deleting && (
               <div className="h-16 w-16 shrink-0 overflow-hidden rounded border bg-muted/40">
-                <img src={deleting.imageUrl} alt="" className="h-full w-full object-contain p-1.5" />
+                <img src={deleting.imageUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain p-1.5" />
               </div>
             )}
             <p className="text-sm text-muted-foreground">

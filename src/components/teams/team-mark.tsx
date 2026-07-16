@@ -32,7 +32,15 @@ export function TeamMark({
           className
         )}
       >
-        <img src={team.logoUrl} alt={team.name} className="h-full w-full object-contain" />
+        <img
+          src={team.logoUrl}
+          alt={team.name}
+          width={size}
+          height={size}
+          loading="lazy"
+          decoding="async"
+          className="h-full w-full object-contain"
+        />
       </div>
     );
   }

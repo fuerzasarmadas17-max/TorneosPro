@@ -72,6 +72,7 @@ export function ProfileHeader({ profile }: ProfileHeaderProps) {
                 <img
                   src={profile.logoUrl}
                   alt={profile.organizationName}
+                  decoding="async"
                   className="w-full h-full object-cover"
                 />
               ) : (

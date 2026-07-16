@@ -22,6 +22,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
+import {
+  resizeImageForUpload,
+  IMAGE_SIZES,
+  MAX_UPLOAD_BYTES,
+  isImageFile,
+} from "@/lib/images";
 import { toast } from "sonner";
 import {
   Trash2,
@@ -284,19 +290,22 @@ function AdsContent() {
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const validExts = ["jpg", "jpeg", "png", "gif", "webp"];
-    const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    if (!file.type.startsWith("image/") && !validExts.includes(ext)) {
+    if (!isImageFile(file)) {
       toast.error("El archivo debe ser una imagen (PNG, JPG, etc.)");
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("La imagen no debe superar los 2MB");
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.error("La imagen no debe superar los 12MB");
       return;
     }
     setUploading(true);
+    const { blob, ext } = await resizeImageForUpload(file, {
+      maxDim: IMAGE_SIZES.photo,
+    });
     const path = `ads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error } = await supabase.storage.from("images").upload(path, file);
+    const { error } = await supabase.storage
+      .from("images")
+      .upload(path, blob, { contentType: blob.type });
     if (error) {
       console.error("Storage upload error:", error);
       toast.error("Error al subir la imagen: " + error.message);
@@ -625,6 +634,8 @@ function AdsContent() {
                     <img
                       src={c.image_url}
                       alt={c.advertiser_name}
+                      loading="lazy"
+                      decoding="async"
                       className="h-full w-full object-contain"
                     />
                   </div>
@@ -777,6 +788,8 @@ function AdsContent() {
                     <img
                       src={imageUrl}
                       alt="preview"
+                      loading="lazy"
+                      decoding="async"
                       className="h-full w-full object-contain"
                     />
                   ) : (

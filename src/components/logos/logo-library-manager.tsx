@@ -4,6 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Sponsor } from "@/types";
 import { useAuth } from "@/context/auth-context";
 import { supabase } from "@/lib/supabase";
+import {
+  resizeImageForUpload,
+  IMAGE_SIZES,
+  MAX_UPLOAD_BYTES,
+  isImageFile,
+} from "@/lib/images";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,19 +34,21 @@ import {
 } from "lucide-react";
 
 async function uploadSponsorImage(file: File): Promise<string | null> {
-  const validExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "heif"];
-  const ext = file.name.split(".").pop()?.toLowerCase() || "";
-  const isImage = file.type.startsWith("image/") || validExts.includes(ext);
-  if (!isImage) {
+  if (!isImageFile(file)) {
     toast.error("El archivo debe ser una imagen (PNG, JPG, etc.)");
     return null;
   }
-  if (file.size > 2 * 1024 * 1024) {
-    toast.error("La imagen no debe superar los 2MB");
+  if (file.size > MAX_UPLOAD_BYTES) {
+    toast.error("La imagen no debe superar los 12MB");
     return null;
   }
+  const { blob, ext } = await resizeImageForUpload(file, {
+    maxDim: IMAGE_SIZES.sponsor,
+  });
   const path = `sponsors/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const { error } = await supabase.storage.from("images").upload(path, file);
+  const { error } = await supabase.storage
+    .from("images")
+    .upload(path, blob, { contentType: blob.type });
   if (error) {
     toast.error("Error al subir la imagen: " + error.message);
     return null;
@@ -258,6 +266,8 @@ export function LogoLibraryManager() {
                   <img
                     src={logo.imageUrl}
                     alt={logo.name || "Logo"}
+                    loading="lazy"
+                    decoding="async"
                     className="max-h-full max-w-full object-contain p-3"
                   />
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/55 text-white opacity-0 transition-opacity group-hover:opacity-100">
@@ -351,7 +361,7 @@ export function LogoLibraryManager() {
                   className="h-20 w-28 shrink-0 overflow-hidden rounded-lg border bg-muted/40"
                   title="Cambiar imagen"
                 >
-                  <img src={newPreview} alt="Preview" className="h-full w-full object-contain p-1.5" />
+                  <img src={newPreview} alt="Preview" decoding="async" className="h-full w-full object-contain p-1.5" />
                 </button>
               ) : (
                 <button
@@ -364,7 +374,7 @@ export function LogoLibraryManager() {
                 </button>
               )}
               <p className="text-xs text-muted-foreground">
-                PNG o JPG, máx 2MB. Ideal 300×100px con fondo transparente.
+                PNG o JPG. Ideal 300×100px con fondo transparente. Lo optimizamos solo.
               </p>
             </div>
 
@@ -402,7 +412,7 @@ export function LogoLibraryManager() {
           <div className="flex items-center gap-3">
             {deleting && (
               <div className="h-14 w-20 shrink-0 overflow-hidden rounded border bg-muted/40">
-                <img src={deleting.imageUrl} alt="" className="h-full w-full object-contain p-1.5" />
+                <img src={deleting.imageUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain p-1.5" />
               </div>
             )}
             <p className="text-sm text-muted-foreground">

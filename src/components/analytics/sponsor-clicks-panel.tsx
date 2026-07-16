@@ -44,6 +44,8 @@ function TournamentRow({ t }: { t: SponsorClicksTournament }) {
                   <img
                     src={s.imageUrl}
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-contain p-1"
                   />
                 ) : (

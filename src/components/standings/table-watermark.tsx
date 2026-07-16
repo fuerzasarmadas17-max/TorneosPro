@@ -17,6 +17,7 @@ export function TableWatermark() {
       <img
         src="/watermark-logo.png"
         alt=""
+        decoding="async"
         className="w-2/3 max-w-[300px] select-none opacity-[0.05] dark:opacity-[0.08] dark:invert"
       />
     </div>

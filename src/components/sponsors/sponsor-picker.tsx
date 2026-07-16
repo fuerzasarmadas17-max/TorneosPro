@@ -16,6 +16,12 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Check, Upload, Trash2, ImageOff, Search } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import {
+  resizeImageForUpload,
+  IMAGE_SIZES,
+  MAX_UPLOAD_BYTES,
+  isImageFile,
+} from "@/lib/images";
 import { toast } from "sonner";
 
 interface SponsorPickerProps {
@@ -37,19 +43,21 @@ interface SponsorPickerProps {
 }
 
 async function uploadSponsorImage(file: File): Promise<string | null> {
-  const validExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "heif"];
-  const ext = file.name.split(".").pop()?.toLowerCase() || "";
-  const isImage = file.type.startsWith("image/") || validExts.includes(ext);
-  if (!isImage) {
+  if (!isImageFile(file)) {
     toast.error("El archivo debe ser una imagen (PNG, JPG, etc.)");
     return null;
   }
-  if (file.size > 2 * 1024 * 1024) {
-    toast.error("La imagen no debe superar los 2MB");
+  if (file.size > MAX_UPLOAD_BYTES) {
+    toast.error("La imagen no debe superar los 12MB");
     return null;
   }
+  const { blob, ext } = await resizeImageForUpload(file, {
+    maxDim: IMAGE_SIZES.sponsor,
+  });
   const path = `sponsors/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const { error } = await supabase.storage.from("images").upload(path, file);
+  const { error } = await supabase.storage
+    .from("images")
+    .upload(path, blob, { contentType: blob.type });
   if (error) {
     console.error("Storage upload error:", error);
     toast.error("Error al subir la imagen: " + error.message);
@@ -239,6 +247,8 @@ export function SponsorPicker({
                           <img
                             src={s.imageUrl}
                             alt={s.name || "Patrocinador"}
+                            loading="lazy"
+                            decoding="async"
                             className="h-full w-full object-contain p-1"
                           />
                         </div>
@@ -286,7 +296,7 @@ export function SponsorPicker({
             <div className="space-y-1.5">
               <Label className="text-xs">Imagen del patrocinador</Label>
               <p className="text-xs text-muted-foreground">
-                Tamaño recomendado: 300x100px. PNG o JPG. Máximo 2MB.
+                Tamaño recomendado: 300x100px. PNG o JPG. Lo optimizamos solo.
               </p>
               <input
                 ref={fileInputRef}
@@ -298,7 +308,7 @@ export function SponsorPicker({
               {imagePreview ? (
                 <div className="flex items-center gap-3">
                   <div className="h-14 w-24 flex-shrink-0 overflow-hidden rounded border bg-muted/30">
-                    <img src={imagePreview} alt="Preview" className="h-full w-full object-contain p-1" />
+                    <img src={imagePreview} alt="Preview" decoding="async" className="h-full w-full object-contain p-1" />
                   </div>
                   <div className="flex items-center gap-2">
                     {uploading && <span className="text-xs text-muted-foreground">Subiendo...</span>}

@@ -2,6 +2,12 @@
 
 import { useRef, useState, useEffect } from "react";
 import { useAuth } from "@/context/auth-context";
+import {
+  resizeImageForUpload,
+  IMAGE_SIZES,
+  MAX_UPLOAD_BYTES,
+  isImageFile,
+} from "@/lib/images";
 import { OrganizationProfile } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,25 +116,25 @@ export function OrganizationProfileForm() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check type by MIME or file extension (some browsers send empty type)
-    const validExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "heif"];
-    const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    const isImage = file.type.startsWith("image/") || validExts.includes(ext);
-
-    if (!isImage) {
+    if (!isImageFile(file)) {
       toast.error("El archivo debe ser una imagen (PNG, JPG, etc.)");
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("La imagen no debe superar los 2MB");
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.error("La imagen no debe superar los 12MB");
       return;
     }
 
     setUploadingLogo(true);
+    const { blob, ext } = await resizeImageForUpload(file, {
+      maxDim: IMAGE_SIZES.orgLogo,
+    });
     const path = `logos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
-    const { error } = await supabase.storage.from("images").upload(path, file);
+    const { error } = await supabase.storage
+      .from("images")
+      .upload(path, blob, { contentType: blob.type });
     if (error) {
       console.error("Storage upload error:", error);
       toast.error("Error al subir el logo: " + error.message);
@@ -217,7 +223,8 @@ export function OrganizationProfileForm() {
       <div className="space-y-2">
         <Label>Logo de la Organizacion</Label>
         <p className="text-sm text-muted-foreground">
-          Tamano recomendado: 512x512px. Formato: PNG o JPG. Maximo 2MB.
+          Tamano recomendado: 512x512px. Formato: PNG o JPG. Lo optimizamos
+          automaticamente para que cargue rapido en celulares.
         </p>
         <input
           ref={logoInputRef}
@@ -232,6 +239,8 @@ export function OrganizationProfileForm() {
               <img
                 src={formData.logoUrl}
                 alt="Logo"
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full object-contain p-1"
               />
             </div>

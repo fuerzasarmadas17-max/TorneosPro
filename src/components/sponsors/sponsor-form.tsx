@@ -7,6 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Trash2, Plus, Upload, ImagePlus, GripVertical } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import {
+  resizeImageForUpload,
+  IMAGE_SIZES,
+  MAX_UPLOAD_BYTES,
+  isImageFile,
+} from "@/lib/images";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -98,6 +104,8 @@ function SortableSponsor({
         <img
           src={sponsor.imageUrl}
           alt="Patrocinador"
+          loading="lazy"
+          decoding="async"
           className="w-full h-full object-contain p-1"
         />
         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -179,22 +187,23 @@ export function SponsorForm({
   };
 
   const uploadFile = async (file: File): Promise<string | null> => {
-    const validExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "heif"];
-    const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    const isImage = file.type.startsWith("image/") || validExts.includes(ext);
-
-    if (!isImage) {
+    if (!isImageFile(file)) {
       toast.error("El archivo debe ser una imagen (PNG, JPG, etc.)");
       return null;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("La imagen no debe superar los 2MB");
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.error("La imagen no debe superar los 12MB");
       return null;
     }
 
+    const { blob, ext } = await resizeImageForUpload(file, {
+      maxDim: IMAGE_SIZES.sponsor,
+    });
     const path = `sponsors/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
-    const { error } = await supabase.storage.from("images").upload(path, file);
+    const { error } = await supabase.storage
+      .from("images")
+      .upload(path, blob, { contentType: blob.type });
     if (error) {
       console.error("Storage upload error:", error);
       toast.error("Error al subir la imagen: " + error.message);
@@ -327,7 +336,8 @@ export function SponsorForm({
           <div className="space-y-1.5">
             <Label className="text-xs">Imagen del patrocinador</Label>
             <p className="text-xs text-muted-foreground">
-              Tamano recomendado: 300x100px. Formato: PNG o JPG. Maximo 2MB.
+              Tamano recomendado: 300x100px. Formato: PNG o JPG. Lo optimizamos
+              automaticamente para que cargue rapido en celulares.
             </p>
             <input
               ref={fileInputRef}
@@ -342,6 +352,7 @@ export function SponsorForm({
                   <img
                     src={imagePreview}
                     alt="Preview"
+                    decoding="async"
                     className="w-full h-full object-contain p-1"
                   />
                 </div>

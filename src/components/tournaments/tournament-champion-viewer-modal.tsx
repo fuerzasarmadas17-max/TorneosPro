@@ -84,6 +84,8 @@ export function TournamentChampionViewerModal({
           <img
             src={tournament.championPhotoUrl}
             alt={`Campeón ${championName}`}
+            loading="lazy"
+            decoding="async"
             className="absolute inset-0 w-full h-full object-cover"
           />
         </div>

@@ -4,6 +4,12 @@ import { useMemo, useRef, useState } from "react";
 import { Sponsor } from "@/types";
 import { useAuth } from "@/context/auth-context";
 import { supabase } from "@/lib/supabase";
+import {
+  resizeImageForUpload,
+  IMAGE_SIZES,
+  MAX_UPLOAD_BYTES,
+  isImageFile,
+} from "@/lib/images";
 import { setSponsorOnProfile, createProfileSponsor } from "@/lib/db/sponsors";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,19 +26,21 @@ import {
 import { Search, Plus, Check, Upload, Loader2, ImageOff } from "lucide-react";
 
 async function uploadSponsorImage(file: File): Promise<string | null> {
-  const validExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "heif"];
-  const ext = file.name.split(".").pop()?.toLowerCase() || "";
-  const isImage = file.type.startsWith("image/") || validExts.includes(ext);
-  if (!isImage) {
+  if (!isImageFile(file)) {
     toast.error("El archivo debe ser una imagen (PNG, JPG, etc.)");
     return null;
   }
-  if (file.size > 2 * 1024 * 1024) {
-    toast.error("La imagen no debe superar los 2MB");
+  if (file.size > MAX_UPLOAD_BYTES) {
+    toast.error("La imagen no debe superar los 12MB");
     return null;
   }
+  const { blob, ext } = await resizeImageForUpload(file, {
+    maxDim: IMAGE_SIZES.sponsor,
+  });
   const path = `sponsors/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const { error } = await supabase.storage.from("images").upload(path, file);
+  const { error } = await supabase.storage
+    .from("images")
+    .upload(path, blob, { contentType: blob.type });
   if (error) {
     toast.error("Error al subir la imagen: " + error.message);
     return null;
@@ -186,7 +194,7 @@ export function ProfileSponsorsCuration() {
                     {busyId === s.id ? (
                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     ) : (
-                      <img src={s.imageUrl} alt={s.name || "Logo"} className="h-full w-full object-contain p-1" />
+                      <img src={s.imageUrl} alt={s.name || "Logo"} loading="lazy" decoding="async" className="h-full w-full object-contain p-1" />
                     )}
                   </div>
                   <span className="w-full truncate text-[11px] text-muted-foreground">{s.name || "Sin nombre"}</span>
@@ -217,7 +225,7 @@ export function ProfileSponsorsCuration() {
                   onClick={() => addInputRef.current?.click()}
                   className="h-14 w-24 shrink-0 overflow-hidden rounded-lg border bg-muted/40"
                 >
-                  <img src={newPreview} alt="Preview" className="h-full w-full object-contain p-1.5" />
+                  <img src={newPreview} alt="Preview" decoding="async" className="h-full w-full object-contain p-1.5" />
                 </button>
               ) : (
                 <button
@@ -230,7 +238,7 @@ export function ProfileSponsorsCuration() {
                 </button>
               )}
               <p className="text-xs text-muted-foreground">
-                Los logos de patrocinador son horizontales (ej. 300×100px). PNG o JPG, máx 2MB.
+                Los logos de patrocinador son horizontales (ej. 300×100px). PNG o JPG. Lo optimizamos solo.
               </p>
             </div>
             <div className="space-y-1.5">
