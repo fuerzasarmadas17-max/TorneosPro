@@ -16,7 +16,7 @@ import {
   generateAdditionalGroupRounds,
   getFinalSeriesChampion,
 } from "@/data/helpers";
-import { fetchTournaments, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, deleteTournament as dbDeleteTournament, addTournamentTeams, removeTeamFromTournament as dbRemoveTeamFromTournament, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup, assignTeamsToPhaseGroups as dbAssignTeamsToPhaseGroups, assignTeamsToBracketSlots as dbAssignTeamsToBracketSlots, updateGroupName as dbUpdateGroupName } from "@/lib/db/tournaments";
+import { fetchTournaments, fetchTournamentsWithMatches, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, deleteTournament as dbDeleteTournament, addTournamentTeams, removeTeamFromTournament as dbRemoveTeamFromTournament, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup, assignTeamsToPhaseGroups as dbAssignTeamsToPhaseGroups, assignTeamsToBracketSlots as dbAssignTeamsToBracketSlots, updateGroupName as dbUpdateGroupName } from "@/lib/db/tournaments";
 import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam, updateTeamPlayers as dbUpdateTeamPlayers } from "@/lib/db/teams";
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
@@ -163,21 +163,56 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   // equipos los cargamos recién cuando el user se autentica.
   const { isAuthenticated, isLoading: authLoading } = useAuth();
 
-  // Torneos: query pública con RLS, se carga siempre para todos.
-  // CRÍTICO: hacemos MERGE con los datos existentes, no replace. Eso es
-  // porque `fetchTournaments()` ahora usa TOURNAMENT_LIST_SELECT (sin
-  // match_events) para evitar el 504. Si reemplazáramos crudo, perdería
-  // los events que el detalle del torneo cargó vía
-  // fetchMatchEventsByMatchIds + seedTournamentData. El merge preserva
-  // los `events` ya cargados por match. Sin esto, las stats individuales
-  // desaparecen apenas loadTournaments termina.
+  // Torneos: query pública con RLS, se carga siempre para todos, en DOS FASES.
+  //
+  // Antes era una sola query con los matches embebidos. Medido contra prod con
+  // 13 torneos: 1,16 MB, de los cuales los matches son el 95%. Y como
+  // `TournamentProvider` cuelga del layout raíz, esa query corría en TODAS las
+  // rutas y el AppShell no pintaba nada hasta que terminara. En 4G eso tardaba
+  // lo suficiente para que la PWA cortara con "el servidor dejó de responder".
+  //
+  // Ahora:
+  //   Fase 1 (bloquea el render, 57 KB): todo menos los matches. Alcanza para
+  //     la landing, el listado, el dashboard y el perfil — ninguno de esos
+  //     consumidores lee `tournament.matches`.
+  //   Fase 2 (background, 1,16 MB): los matches. Cuando llegan se mergean. Las
+  //     vistas que sí los necesitan (detalle, planilla de partido) o los reciben
+  //     por SSR o esperan a esta fase, que ya no bloquea a nadie más.
   const loadTournaments = useCallback(async () => {
     try {
-      const data = await fetchTournaments();
+      const light = await fetchTournaments();
+      // Fase 1 no trae matches: preservamos los que ya haya en memoria (del SSR
+      // del detalle, de seedTournamentData, o de la fase 2 de una carga previa).
+      // Sin esto, un refetch borraría el fixture de la vista abierta.
       setTournaments((prev) => {
-        if (prev.length === 0) return data;
-        // Map matchId → events existentes para mergear rápido.
-        const existingEventsByMatch = new Map<string, MatchEvent[] | undefined>();
+        if (prev.length === 0) return light;
+        const byId = new Map(prev.map((t) => [t.id, t]));
+        return light.map((newT) => {
+          const existing = byId.get(newT.id);
+          if (!existing || existing.matches.length === 0) return newT;
+          return { ...newT, matches: existing.matches };
+        });
+      });
+      setError(null);
+    } catch (err) {
+      setError("Error al cargar datos");
+      console.error(err);
+      // Si falló la liviana, la pesada va a fallar igual: no la pedimos.
+      return;
+    } finally {
+      // La app ya tiene con qué pintar. Los matches llegan solos.
+      setIsLoading(false);
+    }
+
+    try {
+      const full = await fetchTournamentsWithMatches();
+      // Fase 2 trae matches pero NO match_events (los omite el select para no
+      // explotar en filas). Preservamos los events que el detalle ya hidrató vía
+      // fetchMatchEventsByMatchIds — sin esto las stats individuales
+      // desaparecen apenas termina esta fase.
+      setTournaments((prev) => {
+        if (prev.length === 0) return full;
+        const existingEventsByMatch = new Map<string, MatchEvent[]>();
         for (const t of prev) {
           for (const m of t.matches) {
             if (m.events && m.events.length > 0) {
@@ -185,7 +220,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
             }
           }
         }
-        return data.map((newT) => ({
+        return full.map((newT) => ({
           ...newT,
           matches: newT.matches.map((m) => {
             const events = existingEventsByMatch.get(m.id);
@@ -193,10 +228,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
           }),
         }));
       });
-      setError(null);
     } catch (err) {
-      setError("Error al cargar datos");
-      console.error(err);
+      // La app sigue usable con la fase 1; solo faltan los matches.
+      console.error("carga de matches en background falló", err);
     }
   }, []);
 
@@ -273,7 +307,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   // utilizable lo antes posible. Los equipos van en un effect separado
   // que depende del estado de auth.
   useEffect(() => {
-    loadTournaments().finally(() => setIsLoading(false));
+    // `loadTournaments` baja isLoading apenas termina su fase 1 (sin esperar a
+    // los matches), así que acá no hay que tocarlo.
+    loadTournaments();
 
     // Re-load when Supabase confirms a valid session (after token refresh,
     // sign-in, or session restore). Esto cubre el caso de que el JWT

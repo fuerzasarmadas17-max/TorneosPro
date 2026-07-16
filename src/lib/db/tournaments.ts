@@ -3,11 +3,14 @@ import { supabase } from "@/lib/supabase";
 import { Match, Tournament } from "@/types";
 import { mapTournament, toDbMatch, toDbTournament } from "./mappers";
 
-// SELECT completo para la página de detalle de UN solo torneo. Incluye
-// match_events embed que es lo que hace que la query "explote" en filas
-// (un torneo grande con 200 matches × 30 events = 6000 filas). Para un
-// torneo solo es manejable; para una lista de torneos NO. Por eso hay
-// dos versiones.
+// Hay TRES selects, de más pesado a más liviano. Medido contra prod con 13
+// torneos: con matches+events explota, con matches son 1,16 MB, sin matches
+// son 57 KB. Elegir el correcto es la diferencia entre que la app abra en
+// mobile o no.
+
+// 1) DETALLE COMPLETO — un solo torneo. Incluye el embed match_events, que
+// es lo que hace que la query "explote" en filas (200 matches × 30 events =
+// 6000 filas). Para un torneo es manejable; para una lista NO.
 const TOURNAMENT_DETAIL_SELECT = `
   *,
   tournament_teams(team_id),
@@ -17,14 +20,10 @@ const TOURNAMENT_DETAIL_SELECT = `
   sponsors(*)
 `;
 
-// SELECT liviano para listas (vista pública `/tournaments`, dashboard,
-// perfil de organizador, contexto global). NO incluye match_events:
-// para 50 torneos × 200 matches × 30 events serían 300k filas en una
-// sola query — eso era el principal cuello de botella en mobile y la
-// causa del 504 en `/tournaments/[id]` cuando el provider hacía esta
-// query en cascada con la del torneo detallado. Los eventos se cargan
-// recién cuando el usuario entra a un torneo específico (vía SSR).
-const TOURNAMENT_LIST_SELECT = `
+// 2) CON MATCHES, SIN EVENTOS — matches y sets sí, match_events no. Lo usan
+// el SSR del detalle (para no timeoutear en Vercel) y la fase 2 de la carga
+// de la lista. Los eventos se piden aparte con fetchMatchEventsByMatchIds.
+const TOURNAMENT_WITH_MATCHES_SELECT = `
   *,
   tournament_teams(team_id),
   tournament_groups(*, tournament_group_teams(team_id)),
@@ -33,10 +32,47 @@ const TOURNAMENT_LIST_SELECT = `
   sponsors(*)
 `;
 
+// 3) LISTA LIVIANA — TODOS los torneos, sin matches. 57 KB medidos en prod
+// contra los 1,16 MB del select con matches: los matches son el 95% del
+// payload.
+//
+// Esto es lo único que debe bloquear el primer render. `TournamentProvider`
+// está en el layout raíz, así que esta query corre en TODAS las rutas antes
+// de pintar nada — y ningún consumidor de lista usa `tournament.matches`
+// (ni TournamentCard, ni TournamentList, ni el dashboard, ni
+// getFilteredTournaments). Los matches los trae `fetchTournamentsWithMatches`
+// después, en background.
+const TOURNAMENT_LIST_SELECT = `
+  *,
+  tournament_teams(team_id),
+  tournament_groups(*, tournament_group_teams(team_id)),
+  playoff_configs(*),
+  sponsors(*)
+`;
+
+/**
+ * Fase 1 de la carga de torneos: todo menos los matches. Rápida a propósito —
+ * es la que bloquea el "Cargando..." del AppShell.
+ */
 export async function fetchTournaments(): Promise<Tournament[]> {
   const { data, error } = await supabase
     .from("tournaments")
     .select(TOURNAMENT_LIST_SELECT)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) return [];
+  return data.map((row) => mapTournament(row as Record<string, unknown>));
+}
+
+/**
+ * Fase 2: los mismos torneos pero con sus matches. Pesada (1,16 MB con 13
+ * torneos) — el caller la corre en background y mergea cuando llega, nunca
+ * bloqueando el render.
+ */
+export async function fetchTournamentsWithMatches(): Promise<Tournament[]> {
+  const { data, error } = await supabase
+    .from("tournaments")
+    .select(TOURNAMENT_WITH_MATCHES_SELECT)
     .order("created_at", { ascending: false });
 
   if (error || !data) return [];
@@ -48,13 +84,13 @@ export async function fetchTournamentById(
   client: SupabaseClient = supabase,
   includeEvents: boolean = true
 ): Promise<Tournament | null> {
-  // includeEvents=false: usa el SELECT liviano (sin match_events). Lo
-  // usa el SSR del detalle para evitar timeouts de Vercel cuando el
-  // torneo tiene muchos partidos. Los eventos los carga el cliente en
-  // background apenas hidrata, así nada se pierde — solo se reordena.
+  // includeEvents=false: matches sí, match_events no. Lo usa el SSR del
+  // detalle para evitar timeouts de Vercel cuando el torneo tiene muchos
+  // partidos. Los eventos los carga el cliente en background apenas hidrata,
+  // así nada se pierde — solo se reordena.
   const selectStr = includeEvents
     ? TOURNAMENT_DETAIL_SELECT
-    : TOURNAMENT_LIST_SELECT;
+    : TOURNAMENT_WITH_MATCHES_SELECT;
   const { data, error } = await client
     .from("tournaments")
     .select(selectStr)
