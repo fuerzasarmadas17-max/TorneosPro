@@ -3,14 +3,20 @@
 import { useEffect, useRef, useState } from "react";
 import { X, ExternalLink } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
+import { useAuth } from "@/context/auth-context";
 
 /**
  * Modal de publicidad (Pieza 2 de Por hacer/modal-publicidad-y-tienda.md).
  *
- * Se muestra al espectador en la VISTA PÚBLICA del torneo, en cada carga /
- * refresh (decisión 2026-07-03: sin tope por sesión). Pide a
+ * Se muestra al espectador ANÓNIMO en la vista pública del torneo, en cada
+ * carga / refresh (decisión 2026-07-03: sin tope por sesión). Pide a
  * `/api/ads/resolve` qué anuncio mostrar — el pick ponderado por monto ocurre
  * server-side. Si no hay campaña que aplique, no renderiza nada.
+ *
+ * Los usuarios con sesión iniciada (los organizadores) no ven publicidad: son
+ * los clientes que pagan, no la audiencia que el anunciante compró. El chequeo
+ * es client-side a propósito — las rutas de torneo tienen edge cache
+ * (`revalidate = 60`) y mirar la sesión en el servidor las volvería dinámicas.
  *
  * Cerrable después de 3s (antes muestra la cuenta regresiva en el botón).
  * Cuenta `ad_impression` al mostrarse y `ad_click` al tocarse, reutilizando
@@ -30,6 +36,7 @@ interface AdModalProps {
 }
 
 export function AdModal({ tournamentId }: AdModalProps) {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [ad, setAd] = useState<ResolvedAd | null>(null);
   const [canClose, setCanClose] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(
@@ -38,8 +45,14 @@ export function AdModal({ tournamentId }: AdModalProps) {
   // Evita doble impresión si el effect corre dos veces (React Strict Mode).
   const impressionFor = useRef<string | null>(null);
 
-  // Resolver el anuncio al montar.
+  // Resolver el anuncio al montar, solo para el espectador anónimo.
+  //
+  // Esperamos a que auth termine de resolver antes de pegarle a la API: si
+  // pidiéramos el anuncio de una, el organizador lo vería un instante y
+  // contaríamos una `ad_impression` que el anunciante paga sin que su público
+  // real la haya visto.
   useEffect(() => {
+    if (authLoading || isAuthenticated) return;
     let cancelled = false;
     (async () => {
       try {
@@ -66,7 +79,7 @@ export function AdModal({ tournamentId }: AdModalProps) {
     return () => {
       cancelled = true;
     };
-  }, [tournamentId]);
+  }, [tournamentId, authLoading, isAuthenticated]);
 
   // Cuenta regresiva para habilitar el cierre.
   useEffect(() => {
@@ -87,7 +100,9 @@ export function AdModal({ tournamentId }: AdModalProps) {
     };
   }, [ad]);
 
-  if (!ad) return null;
+  // `isAuthenticated` también se chequea acá y no solo en el effect: si la
+  // sesión aparece con el modal ya abierto (login en otra pestaña), lo bajamos.
+  if (isAuthenticated || !ad) return null;
 
   return (
     <div
