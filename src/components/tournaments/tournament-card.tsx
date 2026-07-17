@@ -22,10 +22,38 @@ const statusColors: Record<string, string> = {
   completed: "bg-zinc-500/10 text-zinc-500 hover:bg-zinc-500/20",
 };
 
-const formatLabels: Record<string, string> = {
-  elimination: "Eliminacion",
-  "round-robin": "Liga",
-  "group-playoff": "Grupos + Playoffs",
+// Un color por deporte para reconocer el torneo de un vistazo. Agrupados por
+// familia (goles = verdes, carreras = cálidos, raqueta/red = fríos) para que
+// deportes parecidos se lean como parientes sin confundirse entre sí.
+// Clases completas a propósito: Tailwind no genera nombres construidos por
+// interpolación, tienen que estar literales para que el JIT las incluya.
+const sportColors: Record<string, string> = {
+  futbol: "bg-green-500/15 text-green-700 dark:text-green-400",
+  futsal: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+  microfutbol: "bg-lime-600/15 text-lime-700 dark:text-lime-400",
+  beisbol: "bg-red-500/15 text-red-700 dark:text-red-400",
+  softball: "bg-rose-500/15 text-rose-700 dark:text-rose-400",
+  wiffleball: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  volleyball: "bg-sky-500/15 text-sky-700 dark:text-sky-400",
+  basketball: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
+  padel: "bg-violet-500/15 text-violet-700 dark:text-violet-400",
+  "ping-pong": "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400",
+  tenis: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
+};
+
+// Mismo color, solo el texto — para el nombre del deporte junto al chip.
+const sportText: Record<string, string> = {
+  futbol: "text-green-700 dark:text-green-400",
+  futsal: "text-emerald-700 dark:text-emerald-400",
+  microfutbol: "text-lime-700 dark:text-lime-400",
+  beisbol: "text-red-700 dark:text-red-400",
+  softball: "text-rose-700 dark:text-rose-400",
+  wiffleball: "text-amber-700 dark:text-amber-400",
+  volleyball: "text-sky-700 dark:text-sky-400",
+  basketball: "text-orange-700 dark:text-orange-400",
+  padel: "text-violet-700 dark:text-violet-400",
+  "ping-pong": "text-cyan-700 dark:text-cyan-400",
+  tenis: "text-yellow-700 dark:text-yellow-400",
 };
 
 interface TournamentCardProps {
@@ -53,44 +81,63 @@ export function TournamentCard({ tournament, href }: TournamentCardProps) {
       });
   }, [tournament.createdBy]);
 
+  const location =
+    tournament.scope === "nacional"
+      ? "Nacional"
+      : tournament.department
+        ? `${getDepartmentLabel(tournament.department)}${
+            tournament.municipality
+              ? `, ${getMunicipalityLabel(tournament.department, tournament.municipality)}`
+              : ""
+          }`
+        : null;
+
   return (
     <Card className="flex flex-col">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between gap-2">
-          <Badge variant="outline" className="text-xs">
-            {sport?.emoji} {sport?.label}
-          </Badge>
-          <Badge className={statusColors[tournament.status]}>
-            {statusLabels[tournament.status]}
-          </Badge>
+      <CardHeader className="pb-2">
+        <div className="flex items-start gap-3">
+          {/* Chip del emoji: ancla de color del deporte */}
+          <div
+            className={`grid size-10 shrink-0 place-items-center rounded-lg text-lg ${
+              sportColors[tournament.sport] ?? "bg-muted text-muted-foreground"
+            }`}
+          >
+            <span aria-hidden>{sport?.emoji}</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className={`text-xs font-medium ${
+                  sportText[tournament.sport] ?? "text-muted-foreground"
+                }`}
+              >
+                {sport?.label}
+              </span>
+              <Badge className={statusColors[tournament.status]}>
+                {statusLabels[tournament.status]}
+              </Badge>
+            </div>
+            <CardTitle className="text-base leading-snug mt-1 line-clamp-2 min-h-[2lh]">
+              {tournament.name}
+            </CardTitle>
+          </div>
         </div>
-        <CardTitle className="text-lg mt-2">{tournament.name}</CardTitle>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col justify-between gap-4">
+      <CardContent className="flex-1 flex flex-col justify-between gap-3">
         <div className="space-y-1 text-sm text-muted-foreground">
-          <p>{formatLabels[tournament.format]}</p>
-          <p>{tournament.teamIds.length} equipos</p>
-          <p>Inicio: {tournament.startDate}</p>
-          {tournament.scope === "nacional" && <p>Nacional</p>}
-          {tournament.scope !== "nacional" && tournament.department && (
-            <p>
-              {getDepartmentLabel(tournament.department)}
-              {tournament.municipality &&
-                `, ${getMunicipalityLabel(tournament.department, tournament.municipality)}`}
-            </p>
-          )}
+          {location && <p>{location}</p>}
           {organizer && (
-            <p>
-              Organizador:{" "}
+            <p className="flex items-center gap-1 min-w-0">
+              <span className="shrink-0">Organizador:</span>
               {organizer.slug ? (
                 <Link
                   href={`/${organizer.slug}`}
-                  className="text-primary hover:underline font-medium"
+                  className="text-primary hover:underline font-medium truncate min-w-0"
                 >
                   {organizer.name}
                 </Link>
               ) : (
-                <span className="font-medium">{organizer.name}</span>
+                <span className="font-medium truncate min-w-0">{organizer.name}</span>
               )}
             </p>
           )}
