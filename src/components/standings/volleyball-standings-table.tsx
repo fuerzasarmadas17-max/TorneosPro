@@ -102,7 +102,7 @@ function ScoringRulesDialog({ bestOf }: { bestOf: 3 | 5 }) {
             Cuando dos o mas equipos tienen los mismos puntos, el orden se define asi:
           </p>
           <ol className="list-decimal list-inside space-y-1">
-            <li>Mayor numero de partidos ganados</li>
+            <li>Mayor número de partidos ganados</li>
             <li>Mejor diferencia de sets</li>
             <li>Mejor ratio de sets (SF / SC)</li>
             <li>Mejor diferencia de puntos</li>

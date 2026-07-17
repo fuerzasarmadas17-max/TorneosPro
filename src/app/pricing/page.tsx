@@ -22,7 +22,7 @@ const FEATURES: PlanFeature[] = [
   { label: "Eliminacion directa", free: true, paid: true },
   { label: "Liga (round-robin)", free: false, paid: true },
   { label: "Fase de grupos + playoffs", free: false, paid: true },
-  { label: "Estadisticas avanzadas", free: false, paid: true },
+  { label: "Estadísticas avanzadas", free: false, paid: true },
   { label: "Fase de grupos", free: false, paid: true },
   { label: "Duracion ilimitada", free: true, paid: true },
   { label: "Torneos activos ilimitados", free: false, paid: true },

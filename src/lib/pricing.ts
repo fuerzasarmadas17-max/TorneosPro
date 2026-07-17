@@ -31,7 +31,7 @@ export function checkFreeTier(input: {
     reasons.push(`Maximo ${FREE_TIER_LIMITS.maxTeams} equipos en plan gratis`);
   }
   if (input.enabledStatsCount > 0) {
-    reasons.push("Estadisticas solo disponibles en plan pago");
+    reasons.push("Estadísticas solo disponibles en plan pago");
   }
   if (input.groupCount > 0) {
     reasons.push("Grupos solo disponibles en plan pago");

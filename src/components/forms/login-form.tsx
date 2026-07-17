@@ -44,19 +44,19 @@ export function LoginForm() {
     setLoading(false);
 
     if (result.success) {
-      toast.success("Sesion iniciada correctamente");
+      toast.success("Sesión iniciada correctamente");
       startTransition(() => {
         router.push("/dashboard");
       });
     } else {
-      setError(result.error || "Error al iniciar sesion");
+      setError(result.error || "Error al iniciar sesión");
     }
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">Iniciar Sesion</CardTitle>
+        <CardTitle className="text-2xl">Iniciar Sesión</CardTitle>
         <CardDescription>
           Ingresa tus credenciales para acceder a tu cuenta
         </CardDescription>
@@ -80,12 +80,12 @@ export function LoginForm() {
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="password">Contrasena</Label>
+              <Label htmlFor="password">Contraseña</Label>
               <Link
                 href="/forgot-password"
                 className="text-xs text-muted-foreground hover:text-primary hover:underline"
               >
-                Olvidaste tu contrasena?
+                ¿Olvidaste tu contraseña?
               </Link>
             </div>
             <Input
@@ -98,10 +98,10 @@ export function LoginForm() {
         </CardContent>
         <CardFooter className="flex flex-col gap-4 pt-6">
           <Button type="submit" className="w-full" disabled={loading || isPending}>
-            {loading ? "Ingresando..." : isPending ? "Redirigiendo..." : "Iniciar Sesion"}
+            {loading ? "Ingresando..." : isPending ? "Redirigiendo..." : "Iniciar Sesión"}
           </Button>
           <p className="text-sm text-muted-foreground">
-            No tienes cuenta?{" "}
+            ¿No tienes cuenta?{" "}
             <Link href="/register" className="text-primary hover:underline">
               Registrate
             </Link>

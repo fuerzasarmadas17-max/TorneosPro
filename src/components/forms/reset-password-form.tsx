@@ -78,7 +78,7 @@ export function ResetPasswordForm() {
       return;
     }
     if (password.length < 6) {
-      setError("La contrasena debe tener al menos 6 caracteres");
+      setError("La contraseña debe tener al menos 6 caracteres");
       return;
     }
 
@@ -86,7 +86,7 @@ export function ResetPasswordForm() {
     const result = await updatePassword(password);
     if (!result.success) {
       setLoading(false);
-      setError(result.error || "Error al actualizar la contrasena");
+      setError(result.error || "Error al actualizar la contraseña");
       return;
     }
 
@@ -94,7 +94,7 @@ export function ResetPasswordForm() {
     // recovery session into the dashboard.
     await logout();
     setLoading(false);
-    toast.success("Contrasena actualizada. Inicia sesion nuevamente.");
+    toast.success("Contraseña actualizada. Inicia sesión nuevamente.");
     router.push("/login");
   };
 
@@ -115,7 +115,7 @@ export function ResetPasswordForm() {
         <CardHeader>
           <CardTitle className="text-2xl">Enlace invalido o expirado</CardTitle>
           <CardDescription>
-            El enlace para restablecer la contrasena no es valido o ya expiro. Solicita uno nuevo.
+            El enlace para restablecer la contraseña no es válido o ya expiró. Solicita uno nuevo.
           </CardDescription>
         </CardHeader>
         <CardFooter className="flex flex-col gap-2 pt-6">
@@ -123,7 +123,7 @@ export function ResetPasswordForm() {
             <Link href="/forgot-password">Solicitar nuevo enlace</Link>
           </Button>
           <Button variant="outline" className="w-full" asChild>
-            <Link href="/login">Volver a Iniciar Sesion</Link>
+            <Link href="/login">Volver a Iniciar Sesión</Link>
           </Button>
         </CardFooter>
       </Card>
@@ -133,9 +133,9 @@ export function ResetPasswordForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">Nueva contrasena</CardTitle>
+        <CardTitle className="text-2xl">Nueva contraseña</CardTitle>
         <CardDescription>
-          Elegi una contrasena nueva para tu cuenta.
+          Elegí una contraseña nueva para tu cuenta.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
@@ -146,7 +146,7 @@ export function ResetPasswordForm() {
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor="password">Nueva contrasena</Label>
+            <Label htmlFor="password">Nueva contraseña</Label>
             <Input
               id="password"
               type="password"
@@ -156,7 +156,7 @@ export function ResetPasswordForm() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirmar contrasena</Label>
+            <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
             <Input
               id="confirmPassword"
               type="password"
@@ -168,7 +168,7 @@ export function ResetPasswordForm() {
         </CardContent>
         <CardFooter className="pt-6">
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Guardando..." : "Guardar contrasena"}
+            {loading ? "Guardando..." : "Guardar contraseña"}
           </Button>
         </CardFooter>
       </form>

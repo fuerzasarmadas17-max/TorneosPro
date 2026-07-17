@@ -165,7 +165,7 @@ export default function HomePage() {
                   </Badge>
                   <ul className="text-sm text-muted-foreground space-y-1">
                     <li>Todos los formatos</li>
-                    <li>Estadisticas avanzadas</li>
+                    <li>Estadísticas avanzadas</li>
                     <li>Fase de grupos</li>
                     <li>Duracion ilimitada</li>
                   </ul>

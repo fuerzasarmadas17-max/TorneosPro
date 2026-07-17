@@ -85,13 +85,13 @@ export function TournamentCostDialog({
       .single();
 
     if (error || !data) {
-      toast.error("Codigo no encontrado");
+      toast.error("Código no encontrado");
       setValidating(false);
       return;
     }
 
     if (data.used_by) {
-      toast.error("Este codigo ya fue utilizado");
+      toast.error("Este código ya fue utilizado");
       setValidating(false);
       return;
     }
@@ -101,7 +101,7 @@ export function TournamentCostDialog({
       type: data.type as CouponType,
       value: data.value,
     });
-    toast.success("Codigo aplicado");
+    toast.success("Código aplicado");
     setValidating(false);
   };
 
@@ -242,7 +242,7 @@ export function TournamentCostDialog({
 
             {/* Coupon input */}
             <div className="space-y-2">
-              <Label className="text-xs">Codigo de descuento</Label>
+              <Label className="text-xs">Código de descuento</Label>
               {appliedCoupon ? (
                 <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/20 rounded-md px-3 py-2">
                   <span className="font-mono font-bold text-sm text-green-600 flex-1">

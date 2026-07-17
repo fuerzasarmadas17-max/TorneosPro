@@ -132,7 +132,7 @@ function UsersContent() {
                       <span>· {user.organizationProfile.location}</span>
                     )}
                     <Badge variant="outline" className="text-xs">
-                      {user.organizationProfile.isPublic ? "Publico" : "Privado"}
+                      {user.organizationProfile.isPublic ? "Público" : "Privado"}
                     </Badge>
                   </div>
                 </CardContent>

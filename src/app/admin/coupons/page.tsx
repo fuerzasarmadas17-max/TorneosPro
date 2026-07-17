@@ -79,7 +79,7 @@ function CouponsContent() {
 
   const handleCreate = async () => {
     if (!code.trim()) {
-      toast.error("El codigo es obligatorio");
+      toast.error("El código es obligatorio");
       return;
     }
 
@@ -103,9 +103,9 @@ function CouponsContent() {
 
     if (error) {
       if (error.code === "23505") {
-        toast.error("Ya existe un cupon con ese codigo");
+        toast.error("Ya existe un cupón con ese código");
       } else {
-        toast.error("Error al crear el cupon");
+        toast.error("Error al crear el cupón");
       }
     } else {
       toast.success(`Cupon ${code.trim().toUpperCase()} creado`);
@@ -119,7 +119,7 @@ function CouponsContent() {
   const handleDelete = async (id: string, couponCode: string) => {
     const { error } = await supabase.from("coupons").delete().eq("id", id);
     if (error) {
-      toast.error("Error al eliminar el cupon");
+      toast.error("Error al eliminar el cupón");
     } else {
       toast.success(`Cupon ${couponCode} eliminado`);
       loadCoupons();
@@ -128,7 +128,7 @@ function CouponsContent() {
 
   const copyCode = (couponCode: string) => {
     navigator.clipboard.writeText(couponCode);
-    toast.success("Codigo copiado");
+    toast.success("Código copiado");
   };
 
   const availableCount = coupons.filter((c) => !c.used_by).length;
@@ -139,7 +139,7 @@ function CouponsContent() {
       <div>
         <h1 className="text-3xl font-bold">Cupones</h1>
         <p className="text-muted-foreground mt-1">
-          Crea y gestiona codigos de descuento
+          Crea y gestiona códigos de descuento
         </p>
       </div>
 
@@ -178,12 +178,12 @@ function CouponsContent() {
       {/* Create coupon */}
       <Card>
         <CardHeader>
-          <CardDescription>Crear nuevo cupon</CardDescription>
+          <CardDescription>Crear nuevo cupón</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-2">
-              <Label className="text-xs">Codigo</Label>
+              <Label className="text-xs">Código</Label>
               <div className="flex gap-1">
                 <Input
                   value={code}
@@ -197,7 +197,7 @@ function CouponsContent() {
                   size="icon"
                   className="h-9 w-9 flex-shrink-0"
                   onClick={generateCode}
-                  title="Generar codigo"
+                  title="Generar código"
                 >
                   <Ticket className="h-3.5 w-3.5" />
                 </Button>
@@ -268,7 +268,7 @@ function CouponsContent() {
                   <button
                     onClick={() => copyCode(coupon.code)}
                     className="font-mono font-bold text-sm bg-muted px-2 py-1 rounded hover:bg-muted/80 transition-colors flex items-center gap-1 flex-shrink-0"
-                    title="Copiar codigo"
+                    title="Copiar código"
                   >
                     {coupon.code}
                     <Copy className="h-3 w-3 text-muted-foreground" />

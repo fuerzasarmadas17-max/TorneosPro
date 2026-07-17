@@ -60,7 +60,7 @@ import { toast } from "sonner";
 // detalle del torneo.
 
 const statusLabels: Record<string, string> = {
-  upcoming: "Proximo",
+  upcoming: "Próximo",
   "in-progress": "En Curso",
   completed: "Completado",
 };
@@ -79,7 +79,7 @@ const formatLabels: Record<string, string> = {
 
 const OPTIONAL_COLUMNS = [
   { key: "fechaNacimiento", label: "Fecha de nacimiento", width: 18 },
-  { key: "documento", label: "Numero de documento", width: 22 },
+  { key: "documento", label: "Número de documento", width: 22 },
   { key: "residencia", label: "Lugar de residencia", width: 22 },
   { key: "eps", label: "EPS", width: 15 },
 ] as const;
@@ -118,7 +118,7 @@ function TemplateDownloadDialog() {
     const exampleValues: Record<string, string> = {
       "Nombre Completo": "Juan Pérez García",
       "Fecha de nacimiento": "1995-06-15",
-      "Numero de documento": "1234567890",
+      "Número de documento": "1234567890",
       "Lugar de residencia": "Sincelejo",
       EPS: "Nueva EPS",
     };
@@ -586,7 +586,7 @@ export function TournamentDetail({
       tabs.push({ key: "teams", label: "Equipos" });
     }
     if (showStats) {
-      tabs.push({ key: "stats", label: "Estadisticas" });
+      tabs.push({ key: "stats", label: "Estadísticas" });
     }
     return tabs;
   })();
@@ -849,7 +849,7 @@ export function TournamentDetail({
             {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
             {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
             {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
-            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadísticas</TabsTrigger>}
           </TabsList>
           {tournament.phaseConfigs.map((pc) => {
             if (pc.phase > 1 && !isTabVisible(`phase${pc.phase}`)) return null;
@@ -899,7 +899,7 @@ export function TournamentDetail({
             {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
             {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
             {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
-            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadísticas</TabsTrigger>}
           </TabsList>
           <TabsContent value="groups" className="mt-4">
             <div className="space-y-3">
@@ -943,7 +943,7 @@ export function TournamentDetail({
             {isTabVisible("schedule") && <TabsTrigger value="matches">Partidos</TabsTrigger>}
             {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
             {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
-            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadísticas</TabsTrigger>}
           </TabsList>
           <TabsContent value="bracket" className="mt-4">
             <BracketView tournament={tournament} canEdit={canEdit} />
@@ -976,7 +976,7 @@ export function TournamentDetail({
             {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
             {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
             {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
-            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadísticas</TabsTrigger>}
           </TabsList>
           <TabsContent value="groups" className="mt-4">
             <div className="space-y-3">
@@ -1011,11 +1011,11 @@ export function TournamentDetail({
       ) : (
         <Tabs defaultValue="standings">
           <TabsList>
-            <TabsTrigger value="standings">Clasificacion</TabsTrigger>
+            <TabsTrigger value="standings">Clasificación</TabsTrigger>
             {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
             {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
             {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
-            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadisticas</TabsTrigger>}
+            {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadísticas</TabsTrigger>}
           </TabsList>
           <TabsContent value="standings" className="mt-4">
             <div className="space-y-3">

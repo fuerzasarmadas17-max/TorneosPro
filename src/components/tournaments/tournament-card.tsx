@@ -11,7 +11,7 @@ import { getDepartmentLabel, getMunicipalityLabel } from "@/data/colombia";
 import { supabase } from "@/lib/supabase";
 
 const statusLabels: Record<string, string> = {
-  upcoming: "Proximo",
+  upcoming: "Próximo",
   "in-progress": "En Curso",
   completed: "Completado",
 };

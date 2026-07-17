@@ -133,7 +133,7 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
           }
 
           // Document number
-          const documento = String(row["Numero de documento"] || row["numero de documento"] || row["NUMERO DE DOCUMENTO"] || row["Documento"] || row["documento"] || row["DOCUMENTO"] || row["No. Documento"] || row["No. documento"] || "").trim();
+          const documento = String(row["Número de documento"] || row["número de documento"] || row["NÚMERO DE DOCUMENTO"] || row["Numero de documento"] || row["numero de documento"] || row["NUMERO DE DOCUMENTO"] || row["Documento"] || row["documento"] || row["DOCUMENTO"] || row["No. Documento"] || row["No. documento"] || "").trim();
 
           // EPS
           const epsVal = String(row["EPS"] || row["eps"] || row["Eps"] || "").trim();

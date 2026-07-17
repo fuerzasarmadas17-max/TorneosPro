@@ -88,7 +88,7 @@ export function OrganizationProfileForm() {
     }
 
     if (isSlugReserved(formData.slug)) {
-      toast.error("Este slug esta reservado, por favor elige otro");
+      toast.error("Este slug está reservado, por favor elige otro");
       setStep(1);
       setLoading(false);
       return;
@@ -177,7 +177,7 @@ export function OrganizationProfileForm() {
             <div className="grid gap-4 sm:grid-cols-2">
       {/* Organization Name */}
       <div className="space-y-2">
-        <Label htmlFor="organizationName">Nombre de la Organizacion *</Label>
+        <Label htmlFor="organizationName">Nombre de la Organización *</Label>
         <Input
           id="organizationName"
           value={formData.organizationName}
@@ -221,7 +221,7 @@ export function OrganizationProfileForm() {
 
       {/* Logo */}
       <div className="space-y-2">
-        <Label>Logo de la Organizacion</Label>
+        <Label>Logo de la Organización</Label>
         <p className="text-sm text-muted-foreground">
           Tamano recomendado: 512x512px. Formato: PNG o JPG. Lo optimizamos
           automaticamente para que cargue rapido en celulares.
@@ -281,12 +281,12 @@ export function OrganizationProfileForm() {
 
       {/* Bio */}
       <div className="space-y-2">
-        <Label htmlFor="bio">Descripcion</Label>
+        <Label htmlFor="bio">Descripción</Label>
         <Textarea
           id="bio"
           value={formData.bio || ""}
           onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-          placeholder="Describe tu organizacion..."
+          placeholder="Describe tu organización..."
           rows={4}
         />
       </div>
@@ -302,7 +302,7 @@ export function OrganizationProfileForm() {
             <div className="grid gap-4 sm:grid-cols-2">
       {/* Location */}
       <div className="space-y-2">
-        <Label htmlFor="location">Ubicacion</Label>
+        <Label htmlFor="location">Ubicación</Label>
         <Input
           id="location"
           value={formData.location || ""}

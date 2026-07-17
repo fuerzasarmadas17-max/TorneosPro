@@ -169,7 +169,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
               className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
             >
               <ExternalLink className="h-4 w-4" />
-              Perfil Publico
+              Perfil Público
             </Link>
           </>
         )}

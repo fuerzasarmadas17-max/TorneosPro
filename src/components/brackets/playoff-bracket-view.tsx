@@ -53,7 +53,7 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
   const handleSave = async () => {
     const value = parseInt(advanceCount);
     if (!value || value < 2) {
-      toast.error("Minimo 2 equipos deben clasificar");
+      toast.error("Mínimo 2 equipos deben clasificar");
       return;
     }
     if (value > tournament.teamIds.length) {

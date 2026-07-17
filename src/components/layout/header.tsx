@@ -23,7 +23,7 @@ export function Header() {
           ) : (
             <div className="hidden md:flex items-center space-x-2">
               <Button variant="ghost" asChild>
-                <Link href="/login">Iniciar Sesion</Link>
+                <Link href="/login">Iniciar Sesión</Link>
               </Button>
               <Button asChild>
                 <Link href="/register">Registrarse</Link>

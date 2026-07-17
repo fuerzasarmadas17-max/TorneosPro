@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     if (!integritySecret) {
       console.error("WOMPI_INTEGRITY_SECRET not configured");
       return NextResponse.json(
-        { error: "Configuracion de pago incompleta" },
+        { error: "Configuración de pago incompleta" },
         { status: 500 }
       );
     }

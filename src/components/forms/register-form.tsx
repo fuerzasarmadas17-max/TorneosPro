@@ -39,12 +39,12 @@ export function RegisterForm() {
     }
 
     if (password !== confirmPassword) {
-      setError("Las contrasenas no coinciden");
+      setError("Las contraseñas no coinciden");
       return;
     }
 
     if (password.length < 6) {
-      setError("La contrasena debe tener al menos 6 caracteres");
+      setError("La contraseña debe tener al menos 6 caracteres");
       return;
     }
 
@@ -70,20 +70,20 @@ export function RegisterForm() {
         <CardHeader>
           <CardTitle className="text-2xl">Revisa tu correo</CardTitle>
           <CardDescription>
-            Hemos enviado un enlace de confirmacion a <strong>{email}</strong>
+            Hemos enviado un enlace de confirmación a <strong>{email}</strong>
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Haz clic en el enlace del correo para activar tu cuenta. Una vez confirmado, podras iniciar sesion.
+            Haz clic en el enlace del correo para activar tu cuenta. Una vez confirmado, podrás iniciar sesión.
           </p>
           <p className="text-sm text-muted-foreground">
-            No lo ves? Revisa tu carpeta de spam.
+            ¿No lo ves? Revisa tu carpeta de spam.
           </p>
         </CardContent>
         <CardFooter>
           <Button variant="outline" className="w-full" asChild>
-            <Link href="/login">Ir a Iniciar Sesion</Link>
+            <Link href="/login">Ir a Iniciar Sesión</Link>
           </Button>
         </CardFooter>
       </Card>
@@ -125,7 +125,7 @@ export function RegisterForm() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Contrasena</Label>
+            <Label htmlFor="password">Contraseña</Label>
             <Input
               id="password"
               type="password"
@@ -134,7 +134,7 @@ export function RegisterForm() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirmar Contrasena</Label>
+            <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
             <Input
               id="confirmPassword"
               type="password"
@@ -148,9 +148,9 @@ export function RegisterForm() {
             {loading ? "Registrando..." : "Registrarse"}
           </Button>
           <p className="text-sm text-muted-foreground">
-            Ya tienes cuenta?{" "}
+            ¿Ya tienes cuenta?{" "}
             <Link href="/login" className="text-primary hover:underline">
-              Inicia Sesion
+              Inicia Sesión
             </Link>
           </p>
         </CardFooter>

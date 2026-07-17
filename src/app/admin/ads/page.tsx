@@ -62,7 +62,7 @@ import { SCOPES, DEPARTMENTS } from "@/data/colombia";
  */
 
 const STATUS_OPTIONS: { key: string; label: string }[] = [
-  { key: "upcoming", label: "Proximo" },
+  { key: "upcoming", label: "Próximo" },
   { key: "in-progress", label: "En curso" },
   { key: "completed", label: "Finalizado" },
 ];
@@ -367,7 +367,7 @@ function AdsContent() {
     if (!imageUrl.trim()) return toast.error("Sube la imagen del anuncio");
     if (!linkUrl.trim()) return toast.error("El link de destino es obligatorio");
     if (!endsAt) return toast.error("Define la fecha de fin de vigencia");
-    if (endsAt <= startsAt) return toast.error("La vigencia debe terminar despues de que empieza");
+    if (endsAt <= startsAt) return toast.error("La vigencia debe terminar después de que empieza");
     if (mode === "list" && listTournaments.length === 0)
       return toast.error("Elige al menos un torneo para el modo lista");
 

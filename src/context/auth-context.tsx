@@ -168,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       });
 
-      if (error) return { success: false, error: "Credenciales invalidas" };
+      if (error) return { success: false, error: "Credenciales inválidas" };
 
       // Check if user is active
       const { data: userRow } = await supabase

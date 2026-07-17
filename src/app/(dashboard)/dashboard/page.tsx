@@ -62,7 +62,7 @@ function DashboardContent() {
       {user?.organizationProfile?.isPublic && (
         <div className="rounded-lg border bg-card p-4 flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Tu perfil publico: <span className="font-medium text-foreground">/{user.organizationProfile.slug}</span>
+            Tu perfil público: <span className="font-medium text-foreground">/{user.organizationProfile.slug}</span>
           </p>
           <Button variant="outline" size="sm" asChild>
             <Link href={`/${user.organizationProfile.slug}`} target="_blank">

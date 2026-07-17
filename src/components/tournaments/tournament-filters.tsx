@@ -106,7 +106,7 @@ export function TournamentFilters() {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">Todos los estados</SelectItem>
-          <SelectItem value="upcoming">Proximo</SelectItem>
+          <SelectItem value="upcoming">Próximo</SelectItem>
           <SelectItem value="in-progress">En Curso</SelectItem>
           <SelectItem value="completed">Completado</SelectItem>
         </SelectContent>

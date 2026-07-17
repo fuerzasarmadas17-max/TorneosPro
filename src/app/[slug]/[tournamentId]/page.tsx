@@ -110,7 +110,7 @@ export default function ProfileTournamentPage() {
       <div className="container mx-auto px-4 py-20 text-center">
         <h1 className="text-2xl font-bold">Torneo no encontrado</h1>
         <p className="text-muted-foreground mt-2">
-          Este torneo no existe o no pertenece a esta organizacion
+          Este torneo no existe o no pertenece a esta organización
         </p>
         <Button asChild className="mt-4">
           <Link href={`/${params.slug}`}>

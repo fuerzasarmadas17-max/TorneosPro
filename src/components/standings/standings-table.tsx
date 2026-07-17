@@ -84,7 +84,7 @@ function ScoringRulesDialog() {
           <ol className="list-decimal list-inside space-y-1">
             <li>Mejor diferencia de goles</li>
             <li>Mayor cantidad de goles a favor</li>
-            <li>Mayor numero de victorias</li>
+            <li>Mayor número de victorias</li>
             <li>Resultado directo entre los equipos empatados</li>
           </ol>
         </div>

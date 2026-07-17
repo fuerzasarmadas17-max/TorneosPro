@@ -77,7 +77,7 @@ export function MobileNav() {
                     setOpen(false);
                   }}
                 >
-                  Cerrar Sesion
+                  Cerrar Sesión
                 </Button>
               </div>
             </>
@@ -85,7 +85,7 @@ export function MobileNav() {
             <div className="flex flex-col space-y-2 pt-4 border-t">
               <Button asChild variant="outline">
                 <Link href="/login" onClick={() => setOpen(false)}>
-                  Iniciar Sesion
+                  Iniciar Sesión
                 </Link>
               </Button>
               <Button asChild>

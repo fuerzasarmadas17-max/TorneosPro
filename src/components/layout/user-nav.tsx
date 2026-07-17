@@ -53,7 +53,7 @@ export function UserNav() {
               router.push("/");
             }}
           >
-            Cerrar Sesion
+            Cerrar Sesión
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

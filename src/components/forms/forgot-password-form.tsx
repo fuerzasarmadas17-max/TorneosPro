@@ -50,17 +50,17 @@ export function ForgotPasswordForm() {
         <CardHeader>
           <CardTitle className="text-2xl">Revisa tu correo</CardTitle>
           <CardDescription>
-            Si <strong>{email}</strong> esta asociado a una cuenta, te enviamos un enlace para restablecer la contrasena.
+            Si <strong>{email}</strong> está asociado a una cuenta, te enviamos un enlace para restablecer la contraseña.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            El enlace expira en una hora. No lo ves? Revisa tu carpeta de spam.
+            El enlace expira en una hora. ¿No lo ves? Revisa tu carpeta de spam.
           </p>
         </CardContent>
         <CardFooter>
           <Button variant="outline" className="w-full" asChild>
-            <Link href="/login">Volver a Iniciar Sesion</Link>
+            <Link href="/login">Volver a Iniciar Sesión</Link>
           </Button>
         </CardFooter>
       </Card>
@@ -70,9 +70,9 @@ export function ForgotPasswordForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">Recuperar contrasena</CardTitle>
+        <CardTitle className="text-2xl">Recuperar contraseña</CardTitle>
         <CardDescription>
-          Ingresa tu email y te enviaremos un enlace para crear una nueva contrasena.
+          Ingresa tu email y te enviaremos un enlace para crear una nueva contraseña.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
@@ -100,7 +100,7 @@ export function ForgotPasswordForm() {
           </Button>
           <p className="text-sm text-muted-foreground">
             <Link href="/login" className="text-primary hover:underline">
-              Volver a iniciar sesion
+              Volver a iniciar sesión
             </Link>
           </p>
         </CardFooter>

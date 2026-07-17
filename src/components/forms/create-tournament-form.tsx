@@ -472,7 +472,7 @@ export function CreateTournamentForm() {
           .single();
 
         if (claimError || !claimed) {
-          toast.error("Este codigo promocional ya fue utilizado");
+          toast.error("Este código promocional ya fue utilizado");
           setCreating(false);
           return;
         }
@@ -650,7 +650,7 @@ export function CreateTournamentForm() {
           {/* ===================== PASO 1 — Esencial ===================== */}
           {step === 1 && (
             <div className="space-y-4">
-              <h3 className="font-semibold text-lg">Informacion General</h3>
+              <h3 className="font-semibold text-lg">Información General</h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="name">Nombre del Torneo</Label>
@@ -697,10 +697,10 @@ export function CreateTournamentForm() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Descripcion (opcional)</Label>
+                <Label htmlFor="description">Descripción (opcional)</Label>
                 <Input
                   id="description"
-                  placeholder="Descripcion del torneo"
+                  placeholder="Descripción del torneo"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                 />
@@ -1206,7 +1206,7 @@ export function CreateTournamentForm() {
             <div className="space-y-8">
               {/* Location / Scope */}
               <div className="space-y-4">
-                <h3 className="font-semibold text-lg">Ubicacion</h3>
+                <h3 className="font-semibold text-lg">Ubicación</h3>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Alcance del Torneo</Label>
@@ -1282,7 +1282,7 @@ export function CreateTournamentForm() {
               {sport && STAT_CATALOG.some((s) => s.sportDefaults.includes(sport as Sport)) && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-lg">Estadisticas del Torneo</h3>
+                    <h3 className="font-semibold text-lg">Estadísticas del Torneo</h3>
                     <span className="text-xs text-muted-foreground">
                       {enabledStats.length} seleccionadas
                     </span>
@@ -1348,10 +1348,10 @@ export function CreateTournamentForm() {
                 {department && <SummaryRow label="Departamento" value={deptLabel} />}
                 {municipality && <SummaryRow label="Municipio" value={munLabel} />}
                 {enabledStats.length > 0 && (
-                  <SummaryRow label="Estadisticas" value={`${enabledStats.length} seleccionadas`} />
+                  <SummaryRow label="Estadísticas" value={`${enabledStats.length} seleccionadas`} />
                 )}
                 {description.trim() && (
-                  <SummaryRow label="Descripcion" value={description.trim()} />
+                  <SummaryRow label="Descripción" value={description.trim()} />
                 )}
               </div>
 

@@ -521,7 +521,7 @@ export function MatchResultForm({
               <Separator />
               <div className="flex items-center justify-between">
                 <Label className="text-base">
-                  Estadisticas Individuales
+                  Estadísticas Individuales
                 </Label>
                 <span className="text-sm text-muted-foreground">
                   Paso {scoresheetStep} de 4
