@@ -74,6 +74,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Password recovery: redirect to reset-password page instead of
+      // treating it as a normal sign-in that loads the dashboard.
+      if (event === "PASSWORD_RECOVERY" && session) {
+        setIsLoading(false);
+        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/reset-password")) {
+          window.location.href = "/reset-password";
+        }
+        return;
+      }
+
       if (
         (event === "SIGNED_IN" ||
           event === "TOKEN_REFRESHED" ||
