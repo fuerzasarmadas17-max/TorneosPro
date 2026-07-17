@@ -10,13 +10,16 @@ import {
   SheetTrigger,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { ChangePasswordDialog } from "@/components/forms/change-password-dialog";
 import { useAuth } from "@/context/auth-context";
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const { isAuthenticated, user, logout } = useAuth();
 
   return (
+    <>
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button variant="ghost" size="icon" className="md:hidden mr-2">
@@ -50,10 +53,22 @@ export function MobileNav() {
               >
                 Crear Torneo
               </Link>
-              <div className="pt-4 border-t">
+              <div className="pt-4 border-t space-y-2">
                 <p className="text-sm text-muted-foreground mb-2">
                   {user?.name}
                 </p>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    // Cerramos el sheet primero: el diálogo y el sheet son dos
+                    // capas modales y se pelean el foco si se solapan.
+                    setOpen(false);
+                    setChangePasswordOpen(true);
+                  }}
+                >
+                  Cambiar contraseña
+                </Button>
                 <Button
                   variant="outline"
                   className="w-full"
@@ -83,5 +98,11 @@ export function MobileNav() {
         </nav>
       </SheetContent>
     </Sheet>
+
+    <ChangePasswordDialog
+      open={changePasswordOpen}
+      onOpenChange={setChangePasswordOpen}
+    />
+    </>
   );
 }

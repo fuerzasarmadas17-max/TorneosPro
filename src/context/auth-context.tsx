@@ -21,6 +21,7 @@ interface AuthContextType extends AuthState {
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   updateOrganizationProfile: (profile: OrganizationProfile) => Promise<{ success: boolean; error?: string }>;
   getAllUsers: () => Promise<SafeUser[]>;
   toggleUserActive: (userId: string) => Promise<void>;
@@ -267,6 +268,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: true };
   }, []);
 
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      const email = authState.user?.email;
+      if (!email) return { success: false, error: "No hay usuario autenticado" };
+
+      // updateUser() no pide la contraseña anterior: con una sesión abierta en un
+      // equipo prestado cualquiera podría cambiarla y quedarse con la cuenta.
+      // Revalidamos con signInWithPassword antes de permitir el cambio. Si falla,
+      // la sesión actual queda intacta; si acierta, emite una sesión nueva para el
+      // mismo usuario y onAuthStateChange la ignora (loadedUserIdRef ya coincide).
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password: currentPassword,
+      });
+      if (signInError) {
+        return { success: false, error: "La contraseña actual no es correcta" };
+      }
+
+      return updatePassword(newPassword);
+    },
+    [authState.user?.email, updatePassword]
+  );
+
   const logout = useCallback(async () => {
     setAuthState({ user: null, isAuthenticated: false });
     try {
@@ -498,6 +522,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         requestPasswordReset,
         updatePassword,
+        changePassword,
         updateOrganizationProfile,
         getAllUsers,
         toggleUserActive,
