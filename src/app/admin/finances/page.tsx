@@ -27,6 +27,7 @@ import {
   Ticket,
   Search,
   X,
+  Megaphone,
 } from "lucide-react";
 
 const TIER_ORDER: TournamentTier[] = ["basico", "medio", "pro", "premium"];
@@ -36,6 +37,14 @@ interface CouponInfo {
   code: string;
   type: CouponType;
   value: number;
+}
+
+interface AdPaymentRow {
+  id: string;
+  amount_cop: number;
+  status: string;
+  created_at: string;
+  advertiser: string;
 }
 
 /** Tarjeta de KPI del encabezado (mismo patrón que Publicidad). */
@@ -126,6 +135,40 @@ function FinancesContent() {
         setCouponMap(map);
       });
   }, [tournaments]);
+
+  const [adPayments, setAdPayments] = useState<AdPaymentRow[]>([]);
+  useEffect(() => {
+    supabase
+      .from("ad_payments")
+      .select("id, amount_cop, status, created_at, ad_campaigns(advertiser_name)")
+      .order("created_at", { ascending: false })
+      .then(({ data }) => {
+        if (!data) return;
+        setAdPayments(
+          data.map((row) => {
+            const camp = row.ad_campaigns as
+              | { advertiser_name?: string }
+              | { advertiser_name?: string }[]
+              | null;
+            const advertiser = Array.isArray(camp)
+              ? camp[0]?.advertiser_name
+              : camp?.advertiser_name;
+            return {
+              id: row.id as string,
+              amount_cop: row.amount_cop as number,
+              status: row.status as string,
+              created_at: row.created_at as string,
+              advertiser: advertiser || "Publicidad",
+            };
+          })
+        );
+      });
+  }, []);
+  const adRevenue = adPayments
+    .filter((p) => p.status === "approved")
+    .reduce((s, p) => s + p.amount_cop, 0);
+  // Los cancelados son links viejos superados, no pagos reales → no se listan.
+  const visibleAdPayments = adPayments.filter((p) => p.status !== "canceled");
 
   const allPaid = tournaments.filter((t) => t.plan === "paid" && t.price);
 
@@ -271,6 +314,31 @@ function FinancesContent() {
       );
     return (
       <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20">Próximo</Badge>
+    );
+  };
+
+  const adStatusBadge = (status: string) => {
+    if (status === "approved")
+      return (
+        <Badge className="gap-1 bg-green-500/10 text-green-600 border-green-500/20">
+          <CheckCircle2 className="h-3 w-3" />
+          Pagado
+        </Badge>
+      );
+    if (status === "pending")
+      return (
+        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+          Pendiente
+        </Badge>
+      );
+    if (status === "canceled")
+      return (
+        <Badge variant="outline" className="text-muted-foreground">
+          Cancelado
+        </Badge>
+      );
+    return (
+      <Badge className="bg-red-500/10 text-red-600 border-red-500/20">Rechazado</Badge>
     );
   };
 
@@ -553,6 +621,62 @@ function FinancesContent() {
               <div className="space-y-2">
                 {completedPaid.map((t) => (
                   <TournamentRow key={t.id} t={t} muted />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Publicidad */}
+          <div className="space-y-3">
+            <div className="flex items-baseline justify-between">
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <Megaphone className="h-5 w-5" />
+                Publicidad
+              </h2>
+              {adRevenue > 0 && (
+                <span className="text-sm text-muted-foreground">
+                  {formatCOP(adRevenue)} cobrado
+                </span>
+              )}
+            </div>
+            {visibleAdPayments.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                    <Megaphone className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    No hay pagos de publicidad todavía
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-2">
+                {visibleAdPayments.map((p) => (
+                  <Card key={p.id}>
+                    <CardContent className="flex items-center gap-4 p-4">
+                      <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                        <Megaphone className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold truncate">{p.advertiser}</span>
+                          {adStatusBadge(p.status)}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(p.created_at).toLocaleDateString("es-CO")}
+                        </p>
+                      </div>
+                      <p
+                        className={
+                          "flex-shrink-0 text-lg font-bold " +
+                          (p.status === "approved" ? "text-green-600" : "text-muted-foreground")
+                        }
+                      >
+                        {formatCOP(p.amount_cop)}
+                      </p>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
             )}

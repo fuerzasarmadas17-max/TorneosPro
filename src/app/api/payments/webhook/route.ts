@@ -44,6 +44,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid checksum" }, { status: 401 });
     }
 
+    const statusMap: Record<string, string> = {
+      APPROVED: "approved",
+      DECLINED: "declined",
+      VOIDED: "voided",
+      ERROR: "error",
+    };
+
+    // Pagos de PUBLICIDAD (referencia PUB-...): viven en `ad_payments`, no en
+    // `payments`. Wompi manda todos los eventos a esta única URL, así que los
+    // atendemos acá mismo. Solo marcamos el estado; la activación de la campaña
+    // sigue siendo manual (el admin prende el switch al ver "pagado").
+    const reference = String(transaction.reference ?? "");
+    if (reference.startsWith("PUB-")) {
+      const { data: adPay } = await supabaseAdmin
+        .from("ad_payments")
+        .select("id")
+        .eq("reference", reference)
+        .maybeSingle();
+      if (!adPay) {
+        return NextResponse.json({ error: "Ad payment not found" }, { status: 404 });
+      }
+      await supabaseAdmin
+        .from("ad_payments")
+        .update({
+          status: statusMap[transaction.status] || "error",
+          wompi_transaction_id: transaction.id,
+          wompi_status: transaction.status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", adPay.id);
+      return NextResponse.json({ ok: true });
+    }
+
     // 2. Find payment by reference
     const { data: payment, error: fetchError } = await supabaseAdmin
       .from("payments")
@@ -57,12 +90,6 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Map Wompi status to our enum
-    const statusMap: Record<string, string> = {
-      APPROVED: "approved",
-      DECLINED: "declined",
-      VOIDED: "voided",
-      ERROR: "error",
-    };
     const newStatus = statusMap[transaction.status] || "error";
 
     // 4. Update payment record

@@ -44,6 +44,9 @@ import {
   ImageIcon,
   Pencil,
   CreditCard,
+  CheckCircle2,
+  Clock,
+  CircleDashed,
 } from "lucide-react";
 import { SPORTS } from "@/data/sports";
 import { SCOPES, DEPARTMENTS } from "@/data/colombia";
@@ -206,8 +209,10 @@ function AdsContent() {
   const [uploading, setUploading] = useState(false);
   const [creating, setCreating] = useState(false);
 
+  const [payStatus, setPayStatus] = useState<Record<string, "paid" | "pending">>({});
+
   const loadAll = useCallback(async () => {
-    const [campRes, mapRes, evRes, tournRes] = await Promise.all([
+    const [campRes, mapRes, evRes, tournRes, payRes] = await Promise.all([
       supabase
         .from("ad_campaigns")
         .select("*")
@@ -221,7 +226,20 @@ function AdsContent() {
         .from("tournaments")
         .select("id, name")
         .order("created_at", { ascending: false }),
+      supabase.from("ad_payments").select("campaign_id, status"),
     ]);
+
+    // Estado de pago por campaña: aprobado > pendiente. Los cancelados y
+    // rechazados no cuentan; si no queda ninguno vivo, la campaña no tiene link.
+    const pay: Record<string, "paid" | "pending"> = {};
+    for (const row of payRes.data || []) {
+      const r = row as { campaign_id: string | null; status: string };
+      if (!r.campaign_id) continue;
+      if (r.status === "approved") pay[r.campaign_id] = "paid";
+      else if (r.status === "pending" && pay[r.campaign_id] !== "paid")
+        pay[r.campaign_id] = "pending";
+    }
+    setPayStatus(pay);
 
     if (campRes.error) {
       console.error("Error loading campaigns:", campRes.error);
@@ -594,6 +612,30 @@ function AdsContent() {
     );
   };
 
+  // Estado de pago de la campaña: pagado / pendiente / sin link generado.
+  const paymentBadge = (status?: "paid" | "pending") => {
+    if (status === "paid")
+      return (
+        <Badge className="gap-1 bg-green-500/10 text-green-600 border-green-500/20">
+          <CheckCircle2 className="h-3 w-3" />
+          Pagado
+        </Badge>
+      );
+    if (status === "pending")
+      return (
+        <Badge className="gap-1 bg-amber-500/10 text-amber-600 border-amber-500/20">
+          <Clock className="h-3 w-3" />
+          Pendiente
+        </Badge>
+      );
+    return (
+      <Badge variant="outline" className="gap-1 text-muted-foreground">
+        <CircleDashed className="h-3 w-3" />
+        Sin link
+      </Badge>
+    );
+  };
+
   return (
     <div className="container mx-auto max-w-5xl px-4 py-8 space-y-6">
       {/* Header */}
@@ -696,6 +738,7 @@ function AdsContent() {
                         {c.advertiser_name}
                       </span>
                       {statusBadge(c)}
+                      {paymentBadge(payStatus[c.id])}
                       <Badge variant="secondary" className="gap-1 text-[11px]">
                         {c.target_mode === "list" ? (
                           <ListChecks className="h-3 w-3" />
