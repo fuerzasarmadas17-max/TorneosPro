@@ -18,7 +18,8 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 interface CampaignRow {
   id: string;
   image_url: string;
-  link_url: string;
+  link_url: string | null;
+  whatsapp: string | null;
   monthly_price: number;
   target_mode: "rule" | "list";
   target_sports: string[];
@@ -91,7 +92,7 @@ export async function GET(request: NextRequest) {
     supabaseAdmin
       .from("ad_campaigns")
       .select(
-        "id, image_url, link_url, monthly_price, target_mode, target_sports, target_statuses, target_scopes, target_departments, target_municipalities"
+        "id, image_url, link_url, whatsapp, monthly_price, target_mode, target_sports, target_statuses, target_scopes, target_departments, target_municipalities"
       )
       .eq("is_active", true)
       .lte("starts_at", nowIso)
@@ -131,6 +132,7 @@ export async function GET(request: NextRequest) {
       id: chosen.id,
       imageUrl: chosen.image_url,
       linkUrl: chosen.link_url,
+      whatsapp: chosen.whatsapp,
     },
   });
 }

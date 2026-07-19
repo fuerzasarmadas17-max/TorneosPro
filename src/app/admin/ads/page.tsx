@@ -43,6 +43,7 @@ import {
   ListChecks,
   ImageIcon,
   Pencil,
+  CreditCard,
 } from "lucide-react";
 import { SPORTS } from "@/data/sports";
 import { SCOPES, DEPARTMENTS } from "@/data/colombia";
@@ -72,7 +73,8 @@ interface CampaignRow {
   advertiser_name: string;
   contact: string | null;
   image_url: string;
-  link_url: string;
+  link_url: string | null;
+  whatsapp: string | null;
   is_active: boolean;
   starts_at: string;
   ends_at: string;
@@ -188,6 +190,7 @@ function AdsContent() {
   const [advertiser, setAdvertiser] = useState("");
   const [contact, setContact] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [price, setPrice] = useState("");
   const [startsAt, setStartsAt] = useState(todayInput());
@@ -322,6 +325,7 @@ function AdsContent() {
     setAdvertiser("");
     setContact("");
     setLinkUrl("");
+    setWhatsapp("");
     setImageUrl("");
     setPrice("");
     setStartsAt(todayInput());
@@ -346,7 +350,8 @@ function AdsContent() {
     setEditingId(c.id);
     setAdvertiser(c.advertiser_name);
     setContact(c.contact || "");
-    setLinkUrl(c.link_url);
+    setLinkUrl(c.link_url || "");
+    setWhatsapp(c.whatsapp || "");
     setImageUrl(c.image_url);
     setPrice(c.monthly_price ? String(c.monthly_price) : "");
     setStartsAt(isoToDateInput(c.starts_at));
@@ -365,7 +370,8 @@ function AdsContent() {
   const handleSubmit = async () => {
     if (!advertiser.trim()) return toast.error("El nombre del anunciante es obligatorio");
     if (!imageUrl.trim()) return toast.error("Sube la imagen del anuncio");
-    if (!linkUrl.trim()) return toast.error("El link de destino es obligatorio");
+    if (!linkUrl.trim() && !whatsapp.trim())
+      return toast.error("Agrega al menos un botón: WhatsApp o link de destino");
     if (!endsAt) return toast.error("Define la fecha de fin de vigencia");
     if (endsAt <= startsAt) return toast.error("La vigencia debe terminar después de que empieza");
     if (mode === "list" && listTournaments.length === 0)
@@ -376,7 +382,8 @@ function AdsContent() {
       advertiser_name: advertiser.trim(),
       contact: contact.trim() || null,
       image_url: imageUrl.trim(),
-      link_url: linkUrl.trim(),
+      link_url: linkUrl.trim() || null,
+      whatsapp: whatsapp.trim() || null,
       monthly_price: numPrice,
       starts_at: new Date(startsAt + "T00:00:00").toISOString(),
       ends_at: new Date(endsAt + "T23:59:59").toISOString(),
@@ -463,6 +470,48 @@ function AdsContent() {
       setCampaigns((prev) =>
         prev.map((x) => (x.id === c.id ? { ...x, is_active: !x.is_active } : x))
       );
+    }
+  };
+
+  const [linkLoadingId, setLinkLoadingId] = useState<string | null>(null);
+  const generatePaymentLink = async (c: CampaignRow) => {
+    if (c.monthly_price <= 0) {
+      toast.error("Define el precio de la campaña antes de generar el link de pago");
+      return;
+    }
+    setLinkLoadingId(c.id);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        toast.error("Sesión expirada, vuelve a iniciar sesión");
+        return;
+      }
+      const res = await fetch("/api/ads/payment-link", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ campaignId: c.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "No se pudo generar el link");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(data.url);
+        toast.success("Link de pago copiado", { description: data.url });
+      } catch {
+        toast.success("Link de pago generado", { description: data.url });
+      }
+    } catch {
+      toast.error("No se pudo generar el link");
+    } finally {
+      setLinkLoadingId(null);
     }
   };
 
@@ -725,6 +774,16 @@ function AdsContent() {
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
+                        title="Generar link de pago"
+                        disabled={linkLoadingId === c.id}
+                        onClick={() => generatePaymentLink(c)}
+                      >
+                        <CreditCard className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
                         title="Editar"
                         onClick={() => openEdit(c)}
                       >
@@ -810,16 +869,16 @@ function AdsContent() {
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Contacto (para renovar)</Label>
+                <Label className="text-xs">Contacto interno (para renovar)</Label>
                 <Input
                   value={contact}
                   onChange={(e) => setContact(e.target.value)}
-                  placeholder="WhatsApp / IG / web"
+                  placeholder="Uso interno — no es un botón"
                   className="h-9"
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-xs">Link de destino *</Label>
+                <Label className="text-xs">Link de destino</Label>
                 <Input
                   value={linkUrl}
                   onChange={(e) => setLinkUrl(e.target.value)}
@@ -827,6 +886,19 @@ function AdsContent() {
                   className="h-9"
                 />
               </div>
+              <div className="space-y-2">
+                <Label className="text-xs">WhatsApp</Label>
+                <Input
+                  value={whatsapp}
+                  onChange={(e) => setWhatsapp(e.target.value)}
+                  placeholder="3001234567"
+                  className="h-9"
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground -mt-1">
+                Botones del anuncio: WhatsApp y/o link. Al menos uno; se muestra solo
+                el que cargues.
+              </p>
               <div className="space-y-2">
                 <Label className="text-xs">Precio mensual (COP)</Label>
                 <Input

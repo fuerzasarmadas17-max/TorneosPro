@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, ExternalLink } from "lucide-react";
+import { X, ExternalLink, MessageCircle } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
 import { useAuth } from "@/context/auth-context";
 
@@ -18,16 +18,51 @@ import { useAuth } from "@/context/auth-context";
  * es client-side a propósito — las rutas de torneo tienen edge cache
  * (`revalidate = 60`) y mirar la sesión en el servidor las volvería dinámicas.
  *
+ * Debajo de la imagen se muestran los botones de acción cargados (WhatsApp y/o
+ * link) para que al espectador le quede claro qué hacer. Si solo hay uno, se
+ * muestra solo ese.
+ *
  * Cerrable después de 3s (antes muestra la cuenta regresiva en el botón).
- * Cuenta `ad_impression` al mostrarse y `ad_click` al tocarse, reutilizando
- * `analytics_events` vía trackEvent.
+ * Cuenta `ad_impression` al mostrarse y `ad_click` al tocar un botón.
  */
 
 interface ResolvedAd {
   id: string;
   imageUrl: string;
-  linkUrl: string;
+  linkUrl: string | null;
+  whatsapp: string | null;
 }
+
+type CtaType = "whatsapp" | "link";
+interface Cta {
+  type: CtaType;
+  url: string;
+  label: string;
+}
+
+/** Arma los botones cargados, con WhatsApp primero. */
+function buildCtas(ad: ResolvedAd): Cta[] {
+  const ctas: Cta[] = [];
+
+  if (ad.whatsapp) {
+    const digits = ad.whatsapp.replace(/\D/g, "");
+    // Número local colombiano (10 dígitos) → anteponer indicativo país 57.
+    const withCc = digits.length === 10 ? `57${digits}` : digits;
+    if (withCc) ctas.push({ type: "whatsapp", url: `https://wa.me/${withCc}`, label: "WhatsApp" });
+  }
+
+  if (ad.linkUrl) {
+    const url = /^https?:\/\//i.test(ad.linkUrl) ? ad.linkUrl : `https://${ad.linkUrl}`;
+    ctas.push({ type: "link", url, label: "Ver más" });
+  }
+
+  return ctas;
+}
+
+const CTA_STYLES: Record<CtaType, string> = {
+  whatsapp: "bg-[#25D366] hover:bg-[#20bd5a] text-white",
+  link: "bg-zinc-900 hover:bg-zinc-800 text-white",
+};
 
 const CLOSE_DELAY_MS = 3000;
 
@@ -63,13 +98,14 @@ export function AdModal({ tournamentId }: AdModalProps) {
         const data = (await res.json()) as { ad: ResolvedAd | null };
         if (cancelled || !data.ad) return;
         setAd(data.ad);
+        setCanClose(false);
+        setSecondsLeft(Math.ceil(CLOSE_DELAY_MS / 1000));
         if (impressionFor.current !== data.ad.id) {
           impressionFor.current = data.ad.id;
           trackEvent({
             eventType: "ad_impression",
             tournamentId,
             targetId: data.ad.id,
-            metadata: { linkUrl: data.ad.linkUrl },
           });
         }
       } catch {
@@ -84,7 +120,6 @@ export function AdModal({ tournamentId }: AdModalProps) {
   // Cuenta regresiva para habilitar el cierre.
   useEffect(() => {
     if (!ad) return;
-    setCanClose(false);
     const started = Date.now();
     const tick = setInterval(() => {
       const remain = Math.ceil((CLOSE_DELAY_MS - (Date.now() - started)) / 1000);
@@ -103,6 +138,8 @@ export function AdModal({ tournamentId }: AdModalProps) {
   // `isAuthenticated` también se chequea acá y no solo en el effect: si la
   // sesión aparece con el modal ya abierto (login en otra pestaña), lo bajamos.
   if (isAuthenticated || !ad) return null;
+
+  const ctas = buildCtas(ad);
 
   return (
     <div
@@ -129,34 +166,50 @@ export function AdModal({ tournamentId }: AdModalProps) {
           )}
         </button>
 
-        <a
-          href={ad.linkUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() =>
-            trackEvent({
-              eventType: "ad_click",
-              tournamentId,
-              targetId: ad.id,
-              metadata: { linkUrl: ad.linkUrl },
-            })
-          }
-          className="group relative block overflow-hidden rounded-xl bg-white shadow-2xl"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={ad.imageUrl}
-            alt="Publicidad"
-            loading="lazy"
-            decoding="async"
-            className="h-auto w-full object-contain"
-          />
-          {/* Disclosure: es publicidad + indica que es clickeable. */}
-          <span className="pointer-events-none absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur-sm">
-            Publicidad
-            <ExternalLink className="h-3 w-3" />
-          </span>
-        </a>
+        <div className="overflow-hidden rounded-xl bg-white shadow-2xl">
+          <div className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={ad.imageUrl}
+              alt="Publicidad"
+              loading="lazy"
+              decoding="async"
+              className="h-auto w-full object-contain"
+            />
+            {/* Disclosure: aclara que es publicidad. */}
+            <span className="pointer-events-none absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm ring-1 ring-border backdrop-blur-sm">
+              Publicidad
+            </span>
+          </div>
+
+          {ctas.length > 0 && (
+            <div className="flex gap-2 p-3">
+              {ctas.map((cta) => {
+                const Icon = cta.type === "whatsapp" ? MessageCircle : ExternalLink;
+                return (
+                  <a
+                    key={cta.type}
+                    href={cta.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() =>
+                      trackEvent({
+                        eventType: "ad_click",
+                        tournamentId,
+                        targetId: ad.id,
+                        metadata: { type: cta.type, url: cta.url },
+                      })
+                    }
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${CTA_STYLES[cta.type]}`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {cta.label}
+                  </a>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
