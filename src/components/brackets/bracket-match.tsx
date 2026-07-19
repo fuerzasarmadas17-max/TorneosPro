@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
-import { Match, Tournament } from "@/types";
+import { Match, Tournament, Team } from "@/types";
 import { useTournaments } from "@/context/tournament-context";
+import { TeamMark } from "@/components/teams/team-mark";
 import { cn } from "@/lib/utils";
 
 interface BracketMatchProps {
@@ -156,11 +157,12 @@ export function BracketMatch({ match, vueltaMatch, canEdit, tournament, seriesMa
           {/* Home row */}
           <div
             className={cn(
-              "flex items-center px-3 py-1.5 truncate",
+              "flex items-center gap-2 px-3 py-1.5",
               seriesWinnerId === canonicalHomeId && "bg-primary/5 font-semibold"
             )}
           >
-            {homeTeam?.name || "TBD"}
+            <TeamMark team={homeTeam} size={16} />
+            <span className="truncate">{homeTeam?.name || "TBD"}</span>
           </div>
           <div
             className={cn(
@@ -185,11 +187,12 @@ export function BracketMatch({ match, vueltaMatch, canEdit, tournament, seriesMa
           {/* Away row */}
           <div
             className={cn(
-              "flex items-center px-3 py-1.5 truncate",
+              "flex items-center gap-2 px-3 py-1.5",
               seriesWinnerId === canonicalAwayId && "bg-primary/5 font-semibold"
             )}
           >
-            {awayTeam?.name || "TBD"}
+            <TeamMark team={awayTeam} size={16} />
+            <span className="truncate">{awayTeam?.name || "TBD"}</span>
           </div>
           <div
             className={cn(
@@ -255,7 +258,10 @@ export function BracketMatch({ match, vueltaMatch, canEdit, tournament, seriesMa
           <span>Bye</span>
         </div>
         <div className="flex items-center justify-between px-3 py-2 font-medium">
-          <span className="truncate mr-2">{advancingTeam?.name || "TBD"}</span>
+          <span className="flex items-center gap-2 truncate mr-2">
+            <TeamMark team={advancingTeam} size={16} />
+            <span className="truncate">{advancingTeam?.name || "TBD"}</span>
+          </span>
         </div>
         <div className="px-3 py-1.5 text-[10px] text-muted-foreground border-t">
           Avanza directo a la siguiente ronda
@@ -338,7 +344,7 @@ export function BracketMatch({ match, vueltaMatch, canEdit, tournament, seriesMa
 
   // Single-leg rendering (original)
   const renderSlot = (
-    team: { name: string; primaryColor?: string; secondaryColor?: string } | null,
+    team: Team | null,
     teamId: string | null,
     slot: "home" | "away",
     isWinner: boolean,
@@ -370,7 +376,10 @@ export function BracketMatch({ match, vueltaMatch, canEdit, tournament, seriesMa
         slot === "home" && "border-b",
         isWinner && "bg-primary/5 font-semibold"
       )}>
-        <span className="truncate mr-2">{team?.name || "TBD"}</span>
+        <span className="flex items-center gap-2 truncate mr-2">
+          <TeamMark team={team} size={16} />
+          <span className="truncate">{team?.name || "TBD"}</span>
+        </span>
         <span className="tabular-nums">{score !== null ? score : "-"}</span>
       </div>
     );

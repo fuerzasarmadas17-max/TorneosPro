@@ -21,6 +21,7 @@ import { useStandings } from "@/hooks/use-standings";
 import { useTournaments } from "@/context/tournament-context";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { TableWatermark } from "./table-watermark";
+import { TeamMark } from "@/components/teams/team-mark";
 import { Info } from "lucide-react";
 
 interface StandingsTableProps {
@@ -135,7 +136,8 @@ export function StandingsTable({ tournament }: StandingsTableProps) {
                 <TableRow key={entry.teamId}>
                   <TableCell className="font-medium">{index + 1}</TableCell>
                   <TableCell className="font-medium">
-                    <span className="flex items-center gap-1.5">
+                    <span className="flex items-center gap-2">
+                      <TeamMark team={team} size={20} />
                       {team?.name || entry.teamId}
                       {tournament.disqualifiedTeamIds?.includes(entry.teamId) && (
                         <span className="text-[10px] font-semibold text-destructive">DQ</span>

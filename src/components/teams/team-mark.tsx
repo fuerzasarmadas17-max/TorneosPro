@@ -2,7 +2,7 @@ import { Team } from "@/types";
 import { cn } from "@/lib/utils";
 
 /**
- * Marca visual de un equipo para calendario / listados:
+ * Marca visual de un equipo para calendario / listados / tablas / llaves:
  *   - Si el equipo tiene logo → muestra el logo.
  *   - Si no, pero tiene colores → muestra el swatch de dos colores.
  *   - Si no tiene ninguno → no renderiza nada.
@@ -17,13 +17,11 @@ export function TeamMark({
   className?: string;
 }) {
   if (!team) return null;
-  const hasLogo = !!team.logoUrl;
-  const hasColors = !!(team.primaryColor || team.secondaryColor);
-  if (!hasLogo && !hasColors) return null;
+  if (!team.logoUrl && !team.primaryColor && !team.secondaryColor) return null;
 
   const style = { width: size, height: size };
 
-  if (hasLogo) {
+  if (team.logoUrl) {
     return (
       <div
         style={style}
@@ -45,6 +43,7 @@ export function TeamMark({
     );
   }
 
+  // Sin logo pero con colores: swatch de dos colores.
   return (
     <div
       style={style}

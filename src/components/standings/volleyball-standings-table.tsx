@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Tournament } from "@/types";
 import { useVolleyballStandings } from "@/hooks/use-volleyball-standings";
 import { useTournaments } from "@/context/tournament-context";
+import { TeamMark } from "@/components/teams/team-mark";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { TableWatermark } from "./table-watermark";
 import { Info } from "lucide-react";
@@ -162,7 +163,8 @@ export function VolleyballStandingsTable({
               <TableRow key={entry.teamId}>
                 <TableCell className="font-medium">{index + 1}</TableCell>
                 <TableCell className="font-medium">
-                  <span className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-2">
+                    <TeamMark team={team} size={20} />
                     {team?.name || entry.teamId}
                     {tournament.disqualifiedTeamIds?.includes(entry.teamId) && (
                       <span className="text-[10px] font-semibold text-destructive">DQ</span>
