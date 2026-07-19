@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useAuth } from "@/context/auth-context";
+import { POLICIES_VERSION } from "@/lib/policies";
 import { toast } from "sonner";
 
 export function RegisterForm() {
@@ -22,6 +23,7 @@ export function RegisterForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedPolicies, setAcceptedPolicies] = useState(false);
   const [error, setError] = useState("");
   const [emailSent, setEmailSent] = useState(false);
   const { register } = useAuth();
@@ -48,8 +50,13 @@ export function RegisterForm() {
       return;
     }
 
+    if (!acceptedPolicies) {
+      setError("Debes aceptar la Política de Privacidad y la de Tratamiento de Datos");
+      return;
+    }
+
     setLoading(true);
-    const result = await register(name, email, password);
+    const result = await register(name, email, password, POLICIES_VERSION);
     setLoading(false);
 
     if (result.success) {
@@ -142,9 +149,28 @@ export function RegisterForm() {
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
           </div>
+          <label className="flex items-start gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={acceptedPolicies}
+              onChange={(e) => setAcceptedPolicies(e.target.checked)}
+              className="mt-0.5 size-4 shrink-0 rounded border-input accent-primary"
+            />
+            <span>
+              He leído y acepto la{" "}
+              <Link href="/privacidad" target="_blank" className="text-primary hover:underline">
+                Política de Privacidad
+              </Link>{" "}
+              y la{" "}
+              <Link href="/tratamiento-de-datos" target="_blank" className="text-primary hover:underline">
+                Política de Tratamiento de Datos
+              </Link>
+              .
+            </span>
+          </label>
         </CardContent>
         <CardFooter className="flex flex-col gap-4 pt-6">
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading || !acceptedPolicies}>
             {loading ? "Registrando..." : "Registrarse"}
           </Button>
           <p className="text-sm text-muted-foreground">

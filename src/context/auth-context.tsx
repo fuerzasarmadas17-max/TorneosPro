@@ -17,7 +17,7 @@ type SafeUser = Omit<User, "password">;
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string; needsEmailConfirmation?: boolean }>;
+  register: (name: string, email: string, password: string, policiesVersion: string) => Promise<{ success: boolean; error?: string; needsEmailConfirmation?: boolean }>;
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
@@ -190,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const register = useCallback(
-    async (name: string, email: string, password: string) => {
+    async (name: string, email: string, password: string, policiesVersion: string) => {
       // After confirming the email, Supabase redirects to this URL with the
       // session token in the URL hash. The supabase-js client picks it up
       // automatically, so landing on /dashboard gives the user a logged-in
@@ -199,11 +199,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const appUrl =
         process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") ||
         (typeof window !== "undefined" ? window.location.origin : "");
+      // `policies_version` viaja en los metadatos de auth.users. Un trigger en
+      // la DB lo espeja a public.users (policies_version + policies_accepted_at)
+      // como constancia de que el usuario aceptó las políticas al registrarse.
       const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { name },
+          data: { name, policies_version: policiesVersion },
           emailRedirectTo: `${appUrl}/dashboard`,
         },
       });
