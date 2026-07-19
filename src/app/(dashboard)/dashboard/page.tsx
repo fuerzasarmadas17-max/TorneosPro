@@ -2,9 +2,17 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
+import {
+  ExternalLink,
+  Plus,
+  Trophy,
+  PlayCircle,
+  CheckCircle2,
+  Globe,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { StatCard } from "@/components/ui/stat-card";
 import { AuthGuard } from "@/components/auth-guard";
 import { TournamentList } from "@/components/tournaments/tournament-list";
 import { AnalyticsCards } from "@/components/analytics/analytics-cards";
@@ -34,9 +42,7 @@ function DashboardContent() {
     analyticsDays
   );
 
-  const myTournaments = tournaments.filter(
-    (t) => t.createdBy === user?.id
-  );
+  const myTournaments = tournaments.filter((t) => t.createdBy === user?.id);
 
   const stats = {
     total: myTournaments.length,
@@ -45,62 +51,69 @@ function DashboardContent() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Hola, {user?.name}</h1>
-          <p className="text-muted-foreground mt-1">
-            Gestiona tus torneos desde aqui
+    <div className="container mx-auto max-w-6xl px-4 py-8 space-y-8">
+      {/* Encabezado */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight">Hola, {user?.name}</h1>
+          <p className="text-sm text-muted-foreground">
+            Gestioná tus torneos desde acá.
           </p>
         </div>
         <Button asChild>
-          <Link href="/tournaments/create">Crear Torneo</Link>
+          <Link href="/tournaments/create">
+            <Plus className="size-4" />
+            Crear torneo
+          </Link>
         </Button>
       </div>
 
-      {/* Public profile link */}
+      {/* Perfil público */}
       {user?.organizationProfile?.isPublic && (
-        <div className="rounded-lg border bg-card p-4 flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Tu perfil público: <span className="font-medium text-foreground">/{user.organizationProfile.slug}</span>
-          </p>
-          <Button variant="outline" size="sm" asChild>
-            <Link href={`/${user.organizationProfile.slug}`} target="_blank">
-              Ver perfil
-              <ExternalLink className="ml-2 h-4 w-4" />
-            </Link>
-          </Button>
-        </div>
+        <Card>
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                <Globe className="size-4" />
+              </div>
+              <p className="text-sm text-muted-foreground truncate">
+                Tu perfil público:{" "}
+                <span className="font-medium text-foreground">
+                  /{user.organizationProfile.slug}
+                </span>
+              </p>
+            </div>
+            <Button variant="outline" size="sm" asChild className="shrink-0">
+              <Link href={`/${user.organizationProfile.slug}`} target="_blank">
+                Ver perfil
+                <ExternalLink className="ml-2 size-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Stats */}
+      {/* Métricas */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-sm text-muted-foreground">Total Torneos</p>
-            <p className="text-3xl font-bold">{stats.total}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-sm text-muted-foreground">En Curso</p>
-            <p className="text-3xl font-bold text-green-500">
-              {stats.inProgress}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-sm text-muted-foreground">Completados</p>
-            <p className="text-3xl font-bold">{stats.completed}</p>
-          </CardContent>
-        </Card>
+        <StatCard icon={Trophy} label="Total de torneos" value={stats.total} />
+        <StatCard
+          icon={PlayCircle}
+          label="En curso"
+          value={stats.inProgress}
+          accent="green"
+        />
+        <StatCard
+          icon={CheckCircle2}
+          label="Completados"
+          value={stats.completed}
+          accent="blue"
+        />
       </div>
 
-      {/* Analytics */}
-      <div className="space-y-4">
+      {/* Analíticas */}
+      <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Analiticas</h2>
+          <h2 className="text-lg font-semibold tracking-tight">Analíticas</h2>
           <div className="flex gap-1">
             {dayOptions.map((d) => (
               <Button
@@ -122,26 +135,35 @@ function DashboardContent() {
           />
         )}
         <TournamentViews data={tournamentViews} tournaments={myTournaments} />
-      </div>
+      </section>
 
-      {/* Tournaments */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">Mis Torneos</h2>
+      {/* Torneos */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold tracking-tight">Mis torneos</h2>
         {myTournaments.length === 0 ? (
           <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
-              <p className="text-muted-foreground text-lg">
-                Aun no has creado torneos
-              </p>
+            <CardContent className="flex flex-col items-center justify-center gap-4 py-14 text-center">
+              <div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                <Trophy className="size-6" />
+              </div>
+              <div className="space-y-1">
+                <p className="font-medium">Aún no creaste torneos</p>
+                <p className="text-sm text-muted-foreground">
+                  Creá tu primer torneo para empezar a gestionarlo.
+                </p>
+              </div>
               <Button asChild>
-                <Link href="/tournaments/create">Crear mi primer torneo</Link>
+                <Link href="/tournaments/create">
+                  <Plus className="size-4" />
+                  Crear mi primer torneo
+                </Link>
               </Button>
             </CardContent>
           </Card>
         ) : (
           <TournamentList tournaments={myTournaments} />
         )}
-      </div>
+      </section>
     </div>
   );
 }
