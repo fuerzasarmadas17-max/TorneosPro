@@ -297,8 +297,8 @@ export function CreateTournamentForm() {
             if (isNaN(n) || n < 1) return `Cupo invalido en ${g.name}`;
           }
           if (advance1Total < 2) return "Deben clasificar al menos 2 en total";
-          if (advance1Total >= count) {
-            return "Los que clasifican deben ser menos que el total";
+          if (advance1Total > count) {
+            return "Los que clasifican no pueden superar el total de equipos";
           }
         }
         if (format === "group-playoff" && hasPhase2) {
@@ -1024,7 +1024,7 @@ export function CreateTournamentForm() {
                             <CountStepper
                               value={parseInt(readAdvance1(g.id)) || 0}
                               min={1}
-                              max={(parseInt(teamCount) || 2) - 1}
+                              max={parseInt(teamCount) || 2}
                               size="sm"
                               onChange={(n) => setAdvance1(g.id, String(n))}
                             />
