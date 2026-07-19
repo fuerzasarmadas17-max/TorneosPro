@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { TournamentDetail } from "@/components/tournaments/tournament-detail";
 import { useTournaments } from "@/context/tournament-context";
 import { useAuth } from "@/context/auth-context";
@@ -13,6 +13,11 @@ import type { Tournament } from "@/types";
 interface TournamentDetailClientProps {
   initialData: TournamentPageData;
 }
+
+// En el cliente corre ANTES del paint (evita el flash de UUIDs); en el
+// servidor cae a useEffect (que no se ejecuta en SSR) para no romper el render.
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 /**
  * Wrapper cliente del detalle del torneo.
@@ -41,18 +46,21 @@ export function TournamentDetailClient({
 
   usePageView("tournament", initialData.tournament.id, "tournament");
 
-  // SEED DURANTE RENDER (no en useEffect): si lo dejamos para el effect,
-  // el primer render del TournamentDetail pasa con `teams=[]` en el
-  // context — los subcomponentes (BracketView, MatchSchedule, etc.) ven
-  // UUIDs en `getTeamById` y los renderean. En mobile ese "flash de
-  // UUIDs" dura 1-2 segundos hasta el re-render post-seed. Llamando el
-  // seed durante render con un useRef-guard, el setState del provider
-  // se procesa antes del commit y el primer paint ya tiene los teams.
+  // Sembramos los teams en el context en un layout-effect (antes del paint):
+  // si esperáramos a un useEffect normal, el primer paint del TournamentDetail
+  // pasaría con `teams=[]` en el context y los subcomponentes (BracketView,
+  // MatchSchedule, etc.) mostrarían UUIDs en `getTeamById`. En mobile ese
+  // "flash de UUIDs" se veía 1-2 s. useLayoutEffect corre sincrónicamente
+  // antes de que el navegador pinte, así que el usuario nunca ve ese estado —
+  // y no viola la regla de React de no hacer setState de otro componente
+  // durante el render (que era el problema del seed en fase de render).
   const seededRef = useRef<string | null>(null);
-  if (seededRef.current !== initialData.tournament.id) {
-    seedTournamentData(initialData.tournament, initialData.teams);
-    seededRef.current = initialData.tournament.id;
-  }
+  useIsomorphicLayoutEffect(() => {
+    if (seededRef.current !== initialData.tournament.id) {
+      seedTournamentData(initialData.tournament, initialData.teams);
+      seededRef.current = initialData.tournament.id;
+    }
+  }, [initialData.tournament, initialData.teams, seedTournamentData]);
 
   // Después del primer paint, traer los match_events (que el SSR omitió
   // para no timeoutear) y re-seed. Las stats individuales, sanciones y
