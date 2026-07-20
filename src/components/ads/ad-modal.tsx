@@ -64,7 +64,7 @@ const CTA_STYLES: Record<CtaType, string> = {
   link: "bg-zinc-900 hover:bg-zinc-800 text-white",
 };
 
-const CLOSE_DELAY_MS = 3000;
+const CLOSE_DELAY_MS = 1000;
 
 interface AdModalProps {
   tournamentId: string;
@@ -74,9 +74,6 @@ export function AdModal({ tournamentId }: AdModalProps) {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [ad, setAd] = useState<ResolvedAd | null>(null);
   const [canClose, setCanClose] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(
-    Math.ceil(CLOSE_DELAY_MS / 1000)
-  );
   // Evita doble impresión si el effect corre dos veces (React Strict Mode).
   const impressionFor = useRef<string | null>(null);
 
@@ -99,7 +96,6 @@ export function AdModal({ tournamentId }: AdModalProps) {
         if (cancelled || !data.ad) return;
         setAd(data.ad);
         setCanClose(false);
-        setSecondsLeft(Math.ceil(CLOSE_DELAY_MS / 1000));
         if (impressionFor.current !== data.ad.id) {
           impressionFor.current = data.ad.id;
           trackEvent({
@@ -117,22 +113,12 @@ export function AdModal({ tournamentId }: AdModalProps) {
     };
   }, [tournamentId, authLoading, isAuthenticated]);
 
-  // Cuenta regresiva para habilitar el cierre.
+  // Pequeña espera antes de habilitar el cierre: asegura que el modal se vea
+  // sin ser invasivo. La X aparece deshabilitada y se activa al pasar el tiempo.
   useEffect(() => {
     if (!ad) return;
-    const started = Date.now();
-    const tick = setInterval(() => {
-      const remain = Math.ceil((CLOSE_DELAY_MS - (Date.now() - started)) / 1000);
-      setSecondsLeft(Math.max(remain, 0));
-    }, 250);
-    const done = setTimeout(() => {
-      setCanClose(true);
-      clearInterval(tick);
-    }, CLOSE_DELAY_MS);
-    return () => {
-      clearTimeout(done);
-      clearInterval(tick);
-    };
+    const done = setTimeout(() => setCanClose(true), CLOSE_DELAY_MS);
+    return () => clearTimeout(done);
   }, [ad]);
 
   // `isAuthenticated` también se chequea acá y no solo en el effect: si la
@@ -157,13 +143,7 @@ export function AdModal({ tournamentId }: AdModalProps) {
           onClick={() => canClose && setAd(null)}
           className="absolute -right-3 -top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-background text-foreground shadow-md ring-1 ring-border transition-opacity disabled:cursor-default disabled:opacity-70"
         >
-          {canClose ? (
-            <X className="h-4 w-4" />
-          ) : (
-            <span className="text-xs font-semibold tabular-nums">
-              {secondsLeft}
-            </span>
-          )}
+          <X className="h-4 w-4" />
         </button>
 
         <div className="overflow-hidden rounded-xl bg-white shadow-2xl">
