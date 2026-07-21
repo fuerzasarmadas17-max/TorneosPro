@@ -7,6 +7,7 @@ interface ViewsByDay {
   date: string;
   views: number;
   unique_visitors: number;
+  unique_persons: number;
 }
 
 interface ReferrerEntry {
@@ -27,17 +28,38 @@ interface BrowserEntry {
 export interface EntityAnalytics {
   total_views: number;
   unique_visitors: number;
+  unique_persons: number;
   avg_duration_ms: number;
+  new_visitors: number;
+  returning_visitors: number;
   views_by_day: ViewsByDay[];
   top_referrers: ReferrerEntry[];
+  direct_views: number;
   device_breakdown: DeviceEntry[];
   browser_breakdown: BrowserEntry[];
+}
+
+export interface PeriodTotals {
+  total_views: number;
+  unique_visitors: number;
+  unique_persons: number;
+  avg_duration_ms: number;
+}
+
+export interface OrganizerAnalytics {
+  total_views: number;
+  unique_visitors: number;
+  unique_persons: number;
+  avg_duration_ms: number;
+  views_by_day: ViewsByDay[];
+  previous?: PeriodTotals;
 }
 
 interface TournamentViewEntry {
   tournament_id: string;
   views: number;
   unique_visitors: number;
+  unique_persons: number;
 }
 
 export function useEntityAnalytics(
@@ -68,6 +90,38 @@ export function useEntityAnalytics(
         setIsLoading(false);
       });
   }, [entityType, entityId, days]);
+
+  return { data, isLoading };
+}
+
+/**
+ * Analytics AGREGADAS del organizador: suma su perfil público + todos sus
+ * torneos, deduplicando personas/sesiones entre entidades. Es el resumen del
+ * dashboard. El scope lo pone el RPC vía auth.uid(), no hace falta pasar el id.
+ */
+export function useOrganizerAnalytics(
+  enabled: boolean,
+  days: number = 30
+) {
+  const [data, setData] = useState<OrganizerAnalytics | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!enabled) {
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    supabase
+      .rpc("get_organizer_analytics", { p_days: days })
+      .then(({ data: result, error }) => {
+        if (!error && result) {
+          setData(result as OrganizerAnalytics);
+        }
+        setIsLoading(false);
+      });
+  }, [enabled, days]);
 
   return { data, isLoading };
 }

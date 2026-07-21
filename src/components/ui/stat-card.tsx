@@ -13,12 +13,14 @@ interface StatCardProps {
   icon: LucideIcon;
   label: string;
   value: React.ReactNode;
+  /** Texto chico opcional bajo el valor, para dar contexto a la métrica. */
+  hint?: string;
   accent?: keyof typeof accents;
   className?: string;
 }
 
 /** Tarjeta de métrica: ícono en un cuadro de color + etiqueta + valor. */
-export function StatCard({ icon: Icon, label, value, accent = "default", className }: StatCardProps) {
+export function StatCard({ icon: Icon, label, value, hint, accent = "default", className }: StatCardProps) {
   return (
     <Card className={className}>
       <CardContent className="flex items-center gap-4 p-5">
@@ -33,6 +35,9 @@ export function StatCard({ icon: Icon, label, value, accent = "default", classNa
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">{label}</p>
           <p className="truncate text-2xl font-bold tracking-tight">{value}</p>
+          {hint && (
+            <p className="truncate text-xs text-muted-foreground/70">{hint}</p>
+          )}
         </div>
       </CardContent>
     </Card>

@@ -16,11 +16,12 @@ import { StatCard } from "@/components/ui/stat-card";
 import { AuthGuard } from "@/components/auth-guard";
 import { TournamentList } from "@/components/tournaments/tournament-list";
 import { AnalyticsCards } from "@/components/analytics/analytics-cards";
+import { ViewsChart } from "@/components/analytics/views-chart";
 import { TournamentViews } from "@/components/analytics/tournament-views";
 import { useAuth } from "@/context/auth-context";
 import { useTournaments } from "@/context/tournament-context";
 import {
-  useEntityAnalytics,
+  useOrganizerAnalytics,
   useOrganizerTournamentViews,
 } from "@/hooks/use-analytics";
 
@@ -31,10 +32,8 @@ function DashboardContent() {
   const { tournaments } = useTournaments();
   const [analyticsDays, setAnalyticsDays] = useState<number>(30);
 
-  const hasPublicProfile = !!user?.organizationProfile?.isPublic;
-  const { data: profileAnalytics } = useEntityAnalytics(
-    hasPublicProfile ? "organization" : null,
-    hasPublicProfile ? user?.id : null,
+  const { data: organizerAnalytics } = useOrganizerAnalytics(
+    !!user?.id,
     analyticsDays
   );
   const { data: tournamentViews } = useOrganizerTournamentViews(
@@ -112,9 +111,14 @@ function DashboardContent() {
 
       {/* Analíticas */}
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold tracking-tight">Analíticas</h2>
-          <div className="flex gap-1">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-0.5">
+            <h2 className="text-lg font-semibold tracking-tight">Analíticas</h2>
+            <p className="text-sm text-muted-foreground">
+              Visitas a tu perfil público y a todos tus torneos.
+            </p>
+          </div>
+          <div className="flex gap-1 shrink-0">
             {dayOptions.map((d) => (
               <Button
                 key={d}
@@ -127,12 +131,16 @@ function DashboardContent() {
             ))}
           </div>
         </div>
-        {profileAnalytics && (
-          <AnalyticsCards
-            totalViews={profileAnalytics.total_views}
-            uniqueVisitors={profileAnalytics.unique_visitors}
-            avgDurationMs={profileAnalytics.avg_duration_ms}
-          />
+        {organizerAnalytics && (
+          <>
+            <AnalyticsCards
+              uniquePersons={organizerAnalytics.unique_persons ?? 0}
+              uniqueVisitors={organizerAnalytics.unique_visitors}
+              totalViews={organizerAnalytics.total_views}
+              avgDurationMs={organizerAnalytics.avg_duration_ms}
+            />
+            <ViewsChart data={organizerAnalytics.views_by_day ?? []} />
+          </>
         )}
         <TournamentViews data={tournamentViews} tournaments={myTournaments} />
       </section>

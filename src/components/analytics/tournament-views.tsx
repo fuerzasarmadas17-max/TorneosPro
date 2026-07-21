@@ -8,6 +8,7 @@ interface TournamentViewEntry {
   tournament_id: string;
   views: number;
   unique_visitors: number;
+  unique_persons: number;
 }
 
 interface TournamentViewsProps {
@@ -48,7 +49,7 @@ export function TournamentViews({ data, tournaments }: TournamentViewsProps) {
                 </Link>
                 <div className="flex gap-4 text-sm text-muted-foreground whitespace-nowrap">
                   <span>{entry.views} visitas</span>
-                  <span>{entry.unique_visitors} unicos</span>
+                  <span>{entry.unique_persons ?? 0} personas</span>
                 </div>
               </div>
             ))}

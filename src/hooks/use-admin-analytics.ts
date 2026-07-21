@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import type { PeriodTotals } from "@/hooks/use-analytics";
 
 interface ViewsByDay {
   date: string;
   views: number;
   unique_visitors: number;
+  unique_persons: number;
 }
 
 interface ReferrerEntry {
@@ -37,6 +39,7 @@ interface TopPageEntry {
 export interface GlobalAnalytics {
   total_views: number;
   unique_visitors: number;
+  unique_persons: number;
   avg_duration_ms: number;
   views_by_day: ViewsByDay[];
   top_referrers: ReferrerEntry[];
@@ -44,6 +47,7 @@ export interface GlobalAnalytics {
   browser_breakdown: BrowserEntry[];
   views_by_page_type: PageTypeEntry[];
   top_pages: TopPageEntry[];
+  previous?: PeriodTotals;
 }
 
 interface TournamentEntry {

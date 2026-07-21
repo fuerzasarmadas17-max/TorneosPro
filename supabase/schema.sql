@@ -733,6 +733,7 @@ CREATE TABLE page_views (
   entity_id UUID,
   entity_type TEXT,
   session_id UUID NOT NULL,
+  visitor_id UUID,
   duration_ms INT DEFAULT 0,
   referrer TEXT,
   device_type TEXT,
@@ -743,6 +744,7 @@ CREATE TABLE page_views (
 CREATE INDEX idx_page_views_entity ON page_views (entity_type, entity_id, created_at);
 CREATE INDEX idx_page_views_page_type ON page_views (page_type, created_at);
 CREATE INDEX idx_page_views_session ON page_views (session_id, created_at);
+CREATE INDEX idx_page_views_visitor ON page_views (entity_type, entity_id, visitor_id, created_at);
 CREATE INDEX idx_page_views_created_at ON page_views (created_at);
 
 ALTER TABLE page_views ENABLE ROW LEVEL SECURITY;
@@ -780,11 +782,35 @@ AS $$
   SELECT json_build_object(
     'total_views', COUNT(*),
     'unique_visitors', COUNT(DISTINCT session_id),
+    'unique_persons', COUNT(DISTINCT visitor_id),
     'avg_duration_ms', COALESCE(AVG(NULLIF(duration_ms, 0))::integer, 0),
+    'new_visitors', (
+      SELECT COUNT(*) FROM (
+        SELECT visitor_id
+        FROM page_views
+        WHERE entity_type = p_entity_type AND entity_id = p_entity_id
+          AND visitor_id IS NOT NULL
+        GROUP BY visitor_id
+        HAVING MIN(created_at) >= NOW() - (p_days || ' days')::interval
+      ) nv
+    ),
+    'returning_visitors', (
+      SELECT COUNT(*) FROM (
+        SELECT visitor_id
+        FROM page_views
+        WHERE entity_type = p_entity_type AND entity_id = p_entity_id
+          AND visitor_id IS NOT NULL
+        GROUP BY visitor_id
+        HAVING MIN(created_at) < NOW() - (p_days || ' days')::interval
+           AND MAX(created_at) >= NOW() - (p_days || ' days')::interval
+      ) rv
+    ),
     'views_by_day', (
       SELECT COALESCE(json_agg(row_to_json(d)), '[]'::json)
       FROM (
-        SELECT created_at::date AS date, COUNT(*) AS views, COUNT(DISTINCT session_id) AS unique_visitors
+        SELECT created_at::date AS date, COUNT(*) AS views,
+               COUNT(DISTINCT session_id) AS unique_visitors,
+               COUNT(DISTINCT visitor_id) AS unique_persons
         FROM page_views
         WHERE entity_type = p_entity_type AND entity_id = p_entity_id
           AND created_at >= NOW() - (p_days || ' days')::interval
@@ -801,6 +827,13 @@ AS $$
           AND referrer IS NOT NULL AND referrer != ''
         GROUP BY referrer ORDER BY count DESC LIMIT 10
       ) r
+    ),
+    'direct_views', (
+      SELECT COUNT(*)
+      FROM page_views
+      WHERE entity_type = p_entity_type AND entity_id = p_entity_id
+        AND created_at >= NOW() - (p_days || ' days')::interval
+        AND (referrer IS NULL OR referrer = '')
     ),
     'device_breakdown', (
       SELECT COALESCE(json_agg(row_to_json(dev)), '[]'::json)
@@ -841,61 +874,70 @@ BEGIN
   END IF;
 
   RETURN (
+    WITH base AS (
+      SELECT * FROM page_views
+      WHERE created_at >= NOW() - ((2 * p_days) || ' days')::interval
+    ),
+    cur AS (
+      SELECT * FROM base WHERE created_at >= NOW() - (p_days || ' days')::interval
+    ),
+    prev AS (
+      SELECT * FROM base WHERE created_at < NOW() - (p_days || ' days')::interval
+    )
     SELECT json_build_object(
-      'total_views', COUNT(*),
-      'unique_visitors', COUNT(DISTINCT session_id),
-      'avg_duration_ms', COALESCE(AVG(NULLIF(duration_ms, 0))::integer, 0),
+      'total_views', (SELECT COUNT(*) FROM cur),
+      'unique_visitors', (SELECT COUNT(DISTINCT session_id) FROM cur),
+      'unique_persons', (SELECT COUNT(DISTINCT visitor_id) FROM cur),
+      'avg_duration_ms', (SELECT COALESCE(AVG(NULLIF(duration_ms, 0))::integer, 0) FROM cur),
       'views_by_day', (
         SELECT COALESCE(json_agg(row_to_json(d)), '[]'::json)
         FROM (
-          SELECT created_at::date AS date, COUNT(*) AS views, COUNT(DISTINCT session_id) AS unique_visitors
-          FROM page_views WHERE created_at >= NOW() - (p_days || ' days')::interval
-          GROUP BY created_at::date ORDER BY date
+          SELECT created_at::date AS date, COUNT(*) AS views,
+                 COUNT(DISTINCT session_id) AS unique_visitors,
+                 COUNT(DISTINCT visitor_id) AS unique_persons
+          FROM cur GROUP BY created_at::date ORDER BY date
         ) d
       ),
       'views_by_page_type', (
         SELECT COALESCE(json_agg(row_to_json(pt)), '[]'::json)
         FROM (
-          SELECT page_type, COUNT(*) AS count
-          FROM page_views WHERE created_at >= NOW() - (p_days || ' days')::interval
-          GROUP BY page_type ORDER BY count DESC
+          SELECT page_type, COUNT(*) AS count FROM cur GROUP BY page_type ORDER BY count DESC
         ) pt
       ),
       'top_pages', (
         SELECT COALESCE(json_agg(row_to_json(tp)), '[]'::json)
         FROM (
           SELECT page_path, COUNT(*) AS views, COUNT(DISTINCT session_id) AS unique_visitors
-          FROM page_views WHERE created_at >= NOW() - (p_days || ' days')::interval
-          GROUP BY page_path ORDER BY views DESC LIMIT 20
+          FROM cur GROUP BY page_path ORDER BY views DESC LIMIT 20
         ) tp
       ),
       'top_referrers', (
         SELECT COALESCE(json_agg(row_to_json(r)), '[]'::json)
         FROM (
-          SELECT referrer, COUNT(*) AS count
-          FROM page_views WHERE created_at >= NOW() - (p_days || ' days')::interval
-            AND referrer IS NOT NULL AND referrer != ''
+          SELECT referrer, COUNT(*) AS count FROM cur
+          WHERE referrer IS NOT NULL AND referrer != ''
           GROUP BY referrer ORDER BY count DESC LIMIT 10
         ) r
       ),
       'device_breakdown', (
         SELECT COALESCE(json_agg(row_to_json(dev)), '[]'::json)
         FROM (
-          SELECT device_type, COUNT(*) AS count
-          FROM page_views WHERE created_at >= NOW() - (p_days || ' days')::interval
-          GROUP BY device_type
+          SELECT device_type, COUNT(*) AS count FROM cur GROUP BY device_type
         ) dev
       ),
       'browser_breakdown', (
         SELECT COALESCE(json_agg(row_to_json(br)), '[]'::json)
         FROM (
-          SELECT browser, COUNT(*) AS count
-          FROM page_views WHERE created_at >= NOW() - (p_days || ' days')::interval
-          GROUP BY browser ORDER BY count DESC LIMIT 10
+          SELECT browser, COUNT(*) AS count FROM cur GROUP BY browser ORDER BY count DESC LIMIT 10
         ) br
+      ),
+      'previous', json_build_object(
+        'total_views', (SELECT COUNT(*) FROM prev),
+        'unique_visitors', (SELECT COUNT(DISTINCT session_id) FROM prev),
+        'unique_persons', (SELECT COUNT(DISTINCT visitor_id) FROM prev),
+        'avg_duration_ms', (SELECT COALESCE(AVG(NULLIF(duration_ms, 0))::integer, 0) FROM prev)
       )
     )
-    FROM page_views WHERE created_at >= NOW() - (p_days || ' days')::interval
   );
 END;
 $$;
@@ -909,13 +951,67 @@ SET search_path = public
 AS $$
   SELECT COALESCE(json_agg(row_to_json(tv)), '[]'::json)
   FROM (
-    SELECT pv.entity_id AS tournament_id, COUNT(*) AS views, COUNT(DISTINCT pv.session_id) AS unique_visitors
+    SELECT pv.entity_id AS tournament_id,
+           COUNT(*) AS views,
+           COUNT(DISTINCT pv.session_id) AS unique_visitors,
+           COUNT(DISTINCT pv.visitor_id) AS unique_persons
     FROM page_views pv
     INNER JOIN tournaments t ON t.id = pv.entity_id
     WHERE pv.entity_type = 'tournament' AND t.created_by = p_user_id
       AND pv.created_at >= NOW() - (p_days || ' days')::interval
     GROUP BY pv.entity_id
   ) tv;
+$$;
+
+-- RPC: analytics AGREGADAS del organizador (perfil público + todos sus torneos).
+-- Alimenta el resumen del dashboard. Scope por auth.uid() => cada quien ve lo suyo.
+CREATE OR REPLACE FUNCTION get_organizer_analytics(p_days integer DEFAULT 30)
+RETURNS json
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  WITH base AS (
+    SELECT pv.*
+    FROM page_views pv
+    WHERE pv.created_at >= NOW() - ((2 * p_days) || ' days')::interval
+      AND (
+        (pv.entity_type = 'organization' AND pv.entity_id = auth.uid())
+        OR (pv.entity_type = 'tournament' AND pv.entity_id IN (
+          SELECT id FROM tournaments WHERE created_by = auth.uid()
+        ))
+      )
+  ),
+  cur AS (
+    SELECT * FROM base
+    WHERE created_at >= NOW() - (p_days || ' days')::interval
+  ),
+  prev AS (
+    SELECT * FROM base
+    WHERE created_at < NOW() - (p_days || ' days')::interval
+  )
+  SELECT json_build_object(
+    'total_views', (SELECT COUNT(*) FROM cur),
+    'unique_visitors', (SELECT COUNT(DISTINCT session_id) FROM cur),
+    'unique_persons', (SELECT COUNT(DISTINCT visitor_id) FROM cur),
+    'avg_duration_ms', (SELECT COALESCE(AVG(NULLIF(duration_ms, 0))::integer, 0) FROM cur),
+    'views_by_day', (
+      SELECT COALESCE(json_agg(row_to_json(d)), '[]'::json)
+      FROM (
+        SELECT created_at::date AS date, COUNT(*) AS views,
+               COUNT(DISTINCT session_id) AS unique_visitors,
+               COUNT(DISTINCT visitor_id) AS unique_persons
+        FROM cur
+        GROUP BY created_at::date ORDER BY date
+      ) d
+    ),
+    'previous', json_build_object(
+      'total_views', (SELECT COUNT(*) FROM prev),
+      'unique_visitors', (SELECT COUNT(DISTINCT session_id) FROM prev),
+      'unique_persons', (SELECT COUNT(DISTINCT visitor_id) FROM prev),
+      'avg_duration_ms', (SELECT COALESCE(AVG(NULLIF(duration_ms, 0))::integer, 0) FROM prev)
+    )
+  );
 $$;
 
 -- RPC: resumen de visitas por organizador para admin (perfil + torneos agrupados)

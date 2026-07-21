@@ -3,6 +3,23 @@ import { supabase } from "@/lib/supabase";
 const SESSION_KEY = "tp_session_id";
 const SESSION_ACTIVITY_KEY = "tp_session_activity";
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const VISITOR_KEY = "tp_visitor_id";
+
+/**
+ * ID PERMANENTE del visitante (persona). A diferencia del session_id, NO
+ * caduca: identifica al mismo navegador aunque vuelva días después. Con esto
+ * contamos personas reales distintas (`unique_persons`) y separamos nuevos de
+ * recurrentes, en vez de contar cada sesión de 30 min como un "único".
+ */
+export function getVisitorId(): string {
+  if (typeof window === "undefined") return "";
+  let visitorId = localStorage.getItem(VISITOR_KEY);
+  if (!visitorId) {
+    visitorId = crypto.randomUUID();
+    localStorage.setItem(VISITOR_KEY, visitorId);
+  }
+  return visitorId;
+}
 
 export function getSessionId(): string {
   if (typeof window === "undefined") return "";

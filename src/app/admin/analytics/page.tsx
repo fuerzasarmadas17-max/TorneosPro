@@ -7,6 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminGuard } from "@/components/auth-guard";
 import { AnalyticsCards } from "@/components/analytics/analytics-cards";
+import {
+  AnalyticsInsights,
+  growthInsight,
+  peakDayInsight,
+  type Insight,
+} from "@/components/analytics/analytics-insights";
 import { ViewsChart } from "@/components/analytics/views-chart";
 import { DeviceBreakdown } from "@/components/analytics/device-breakdown";
 import { ReferrerList } from "@/components/analytics/referrer-list";
@@ -150,10 +156,30 @@ function AnalyticsContent() {
         </div>
       </div>
 
+      {(() => {
+        const total = data.device_breakdown.reduce((s, d) => s + d.count, 0);
+        const mobile =
+          data.device_breakdown.find((d) => d.device_type === "mobile")?.count ?? 0;
+        const insights = [
+          growthInsight(data.total_views, data.previous?.total_views, "visitas"),
+          peakDayInsight(data.views_by_day),
+          total > 0
+            ? {
+                emoji: "📱",
+                text: `El ${Math.round((mobile / total) * 100)}% del tráfico es móvil`,
+              }
+            : null,
+        ].filter(Boolean) as Insight[];
+        return <AnalyticsInsights insights={insights} />;
+      })()}
+
       <AnalyticsCards
-        totalViews={data.total_views}
+        uniquePersons={data.unique_persons ?? 0}
         uniqueVisitors={data.unique_visitors}
+        totalViews={data.total_views}
         avgDurationMs={data.avg_duration_ms}
+        previous={data.previous}
+        viewsByDay={data.views_by_day}
       />
 
       {/* Organizador + clics en patrocinadores: lado a lado en desktop */}

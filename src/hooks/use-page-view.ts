@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   getSessionId,
+  getVisitorId,
   getDeviceType,
   getBrowser,
   getCleanReferrer,
@@ -35,15 +36,25 @@ export function usePageView(
     trackedRef.current = true;
 
     const sessionId = getSessionId();
+    const visitorId = getVisitorId();
     startTimeRef.current = Date.now();
+
+    // Generamos el id en el cliente para poder actualizar `duration_ms`
+    // después con un PATCH. La RLS no deja LEER la fila de vuelta (solo el
+    // dueño de la entidad puede), así que un insert con .select() fallaría;
+    // conociendo el id de antemano evitamos esa lectura.
+    const viewId = crypto.randomUUID();
+    viewIdRef.current = viewId;
 
     const insertView = async () => {
       const { error } = await supabase.from("page_views").insert({
+        id: viewId,
         page_path: window.location.pathname,
         page_type: pageType,
         entity_id: entityId || null,
         entity_type: entityType,
         session_id: sessionId,
+        visitor_id: visitorId,
         referrer: getCleanReferrer(),
         device_type: getDeviceType(),
         browser: getBrowser(),
