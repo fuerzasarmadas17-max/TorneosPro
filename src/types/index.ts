@@ -141,6 +141,11 @@ export function getSportCategory(sport: Sport): SportCategory {
   return "futbol";
 }
 
+/** Puntos que otorga una victoria en la tabla de posiciones. Microfútbol usa 2. */
+export function getWinPoints(sport: Sport): number {
+  return sport === "microfutbol" ? 2 : 3;
+}
+
 export interface StatDefinition {
   key: MatchEventType;
   label: string;

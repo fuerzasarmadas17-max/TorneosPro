@@ -1,4 +1,4 @@
-import { Match, MatchPhase, StandingsEntry, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, User } from "@/types";
+import { getWinPoints, Match, MatchPhase, Sport, StandingsEntry, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, User } from "@/types";
 
 /**
  * Pieza I: identify the winner of the final series, if any.
@@ -127,7 +127,7 @@ export function getClassifiedTeamsRanked(
     );
     return {
       group,
-      ranked: rankTeamsInGroup(group.teamIds, groupMatches),
+      ranked: rankTeamsInGroup(group.teamIds, groupMatches, tournament.sport),
     };
   });
 
@@ -552,7 +552,12 @@ export function getRoundLabel(round: number, totalRounds: number): string {
   return `Ronda ${round}`;
 }
 
-export function rankTeamsInGroup(teamIds: string[], matches: Match[]): string[] {
+export function rankTeamsInGroup(
+  teamIds: string[],
+  matches: Match[],
+  sport: Sport = "futbol"
+): string[] {
+  const winPoints = getWinPoints(sport);
   const entries: Record<string, StandingsEntry> = {};
 
   for (const teamId of teamIds) {
@@ -584,9 +589,9 @@ export function rankTeamsInGroup(teamIds: string[], matches: Match[]): string[] 
     away.goalsAgainst += match.homeScore;
 
     if (match.homeScore > match.awayScore) {
-      home.won++; home.points += 3; away.lost++;
+      home.won++; home.points += winPoints; away.lost++;
     } else if (match.homeScore < match.awayScore) {
-      away.won++; away.points += 3; home.lost++;
+      away.won++; away.points += winPoints; home.lost++;
     } else {
       home.drawn++; away.drawn++;
       home.points += 1; away.points += 1;
@@ -703,7 +708,7 @@ export function fillPlayoffBracket(tournament: Tournament, phaseNumber?: number)
     const groupMatches = tournament.matches.filter(
       (m) => m.phase === "group" && m.groupId === group.id
     );
-    return rankTeamsInGroup(group.teamIds, groupMatches);
+    return rankTeamsInGroup(group.teamIds, groupMatches, tournament.sport);
   });
 
   // Collect advancing teams ordered by seed
@@ -887,7 +892,7 @@ export function fillPhase2Groups(
     const groupMatches = tournament.matches.filter(
       (m) => m.phase === "group" && m.groupId === group.id
     );
-    return rankTeamsInGroup(group.teamIds, groupMatches);
+    return rankTeamsInGroup(group.teamIds, groupMatches, tournament.sport);
   });
 
   // Collect advancing teams (interleave by seed position). Each group can

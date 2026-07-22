@@ -16,7 +16,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Tournament } from "@/types";
+import { getWinPoints, Tournament } from "@/types";
+import { getSportInfo } from "@/data/sports";
 import { useStandings } from "@/hooks/use-standings";
 import { useTournaments } from "@/context/tournament-context";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
@@ -28,11 +29,13 @@ interface StandingsTableProps {
   tournament: Tournament;
 }
 
-function ScoringRulesDialog() {
+function ScoringRulesDialog({ tournament }: { tournament: Tournament }) {
+  const winPoints = getWinPoints(tournament.sport);
+  const sportLabel = getSportInfo(tournament.sport)?.label ?? "Fútbol";
   return (
     <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden grid-rows-[auto_minmax(0,1fr)]">
       <DialogHeader>
-        <DialogTitle>Sistema de Puntos - Fútbol</DialogTitle>
+        <DialogTitle>Sistema de Puntos - {sportLabel}</DialogTitle>
       </DialogHeader>
       <div className="space-y-5 text-sm overflow-y-auto min-h-0 pr-1">
         <div>
@@ -48,7 +51,7 @@ function ScoringRulesDialog() {
               <tbody>
                 <tr className="border-t">
                   <td className="px-3 py-2">Victoria</td>
-                  <td className="text-center px-3 py-2 font-bold text-green-600">3 pts</td>
+                  <td className="text-center px-3 py-2 font-bold text-green-600">{winPoints} pts</td>
                 </tr>
                 <tr className="border-t">
                   <td className="px-3 py-2">Empate</td>
@@ -108,7 +111,7 @@ export function StandingsTable({ tournament }: StandingsTableProps) {
               Sistema de puntos
             </Button>
           </DialogTrigger>
-          <ScoringRulesDialog />
+          <ScoringRulesDialog tournament={tournament} />
         </Dialog>
       </div>
       <div className="relative">

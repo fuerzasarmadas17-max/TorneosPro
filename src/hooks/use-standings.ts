@@ -1,8 +1,9 @@
 import { useMemo } from "react";
-import { StandingsEntry, Tournament } from "@/types";
+import { getWinPoints, StandingsEntry, Tournament } from "@/types";
 
 export function useStandings(tournament: Tournament): StandingsEntry[] {
   return useMemo(() => {
+    const winPoints = getWinPoints(tournament.sport);
     const dqTeams = new Set(tournament.disqualifiedTeamIds || []);
     const entries: Record<string, StandingsEntry> = {};
 
@@ -48,11 +49,11 @@ export function useStandings(tournament: Tournament): StandingsEntry[] {
 
       if (match.homeScore > match.awayScore) {
         home.won++;
-        home.points += 3;
+        home.points += winPoints;
         away.lost++;
       } else if (match.homeScore < match.awayScore) {
         away.won++;
-        away.points += 3;
+        away.points += winPoints;
         home.lost++;
       } else {
         home.drawn++;
@@ -124,9 +125,9 @@ export function useStandings(tournament: Tournament): StandingsEntry[] {
           for (const id of tiedIds) h2hPoints[id] = 0;
           for (const m of h2hMatches) {
             if (m.homeScore! > m.awayScore!) {
-              h2hPoints[m.homeTeamId!] += 3;
+              h2hPoints[m.homeTeamId!] += winPoints;
             } else if (m.homeScore! < m.awayScore!) {
-              h2hPoints[m.awayTeamId!] += 3;
+              h2hPoints[m.awayTeamId!] += winPoints;
             } else {
               h2hPoints[m.homeTeamId!] += 1;
               h2hPoints[m.awayTeamId!] += 1;
@@ -141,5 +142,5 @@ export function useStandings(tournament: Tournament): StandingsEntry[] {
     }
 
     return result;
-  }, [tournament.matches, tournament.teamIds, tournament.disqualifiedTeamIds]);
+  }, [tournament.matches, tournament.teamIds, tournament.disqualifiedTeamIds, tournament.sport]);
 }
