@@ -267,17 +267,20 @@ function TeamsRosterSection({
           return (
             <Card key={teamId} className={dq ? "opacity-60 border-destructive/30" : ""}>
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                {/* min-w-0 + break-words: los nombres largos de una sola palabra
+                    (ej. CELUPAISAGUADASPORT) se parten en varias lineas en vez de
+                    estirar la fila y empujar los botones fuera de la tarjeta. */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     <TeamMark team={team} size={32} />
-                    <CardTitle className="text-base">{team.name}</CardTitle>
+                    <CardTitle className="text-base min-w-0 break-words leading-tight">{team.name}</CardTitle>
                     {dq && (
-                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                      <Badge variant="destructive" className="shrink-0 text-[10px] px-1.5 py-0">
                         DQ
                       </Badge>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-1">
                     {canEdit && <TeamRosterDialog team={team} />}
                     {canEdit && tournament && (
                       <DropdownMenu>
