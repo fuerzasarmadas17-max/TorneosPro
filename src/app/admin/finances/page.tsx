@@ -236,20 +236,32 @@ function FinancesContent() {
     return out;
   })();
 
-  // Ingreso REAL de un torneo: el `price` guardado es siempre el de LISTA, no
-  // lo que entró. Hay que restar lo que el cupón rebajó:
-  //  - cortesía (free_tournament) → $0 (se regaló)
-  //  - porcentaje (ej. 50%) → solo la fracción que sí se cobró
-  //  - sin cupón → entra completo
+  // OJO: `price` NO significa lo mismo según cómo se creó el torneo.
+  //  - Pagado por Wompi (con o sin cupón %): el torneo lo crea el webhook con
+  //    `price = payment.amount_cop`, o sea LO QUE REALMENTE ENTRÓ, con el
+  //    descuento ya aplicado (ver lib/payments/fulfill.ts).
+  //  - Cortesía (free_tournament): no hay pago; el torneo lo crea el cliente
+  //    con el precio de LISTA (ver forms/create-tournament-form.tsx).
+  // Por eso al ingreso solo hay que tocarlo en el caso cortesía: descontar el
+  // porcentaje otra vez cobraba el descuento dos veces.
   const revenueOf = (t: Tournament) => {
-    const list = t.price || 0;
     const c = t.couponId ? couponMap[t.couponId] : undefined;
-    if (!c) return list; // sin cupón (o aún sin cargar) = precio de lista
-    if (c.type === "free_tournament") return 0;
-    if (c.type === "percentage") return Math.round((list * (100 - c.value)) / 100);
-    return list;
+    if (c?.type === "free_tournament") return 0; // se regaló
+    return t.price || 0; // ya es el monto cobrado
   };
-  const hasDiscount = (t: Tournament) => revenueOf(t) < (t.price || 0);
+
+  // Precio de lista, para mostrar tachado el "antes" del descuento. En el caso
+  // del cupón % hay que reconstruirlo desde lo pagado: 110.500 con 15% OFF
+  // salió de 130.000.
+  const listPriceOf = (t: Tournament) => {
+    const paid = t.price || 0;
+    const c = t.couponId ? couponMap[t.couponId] : undefined;
+    if (c?.type === "percentage" && c.value > 0 && c.value < 100) {
+      return Math.round((paid * 100) / (100 - c.value));
+    }
+    return paid; // sin cupón, o cortesía (ahí `price` ya es el de lista)
+  };
+  const hasDiscount = (t: Tournament) => revenueOf(t) < listPriceOf(t);
 
   const totalRevenue = paidTournaments.reduce((sum, t) => sum + revenueOf(t), 0);
   const activeRevenue = activePaid.reduce((sum, t) => sum + revenueOf(t), 0);
@@ -257,7 +269,7 @@ function FinancesContent() {
 
   // Total rebajado a organizadores (cortesías + descuentos %), que no es ingreso.
   const discountGiven = paidTournaments.reduce(
-    (s, t) => s + ((t.price || 0) - revenueOf(t)),
+    (s, t) => s + (listPriceOf(t) - revenueOf(t)),
     0
   );
 
@@ -381,7 +393,7 @@ function FinancesContent() {
             </p>
             {hasDiscount(t) && (
               <p className="text-[11px] text-muted-foreground line-through">
-                {formatCOP(t.price || 0)}
+                {formatCOP(listPriceOf(t))}
               </p>
             )}
           </div>
