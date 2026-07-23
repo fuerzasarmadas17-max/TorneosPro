@@ -98,10 +98,12 @@ function TemplateDownloadDialog() {
   };
 
   const handleDownload = async () => {
-    // Dynamic import: xlsx solo se descarga cuando el organizer clickea
-    // "Descargar plantilla". Cero peso en el bundle inicial para
-    // visitantes públicos que nunca usan esta función.
-    const XLSX = await import("xlsx");
+    // Dynamic import: la librería de Excel solo se descarga cuando el
+    // organizer clickea "Descargar plantilla". Cero peso en el bundle
+    // inicial para visitantes públicos que nunca usan esta función.
+    // Usamos `xlsx-js-style` (fork de SheetJS) porque el `xlsx` base no
+    // escribe estilos de fuente y necesitamos agrandar los títulos.
+    const XLSX = await import("xlsx-js-style");
     const wb = XLSX.utils.book_new();
     // Una sola columna "Nombre Completo" en lugar del split antiguo en
     // "Nombre / Apellido 1 / Apellido 2". El organizador escribe el
@@ -127,13 +129,28 @@ function TemplateDownloadDialog() {
     const emptyRows = Array.from({ length: 19 }, () =>
       Array(allHeaders.length).fill("")
     );
+    // La primera fila con "Nombre del equipo" se eliminó: no se usaba y
+    // confundía. Los títulos de columna quedan ahora en la fila 1.
+    // (El importador sigue detectando y saltando esa fila en planillas
+    // viejas ya repartidas — ver team-roster-dialog.tsx.)
     const sheetData: (string | undefined)[][] = [
-      ["Nombre del equipo", ""],
       allHeaders,
       exampleRow,
       ...emptyRows,
     ];
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+    // Títulos de columna (fila 0) con letra más grande y en negrita para
+    // que los couches identifiquen de un vistazo la fila de encabezados.
+    for (let c = 0; c < allHeaders.length; c++) {
+      const ref = XLSX.utils.encode_cell({ c, r: 0 });
+      if (ws[ref]) {
+        ws[ref].s = {
+          font: { sz: 14, bold: true },
+          alignment: { vertical: "center" },
+        };
+      }
+    }
     ws["!cols"] = allHeaders.map((h, i) => ({
       // Primera columna (nombre) más ancha porque va el nombre completo.
       // Fecha de nacimiento: 14 para que entren cómodos los 10 chars ISO.
@@ -151,7 +168,8 @@ function TemplateDownloadDialog() {
     // caracteres. La celda ejemplo ya viene con el string ISO.
     const dobIdx = allHeaders.indexOf("Fecha de nacimiento");
     if (dobIdx >= 0) {
-      for (let r = 2; r <= 21; r++) {
+      // Fila 0 = títulos, fila 1 = ejemplo, filas 2..20 = vacías.
+      for (let r = 1; r <= 20; r++) {
         const ref = XLSX.utils.encode_cell({ c: dobIdx, r });
         if (ws[ref]) {
           ws[ref].z = "yyyy-mm-dd";
