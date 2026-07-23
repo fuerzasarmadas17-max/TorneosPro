@@ -61,6 +61,10 @@ export function DateOrganizer({ tournament, phaseFilter }: DateOrganizerProps) {
   const { updateMatchDetails, getTeamById } = useTournaments();
   const [activeSection, setActiveSection] = useState("");
   const [teamFilter, setTeamFilter] = useState<string>("all");
+  // Segundo filtro: al elegir un equipo, permite acotar a un rival puntual
+  // con el que todavía falta programar. Evita tener que scrollear entre las
+  // 20 fechas pendientes de un equipo para encontrar el cruce buscado.
+  const [opponentFilter, setOpponentFilter] = useState<string>("all");
 
   // Pre-build groupId→phase map so the phaseFilter predicate is cheap.
   const groupIdToPhase = new Map<string, number>();
@@ -96,11 +100,42 @@ export function DateOrganizer({ tournament, phaseFilter }: DateOrganizerProps) {
     .map((id) => ({ id, name: getTeamById(id)?.name || id }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const unscheduled = teamFilter === "all"
+  // Partidos sin programar del equipo elegido (antes de acotar por rival).
+  const teamUnscheduled = teamFilter === "all"
     ? allUnscheduled
     : allUnscheduled.filter(
         (m) => m.homeTeamId === teamFilter || m.awayTeamId === teamFilter
       );
+
+  // Rivales con los que al equipo elegido todavía le falta programar, con el
+  // conteo de cruces pendientes (2 en ida y vuelta, etc.). Alimenta el
+  // dropdown "rival" que aparece solo cuando hay un equipo seleccionado.
+  const opponentOptions =
+    teamFilter === "all"
+      ? []
+      : (() => {
+          const counts = new Map<string, number>();
+          for (const m of teamUnscheduled) {
+            const opp =
+              m.homeTeamId === teamFilter ? m.awayTeamId : m.homeTeamId;
+            if (opp) counts.set(opp, (counts.get(opp) || 0) + 1);
+          }
+          return Array.from(counts.entries())
+            .map(([id, count]) => ({
+              id,
+              name: getTeamById(id)?.name || id,
+              count,
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+        })();
+
+  const unscheduled =
+    opponentFilter === "all"
+      ? teamUnscheduled
+      : teamUnscheduled.filter(
+          (m) =>
+            m.homeTeamId === opponentFilter || m.awayTeamId === opponentFilter
+        );
 
   // Build sections grouped by phase+round
   const sections: { key: string; label: string; matches: Match[] }[] = [];
@@ -286,21 +321,55 @@ export function DateOrganizer({ tournament, phaseFilter }: DateOrganizerProps) {
 
       {/* Team filter */}
       {teamOptions.length > 0 && (
-        <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/20">
-          <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
-          <Select value={teamFilter} onValueChange={setTeamFilter}>
-            <SelectTrigger className="h-9 w-full sm:w-64">
-              <SelectValue placeholder="Filtrar por equipo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los equipos</SelectItem>
-              {teamOptions.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-4 py-2 border-b bg-muted/20">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
+            <Select
+              value={teamFilter}
+              onValueChange={(v) => {
+                setTeamFilter(v);
+                // Al cambiar de equipo, la selección de rival anterior deja de
+                // tener sentido: se resetea para no ocultar cruces por error.
+                setOpponentFilter("all");
+              }}
+            >
+              <SelectTrigger className="h-9 w-full sm:w-64">
+                <SelectValue placeholder="Filtrar por equipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los equipos</SelectItem>
+                {teamOptions.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Rival filter: aparece solo con un equipo elegido y lista los
+              oponentes con los que aún falta programar (con conteo). */}
+          {teamFilter !== "all" && opponentOptions.length > 0 && (
+            <div className="flex items-center gap-2 sm:pl-2">
+              <span className="text-xs text-muted-foreground shrink-0">vs</span>
+              <Select value={opponentFilter} onValueChange={setOpponentFilter}>
+                <SelectTrigger className="h-9 w-full sm:w-64">
+                  <SelectValue placeholder="Ver rival pendiente" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    Todos los rivales ({opponentOptions.length})
+                  </SelectItem>
+                  {opponentOptions.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>
+                      {o.name}
+                      {o.count > 1 ? ` (${o.count})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
       )}
 
