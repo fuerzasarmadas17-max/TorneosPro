@@ -23,7 +23,8 @@ import {
   BASEBALL_OFFENSIVE_STATS,
   BASEBALL_DEFENSIVE_STATS,
 } from "@/lib/baseball-scoresheet";
-import { dedupePlayersByName } from "@/lib/name-utils";
+import { dedupePlayersByName, buildPlayerNameOptions } from "@/lib/name-utils";
+import { PlayerCombobox } from "@/components/forms/player-combobox";
 
 // ============================================================
 // Tipos del payload del endpoint
@@ -184,6 +185,7 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
         match={match}
         tournament={data.tournament}
         teams={data.teams}
+        allMatches={data.matches}
         onBack={() => setActiveMatchId(null)}
         onSaved={() => {
           loadData();
@@ -383,6 +385,7 @@ function MatchScreen({
   match,
   tournament,
   teams,
+  allMatches,
   onBack,
   onSaved,
 }: {
@@ -391,6 +394,7 @@ function MatchScreen({
   match: ScorerMatch;
   tournament: ScorerData["tournament"];
   teams: ScorerTeam[];
+  allMatches: ScorerMatch[];
   onBack: () => void;
   onSaved: () => void;
 }) {
@@ -402,6 +406,26 @@ function MatchScreen({
 
   const home = match.homeTeamId ? teamById.get(match.homeTeamId) : null;
   const away = match.awayTeamId ? teamById.get(match.awayTeamId) : null;
+
+  // Nombres candidatos para el dropdown de jugador: roster + nombres ya usados
+  // en eventos de todo el torneo (por equipo). Alimenta la selección aunque el
+  // equipo no tenga roster cargado; no se toca la plantilla.
+  const eventNamesForTeam = (teamId: string | null | undefined) =>
+    teamId
+      ? allMatches.flatMap((m) =>
+          m.events
+            .filter((e) => e.team_id === teamId)
+            .map((e) => e.player_name)
+        )
+      : [];
+  const homeNameOptions = buildPlayerNameOptions(
+    (home?.players ?? []).map((p) => p.name),
+    eventNamesForTeam(home?.id)
+  );
+  const awayNameOptions = buildPlayerNameOptions(
+    (away?.players ?? []).map((p) => p.name),
+    eventNamesForTeam(away?.id)
+  );
 
   const sportCategory = getSportCategory(tournament.sport);
   const isVolleyball = sportCategory === "volleyball";
@@ -828,33 +852,17 @@ function MatchScreen({
             })}
           </div>
 
-          {/* Datalists con el roster de cada equipo. Cada input de jugador
-              referencia uno via `list={`players-${teamId}`}` y obtiene
-              typeahead nativo + sugerencias del browser. Si el roster está
-              vacío o el anotador escribe un nombre no listado, se acepta
-              igual como texto libre — el campo es input, no select. */}
-          {home && home.players.length > 0 && (
-            <datalist id={`scorer-players-${home.id}`}>
-              {home.players.map((p) => (
-                <option key={p.id} value={p.name} />
-              ))}
-            </datalist>
-          )}
-          {away && away.players.length > 0 && (
-            <datalist id={`scorer-players-${away.id}`}>
-              {away.players.map((p) => (
-                <option key={p.id} value={p.name} />
-              ))}
-            </datalist>
-          )}
-
           {eventEntries.length > 0 && (
             <div className="space-y-1.5 pt-1">
               {eventEntries.map((e, i) => {
                 const def = getStatDefinition(e.type);
-                const teamHasRoster =
-                  (e.teamId === home?.id && (home?.players.length ?? 0) > 0) ||
-                  (e.teamId === away?.id && (away?.players.length ?? 0) > 0);
+                // Sugerencias para el dropdown según el equipo del evento.
+                const playerOptions =
+                  e.teamId === home?.id
+                    ? homeNameOptions
+                    : e.teamId === away?.id
+                      ? awayNameOptions
+                      : [];
                 return (
                   <div key={i} className="space-y-1.5 rounded-md border bg-background p-2">
                     {/* Fila 1: etiqueta del evento + eliminar (siempre dentro de la tarjeta) */}
@@ -883,16 +891,16 @@ function MatchScreen({
                         <option value={home?.id ?? ""}>{home?.name ?? "Local"}</option>
                         <option value={away?.id ?? ""}>{away?.name ?? "Visit."}</option>
                       </select>
-                      <input
-                        type="text"
-                        list={teamHasRoster ? `scorer-players-${e.teamId}` : undefined}
-                        value={e.playerName}
-                        onChange={(ev) => updateEvent(i, { playerName: ev.target.value })}
-                        placeholder="Jugador"
-                        className="h-8 min-w-0 flex-[1.4] rounded-md border bg-background px-2 text-xs"
-                        maxLength={60}
-                        autoComplete="off"
-                      />
+                      <div className="min-w-0 flex-[1.4]">
+                        <PlayerCombobox
+                          options={playerOptions}
+                          value={e.playerName}
+                          onChange={(v) => updateEvent(i, { playerName: v })}
+                          placeholder="Jugador"
+                          className="h-8 text-xs"
+                          maxLength={60}
+                        />
+                      </div>
                     </div>
                   </div>
                 );

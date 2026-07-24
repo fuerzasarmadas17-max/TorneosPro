@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,6 @@ import {
   Match,
   MatchEvent,
   MatchEventType,
-  Player,
   Sport,
   VolleyballSet,
   getSportCategory,
@@ -35,7 +34,8 @@ import {
   BASEBALL_OFFENSIVE_STATS,
   BASEBALL_DEFENSIVE_STATS,
 } from "@/lib/baseball-scoresheet";
-import { dedupePlayersByName } from "@/lib/name-utils";
+import { dedupePlayersByName, buildPlayerNameOptions } from "@/lib/name-utils";
+import { PlayerCombobox } from "./player-combobox";
 
 interface EventEntry {
   type: MatchEventType;
@@ -56,7 +56,7 @@ export function MatchResultForm({
   sport,
   bestOf,
 }: MatchResultFormProps) {
-  const { getTeamById, updateMatch } = useTournaments();
+  const { getTeamById, updateMatch, getTournamentById } = useTournaments();
   const router = useRouter();
 
   // `isEditing` = el partido ya tiene resultado cargado y estamos
@@ -92,6 +92,24 @@ export function MatchResultForm({
   const homePlayers = dedupePlayersByName(homeTeam?.players || []);
   const awayPlayers = dedupePlayersByName(awayTeam?.players || []);
 
+  // Nombres ya usados en eventos del torneo (por equipo) para alimentar el
+  // dropdown de goleador aun cuando el equipo no tenga roster cargado. Es solo
+  // la fuente de sugerencias: NO se modifica la plantilla, así que importar la
+  // planilla oficial más tarde no genera jugadores duplicados.
+  const tournamentMatches = getTournamentById(match.tournamentId)?.matches ?? [];
+  const eventNamesForTeam = (teamId: string) =>
+    tournamentMatches.flatMap((m) =>
+      (m.events ?? []).filter((e) => e.teamId === teamId).map((e) => e.playerName)
+    );
+  const homePlayerOptions = buildPlayerNameOptions(
+    homePlayers.map((p) => p.name),
+    match.homeTeamId ? eventNamesForTeam(match.homeTeamId) : []
+  );
+  const awayPlayerOptions = buildPlayerNameOptions(
+    awayPlayers.map((p) => p.name),
+    match.awayTeamId ? eventNamesForTeam(match.awayTeamId) : []
+  );
+
   const stats = enabledStats || [];
   const isBaseball = sport ? getSportCategory(sport) === "baseball" : false;
   const useScoresheet = isBaseball;
@@ -123,11 +141,6 @@ export function MatchResultForm({
     }
   );
 
-  const getPlayersForTeam = (teamId: string): Player[] => {
-    if (teamId === match.homeTeamId) return homePlayers;
-    if (teamId === match.awayTeamId) return awayPlayers;
-    return [];
-  };
 
   const addEvent = (type: MatchEventType, teamId: string) => {
     setEventEntries([...eventEntries, { type, teamId, playerName: "" }]);
@@ -279,100 +292,26 @@ export function MatchResultForm({
     router.push(`/tournaments/${match.tournamentId}`);
   };
 
-  const PlayerSearchInput = ({
-    players,
-    value,
-    onChange,
-    placeholder,
-  }: {
-    players: Player[];
-    value: string;
-    onChange: (v: string) => void;
-    placeholder: string;
-  }) => {
-    const [query, setQuery] = useState(value);
-    const [open, setOpen] = useState(false);
-    const containerRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-      setQuery(value);
-    }, [value]);
-
-    useEffect(() => {
-      const handleClickOutside = (e: MouseEvent) => {
-        if (
-          containerRef.current &&
-          !containerRef.current.contains(e.target as Node)
-        ) {
-          setOpen(false);
-        }
-      };
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
-
-    const filtered = players.filter((p) =>
-      p.name.toLowerCase().includes(query.toLowerCase())
-    );
-
-    return (
-      <div ref={containerRef} className="relative">
-        <Input
-          placeholder={placeholder}
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          className="h-8 text-sm"
-        />
-        {open && filtered.length > 0 && (
-          <div className="absolute z-50 top-full left-0 right-0 mt-1 max-h-40 overflow-y-auto rounded-md border bg-popover shadow-md">
-            {filtered.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent cursor-pointer"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  onChange(p.name);
-                  setQuery(p.name);
-                  setOpen(false);
-                }}
-              >
-                {p.name}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const renderPlayerSelect = (
     teamId: string,
     value: string,
     onChange: (v: string) => void,
     placeholder: string
   ) => {
-    const players = getPlayersForTeam(teamId);
-    if (players.length > 0) {
-      return (
-        <PlayerSearchInput
-          players={players}
-          value={value}
-          onChange={onChange}
-          placeholder={placeholder}
-        />
-      );
-    }
+    const options =
+      teamId === match.homeTeamId
+        ? homePlayerOptions
+        : teamId === match.awayTeamId
+          ? awayPlayerOptions
+          : [];
     return (
-      <Input
-        placeholder={placeholder}
+      <PlayerCombobox
+        options={options}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={onChange}
+        placeholder={placeholder}
         className="h-8 text-sm"
+        maxLength={60}
       />
     );
   };

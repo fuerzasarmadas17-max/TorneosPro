@@ -45,3 +45,36 @@ export function dedupePlayersByName<T extends { name: string }>(
     return true;
   });
 }
+
+/** Clave de identidad de un nombre: sin espacios de sobra y en minúsculas.
+ *  Sirve para deduplicar "Jhon Turizo" / "jhon  turizo" como el mismo. */
+export function normalizePlayerName(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * Nombres candidatos para el dropdown de jugador: combina el roster con los
+ * nombres ya usados en eventos, deduplicando por nombre normalizado y
+ * conservando la primera forma vista (el roster va primero, así su ortografía
+ * "oficial" gana). Devuelve la lista ordenada alfabéticamente.
+ *
+ * No toca la plantilla: es solo la fuente de sugerencias. Así el dropdown se
+ * llena con los goleadores ya anotados aunque el equipo no tenga roster, sin
+ * riesgo de duplicar jugadores cuando luego se importe la planilla oficial.
+ */
+export function buildPlayerNameOptions(
+  rosterNames: ReadonlyArray<string>,
+  eventNames: ReadonlyArray<string>
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of [...rosterNames, ...eventNames]) {
+    const name = raw.trim();
+    if (!name) continue;
+    const key = normalizePlayerName(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out.sort((a, b) => a.localeCompare(b));
+}
