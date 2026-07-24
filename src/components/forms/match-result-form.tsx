@@ -17,6 +17,8 @@ import {
   Match,
   MatchEvent,
   MatchEventType,
+  Player,
+  Team,
   Sport,
   VolleyballSet,
   getSportCategory,
@@ -34,8 +36,17 @@ import {
   BASEBALL_OFFENSIVE_STATS,
   BASEBALL_DEFENSIVE_STATS,
 } from "@/lib/baseball-scoresheet";
-import { dedupePlayersByName, buildPlayerNameOptions } from "@/lib/name-utils";
+import { dedupePlayersByName, buildPlayerNameOptions, normalizePlayerName } from "@/lib/name-utils";
+import { fetchTeamsByIds } from "@/lib/db/teams";
 import { PlayerCombobox } from "./player-combobox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface EventEntry {
   type: MatchEventType;
@@ -56,7 +67,7 @@ export function MatchResultForm({
   sport,
   bestOf,
 }: MatchResultFormProps) {
-  const { getTeamById, updateMatch, getTournamentById } = useTournaments();
+  const { getTeamById, updateMatch, getTournamentById, updateTeamPlayers } = useTournaments();
   const router = useRouter();
 
   // `isEditing` = el partido ya tiene resultado cargado y estamos
@@ -203,6 +214,114 @@ export function MatchResultForm({
     });
   };
 
+  // Flujo A: al guardar, los nombres tipeados que no están en la plantilla de
+  // su equipo se muestran en un modal de confirmación; al aceptar, se inscriben
+  // en el equipo (con id estable) y recién ahí se guarda el resultado. Solo
+  // corre en el flujo del organizador (este form); el link del anotador no
+  // inscribe.
+  const [inscribeOpen, setInscribeOpen] = useState(false);
+  const [inscribeData, setInscribeData] = useState<{
+    groups: { teamId: string; teamName: string; names: string[] }[];
+    freshTeams: Team[];
+    finalEvents: MatchEvent[];
+    performSave: (finalEvents: MatchEvent[]) => void;
+  } | null>(null);
+  const [inscribing, setInscribing] = useState(false);
+
+  // Corazón del Flujo A. Trabaja con la plantilla FRESCA de la base porque el
+  // estado en memoria puede estar viejo (un jugador inscrito en otra pantalla).
+  //   1. Canoniza cada nombre tipeado que coincide (normalizado) con un jugador
+  //      del roster, reemplazándolo por su ortografía oficial. Así la
+  //      estadística se asocia al jugador correcto en vez de crear un goleador
+  //      fantasma (p.ej. "GLEN U" -> "Glen U").
+  //   2. Los nombres que quedan sin match se ofrecen para inscribir en un modal.
+  // Solo corre en el flujo del organizador (este form); el anotador no inscribe.
+  const saveWithInscription = async (
+    events: MatchEvent[],
+    performSave: (finalEvents: MatchEvent[]) => void
+  ) => {
+    const teamIds = Array.from(
+      new Set(events.map((e) => e.teamId).filter(Boolean))
+    );
+    if (teamIds.length === 0) {
+      performSave(events);
+      return;
+    }
+
+    const fresh = await fetchTeamsByIds(teamIds);
+    // teamId -> (nombre normalizado -> ortografía oficial del roster)
+    const rosterByTeam = new Map<string, Map<string, string>>();
+    for (const t of fresh) {
+      const m = new Map<string, string>();
+      for (const p of t.players ?? []) m.set(normalizePlayerName(p.name), p.name);
+      rosterByTeam.set(t.id, m);
+    }
+
+    // 1. Canonizar los nombres que ya existen en el roster.
+    const finalEvents = events.map((e) => {
+      const canonical = rosterByTeam
+        .get(e.teamId)
+        ?.get(normalizePlayerName(e.playerName));
+      return canonical ? { ...e, playerName: canonical } : e;
+    });
+
+    // 2. Agrupar los nombres que siguen sin estar en el roster (para inscribir).
+    const byTeam = new Map<
+      string,
+      { teamName: string; names: string[]; seen: Set<string> }
+    >();
+    for (const e of finalEvents) {
+      const name = e.playerName.trim();
+      if (!name) continue;
+      const key = normalizePlayerName(name);
+      if (rosterByTeam.get(e.teamId)?.has(key)) continue;
+      const entry =
+        byTeam.get(e.teamId) ??
+        {
+          teamName: fresh.find((t) => t.id === e.teamId)?.name ?? "Equipo",
+          names: [],
+          seen: new Set<string>(),
+        };
+      if (!entry.seen.has(key)) {
+        entry.seen.add(key);
+        entry.names.push(name);
+      }
+      byTeam.set(e.teamId, entry);
+    }
+    const groups = Array.from(byTeam.entries()).map(([teamId, v]) => ({
+      teamId,
+      teamName: v.teamName,
+      names: v.names,
+    }));
+
+    if (groups.length === 0) {
+      performSave(finalEvents);
+      return;
+    }
+    setInscribeData({ groups, freshTeams: fresh, finalEvents, performSave });
+    setInscribeOpen(true);
+  };
+
+  const confirmInscribe = async () => {
+    if (!inscribeData) return;
+    setInscribing(true);
+    const { groups, freshTeams, finalEvents, performSave } = inscribeData;
+    for (const g of groups) {
+      // Partimos de la plantilla fresca (con sus ids estables) y le sumamos
+      // solo los nombres nuevos; updateTeamPlayers conserva los existentes.
+      const existing = freshTeams.find((t) => t.id === g.teamId)?.players ?? [];
+      const newPlayers: Player[] = g.names.map((name) => ({
+        id: crypto.randomUUID(),
+        name,
+        teamId: g.teamId,
+      }));
+      await updateTeamPlayers(g.teamId, [...existing, ...newPlayers]);
+    }
+    setInscribing(false);
+    setInscribeOpen(false);
+    performSave(finalEvents);
+  };
+
   const handleSave = () => {
     setError("");
 
@@ -252,9 +371,11 @@ export function MatchResultForm({
           type: entry.type,
         }));
 
-      updateMatch(match.tournamentId, match.id, homeSetsWon, awaySetsWon, events, completedSets);
-      toast.success("Resultado guardado");
-      router.push(`/tournaments/${match.tournamentId}`);
+      void saveWithInscription(events, (finalEvents) => {
+        updateMatch(match.tournamentId, match.id, homeSetsWon, awaySetsWon, finalEvents, completedSets);
+        toast.success("Resultado guardado");
+        router.push(`/tournaments/${match.tournamentId}`);
+      });
       return;
     }
 
@@ -287,9 +408,11 @@ export function MatchResultForm({
         }));
     }
 
-    updateMatch(match.tournamentId, match.id, home, away, events);
-    toast.success("Resultado guardado");
-    router.push(`/tournaments/${match.tournamentId}`);
+    void saveWithInscription(events, (finalEvents) => {
+      updateMatch(match.tournamentId, match.id, home, away, finalEvents);
+      toast.success("Resultado guardado");
+      router.push(`/tournaments/${match.tournamentId}`);
+    });
   };
 
   const renderPlayerSelect = (
@@ -714,6 +837,42 @@ export function MatchResultForm({
           )}
         </CardFooter>
       </form>
+
+      <Dialog open={inscribeOpen} onOpenChange={(o) => !inscribing && setInscribeOpen(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Jugadores no inscritos</DialogTitle>
+            <DialogDescription>
+              Estos nombres no están en la plantilla de su equipo. Al guardar
+              quedarán inscritos.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 max-h-64 overflow-y-auto">
+            {inscribeData?.groups.map((g) => (
+              <div key={g.teamId} className="space-y-1">
+                <p className="text-sm font-medium">{g.teamName}</p>
+                <ul className="list-disc pl-5 text-sm text-muted-foreground">
+                  {g.names.map((n) => (
+                    <li key={n}>{n}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setInscribeOpen(false)}
+              disabled={inscribing}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={confirmInscribe} disabled={inscribing}>
+              {inscribing ? "Guardando..." : "Guardar e inscribir"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
