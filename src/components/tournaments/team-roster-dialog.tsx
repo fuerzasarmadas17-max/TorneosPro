@@ -26,6 +26,10 @@ interface TeamRosterDialogProps {
 }
 
 interface PlayerEntry {
+  // id estable del jugador: se conserva el de la DB para los existentes y se
+  // mintea un uuid para los nuevos. Es lo que permite el guardado granular
+  // (upsert) sin regenerar ids. Ver updateTeamPlayers en lib/db/teams.ts.
+  id: string;
   name: string;
   age: string;
   documentNumber: string;
@@ -44,7 +48,7 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
   const [logoUrl, setLogoUrl] = useState<string>(team.logoUrl || "");
   const [clubLogoId, setClubLogoId] = useState<string>(team.clubLogoId || "");
   const [playerEntries, setPlayerEntries] = useState<PlayerEntry[]>(
-    team.players.map((p) => ({ name: p.name, age: p.age ? String(p.age) : "", documentNumber: p.documentNumber || "", eps: p.eps || "", birthDate: p.birthDate || "" }))
+    team.players.map((p) => ({ id: p.id || crypto.randomUUID(), name: p.name, age: p.age ? String(p.age) : "", documentNumber: p.documentNumber || "", eps: p.eps || "", birthDate: p.birthDate || "" }))
   );
   const [expandedPlayers, setExpandedPlayers] = useState<Set<number>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,7 +63,7 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
   };
 
   const addPlayer = () => {
-    setPlayerEntries([...playerEntries, { name: "", age: "", documentNumber: "", eps: "", birthDate: "" }]);
+    setPlayerEntries([...playerEntries, { id: crypto.randomUUID(), name: "", age: "", documentNumber: "", eps: "", birthDate: "" }]);
   };
 
   const removePlayer = (index: number) => {
@@ -155,6 +159,7 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
           }
 
           imported.push({
+            id: crypto.randomUUID(),
             name: nombreCompleto,
             age: edad,
             documentNumber: documento,
@@ -195,8 +200,8 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
     // Save players
     const players: Player[] = playerEntries
       .filter((p) => p.name.trim())
-      .map((entry, i) => ({
-        id: `${team.id}-p-${i + 1}`,
+      .map((entry) => ({
+        id: entry.id,
         name: entry.name.trim(),
         teamId: team.id,
         age: entry.age ? parseInt(entry.age) || undefined : undefined,
@@ -219,7 +224,7 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
       setLogoUrl(team.logoUrl || "");
       setClubLogoId(team.clubLogoId || "");
       setPlayerEntries(
-        team.players.map((p) => ({ name: p.name, age: p.age ? String(p.age) : "", documentNumber: p.documentNumber || "", eps: p.eps || "", birthDate: p.birthDate || "" }))
+        team.players.map((p) => ({ id: p.id || crypto.randomUUID(), name: p.name, age: p.age ? String(p.age) : "", documentNumber: p.documentNumber || "", eps: p.eps || "", birthDate: p.birthDate || "" }))
       );
       setExpandedPlayers(new Set());
     }

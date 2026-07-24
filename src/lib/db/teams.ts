@@ -86,25 +86,49 @@ export async function updateTeamPlayers(
   teamId: string,
   players: Player[]
 ): Promise<boolean> {
-  // Deduplicar ANTES de borrar: el delete+insert no es transaccional, así que
-  // un insert que falle (p.ej. contra el unique de (team_id, name)) dejaría al
-  // equipo sin jugadores.
   const unique = dedupePlayersByName(players);
 
-  // Delete existing players
-  await supabase.from("players").delete().eq("team_id", teamId);
+  // Guardado GRANULAR por id (upsert + borrar solo los quitados) en lugar del
+  // viejo "borrar todo + reinsertar". Motivos:
+  //  - Estabilidad de ids: reinsertar sin id regeneraba el uuid de cada
+  //    jugador en cada guardado, rompiendo cualquier referencia a `players.id`.
+  //    Ahora los existentes conservan su id y los nuevos traen un uuid minteado
+  //    en el cliente.
+  //  - Seguridad: el borrar-todo no era transaccional; un insert que fallara
+  //    dejaba al equipo sin jugadores. Con el diff, a los que se conservan no
+  //    se los toca.
+  // El UPDATE que hace el upsert está permitido por la policy RLS "Creador
+  // edita jugadores" (cmd = ALL) sobre `players`.
+  const incomingIds = new Set(
+    unique.map((p) => p.id).filter((id): id is string => !!id)
+  );
+
+  // Borrar únicamente los jugadores del equipo que ya no vienen en la lista.
+  const { data: existing } = await supabase
+    .from("players")
+    .select("id")
+    .eq("team_id", teamId);
+  const removed = (existing ?? [])
+    .map((r) => r.id as string)
+    .filter((id) => !incomingIds.has(id));
+  if (removed.length > 0) {
+    await supabase.from("players").delete().in("id", removed);
+  }
 
   if (unique.length === 0) return true;
 
-  const { error } = await supabase.from("players").insert(
+  // Upsert por id: inserta los nuevos y actualiza los existentes conservando id.
+  const { error } = await supabase.from("players").upsert(
     unique.map((p) => ({
+      id: p.id,
       team_id: teamId,
       name: p.name,
       age: p.age ?? null,
       document_number: p.documentNumber ?? null,
       eps: p.eps ?? null,
       birth_date: p.birthDate ?? null,
-    }))
+    })),
+    { onConflict: "id" }
   );
   return !error;
 }
