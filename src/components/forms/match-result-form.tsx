@@ -125,6 +125,11 @@ export function MatchResultForm({
   const isBaseball = sport ? getSportCategory(sport) === "baseball" : false;
   const useScoresheet = isBaseball;
   const isVolleyball = sport === "volleyball";
+  // Fútbol / futsal / microfútbol y vóley: en mobile apilamos las estadísticas
+  // por equipo (un equipo y luego el otro, con encabezado) en vez de dos
+  // columnas apretadas.
+  const isFutbol = sport ? getSportCategory(sport) === "futbol" : false;
+  const stackScorersMobile = isFutbol || isVolleyball;
   const setsToWin = bestOf ? Math.ceil(bestOf / 2) : 2;
 
   // Scoresheet state for baseball — pre-cargar la matriz player×stat
@@ -675,10 +680,22 @@ export function MatchResultForm({
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-[1fr_auto_1fr] gap-6">
+                      <div
+                        className={
+                          stackScorersMobile
+                            ? "grid grid-cols-1 gap-5 sm:grid-cols-[1fr_auto_1fr] sm:gap-6"
+                            : "grid grid-cols-[1fr_auto_1fr] gap-6"
+                        }
+                      >
                         {/* Home team column */}
                         <div className="space-y-2">
-                          <p className="text-xs font-medium text-muted-foreground truncate">
+                          <p
+                            className={
+                              stackScorersMobile
+                                ? "text-sm font-semibold truncate"
+                                : "text-xs font-medium text-muted-foreground truncate"
+                            }
+                          >
                             {homeTeam?.name || "Local"}
                           </p>
                           {homeEntries.map((entry) => (
@@ -722,12 +739,24 @@ export function MatchResultForm({
                           )}
                         </div>
 
-                        {/* Vertical divider */}
-                        <div className="w-px bg-border" />
+                        {/* Vertical divider (se oculta en mobile cuando apilamos) */}
+                        <div
+                          className={
+                            stackScorersMobile
+                              ? "hidden sm:block w-px bg-border"
+                              : "w-px bg-border"
+                          }
+                        />
 
                         {/* Away team column */}
                         <div className="space-y-2">
-                          <p className="text-xs font-medium text-muted-foreground truncate">
+                          <p
+                            className={
+                              stackScorersMobile
+                                ? "text-sm font-semibold truncate"
+                                : "text-xs font-medium text-muted-foreground truncate"
+                            }
+                          >
                             {awayTeam?.name || "Visitante"}
                           </p>
                           {awayEntries.map((entry) => (
