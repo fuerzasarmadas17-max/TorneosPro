@@ -10,7 +10,7 @@ import {
   useRef,
   ReactNode,
 } from "react";
-import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, VolleyballSet, Sponsor, PhaseConfig } from "@/types";
+import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, VolleyballSet, Sponsor, PhaseConfig, getSportCategory } from "@/types";
 import {
   generateRoundRobinCircle,
   generateAdditionalGroupRounds,
@@ -482,71 +482,94 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     const tournament = tournaments.find((t) => t.id === tournamentId);
     if (!tournament) return;
 
-    // 1. Add to disqualifiedTeamIds
+    // 1. Marcar como descalificado.
     const current = tournament.disqualifiedTeamIds || [];
     if (current.includes(teamId)) return;
     const newDQ = [...current, teamId];
+    const dqSet = new Set(newDQ);
 
-    // 2. Find non-completed PLAYOFF matches (walkover only in playoffs)
-    const futurePlayoffMatches = tournament.matches.filter(
-      (m) => m.status !== "completed" && m.phase === "playoff" &&
-        (m.homeTeamId === teamId || m.awayTeamId === teamId)
-    );
+    // Marcador de walkover por deporte: vóley = sets para ganar (2-0 en
+    // best-of-3, 3-0 en best-of-5); resto de deportes 3-0.
+    const wSets =
+      getSportCategory(tournament.sport) === "volleyball"
+        ? tournament.bestOf
+          ? Math.ceil(tournament.bestOf / 2)
+          : 2
+        : 3;
 
-    // 3. Playoff: walkover 3-0 + propagate winner
-    for (const match of futurePlayoffMatches) {
-      const opponentIsHome = match.awayTeamId === teamId;
-      const winnerId = opponentIsHome ? match.homeTeamId : match.awayTeamId;
-      await dbUpdateMatchDetails(match.id, {
-        homeScore: opponentIsHome ? 3 : 0,
-        awayScore: opponentIsHome ? 0 : 3,
-        winnerId: winnerId,
+    // 2. TODOS los partidos no jugados del DQ contra un rival NO descalificado
+    //    se dan por ganados al rival (walkover). Los ya jugados se conservan.
+    const walkovers = tournament.matches
+      .filter(
+        (m) =>
+          m.status !== "completed" &&
+          (m.homeTeamId === teamId || m.awayTeamId === teamId)
+      )
+      .map((m) => {
+        const opponentId = m.homeTeamId === teamId ? m.awayTeamId : m.homeTeamId;
+        if (!opponentId || dqSet.has(opponentId)) return null;
+        const opponentIsHome = m.homeTeamId === opponentId;
+        return {
+          match: m,
+          winnerId: opponentId,
+          homeScore: opponentIsHome ? wSets : 0,
+          awayScore: opponentIsHome ? 0 : wSets,
+        };
+      })
+      .filter((w): w is NonNullable<typeof w> => w !== null);
+
+    // 3. Persistir cada walkover (+ propagar el ganador en playoffs).
+    for (const w of walkovers) {
+      await dbUpdateMatchDetails(w.match.id, {
+        homeScore: w.homeScore,
+        awayScore: w.awayScore,
+        winnerId: w.winnerId,
         status: "completed",
       });
-
-      if (match.nextMatchId && winnerId) {
-        const nextMatch = tournament.matches.find((m) => m.id === match.nextMatchId);
+      if (w.match.phase === "playoff" && w.match.nextMatchId) {
+        const nextMatch = tournament.matches.find((m) => m.id === w.match.nextMatchId);
         if (nextMatch) {
           const feeders = tournament.matches.filter((m) => m.nextMatchId === nextMatch.id);
-          const feederIdx = feeders.findIndex((f) => f.id === match.id);
-          if (feederIdx === 0) {
-            await dbUpdateMatchDetails(nextMatch.id, { homeTeamId: winnerId });
-          } else {
-            await dbUpdateMatchDetails(nextMatch.id, { awayTeamId: winnerId });
-          }
+          const feederIdx = feeders.findIndex((f) => f.id === w.match.id);
+          await dbUpdateMatchDetails(
+            nextMatch.id,
+            feederIdx === 0 ? { homeTeamId: w.winnerId } : { awayTeamId: w.winnerId }
+          );
         }
       }
     }
 
-    // 4. Persist disqualifiedTeamIds (standings will ignore DQ team matches automatically)
+    // 4. Persistir la lista de descalificados.
     await dbUpdateTournament(tournamentId, { disqualifiedTeamIds: newDQ });
 
-    // 5. Optimistic update
+    // 5. Optimistic update.
     setTournaments((prev) =>
       prev.map((t) => {
         if (t.id !== tournamentId) return t;
-        let updatedMatches = [...t.matches];
-        for (const match of futurePlayoffMatches) {
-          const opponentIsHome = match.awayTeamId === teamId;
-          const winnerId = opponentIsHome ? match.homeTeamId : match.awayTeamId;
-          updatedMatches = updatedMatches.map((m) => {
-            if (m.id === match.id) {
-              return {
+        let updatedMatches = t.matches.map((m) => {
+          const w = walkovers.find((x) => x.match.id === m.id);
+          return w
+            ? {
                 ...m,
-                homeScore: opponentIsHome ? 3 : 0,
-                awayScore: opponentIsHome ? 0 : 3,
-                winnerId,
+                homeScore: w.homeScore,
+                awayScore: w.awayScore,
+                winnerId: w.winnerId,
                 status: "completed" as const,
-              };
-            }
-            if (match.nextMatchId && m.id === match.nextMatchId && winnerId) {
-              const feeders = t.matches.filter((f) => f.nextMatchId === match.nextMatchId);
-              const feederIdx = feeders.findIndex((f) => f.id === match.id);
-              if (feederIdx === 0) return { ...m, homeTeamId: winnerId };
-              return { ...m, awayTeamId: winnerId };
-            }
-            return m;
-          });
+              }
+            : m;
+        });
+        // Propagar ganadores de playoff en el optimistic.
+        for (const w of walkovers) {
+          if (w.match.phase !== "playoff" || !w.match.nextMatchId) continue;
+          const feeders = t.matches.filter((f) => f.nextMatchId === w.match.nextMatchId);
+          const feederIdx = feeders.findIndex((f) => f.id === w.match.id);
+          updatedMatches = updatedMatches.map((m) =>
+            m.id === w.match.nextMatchId
+              ? feederIdx === 0
+                ? { ...m, homeTeamId: w.winnerId }
+                : { ...m, awayTeamId: w.winnerId }
+              : m
+          );
         }
         return { ...t, disqualifiedTeamIds: newDQ, matches: updatedMatches };
       })

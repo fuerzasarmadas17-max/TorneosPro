@@ -33,9 +33,10 @@ export function useStandings(tournament: Tournament): StandingsEntry[] {
       )
         continue;
 
-      // UEFA rule: void all matches involving disqualified teams
-      if (dqTeams.has(match.homeTeamId) || dqTeams.has(match.awayTeamId)) continue;
-
+      // Los partidos que involucran a un descalificado SÍ cuentan: los ya
+      // jugados conservan su resultado y los pendientes se dan por ganados al
+      // rival (walkover, ver disqualifyTeam). El DQ solo se manda al fondo de
+      // la tabla en el sort.
       const home = entries[match.homeTeamId];
       const away = entries[match.awayTeamId];
       if (!home || !away) continue;
@@ -70,6 +71,10 @@ export function useStandings(tournament: Tournament): StandingsEntry[] {
         goalDifference: e.goalsFor - e.goalsAgainst,
       }))
       .sort((a, b) => {
+        // Los descalificados van siempre al fondo, pase lo que pase.
+        const aDQ = dqTeams.has(a.teamId);
+        const bDQ = dqTeams.has(b.teamId);
+        if (aDQ !== bDQ) return aDQ ? 1 : -1;
         // 1. Points
         if (b.points !== a.points) return b.points - a.points;
         // 2. Goal difference
@@ -89,9 +94,7 @@ export function useStandings(tournament: Tournament): StandingsEntry[] {
         m.homeScore !== null &&
         m.awayScore !== null &&
         m.homeTeamId &&
-        m.awayTeamId &&
-        !dqTeams.has(m.homeTeamId!) &&
-        !dqTeams.has(m.awayTeamId!)
+        m.awayTeamId
     );
 
     const result: StandingsEntry[] = [];
@@ -100,6 +103,7 @@ export function useStandings(tournament: Tournament): StandingsEntry[] {
       let j = i + 1;
       while (j < sorted.length) {
         const same =
+          dqTeams.has(sorted[i].teamId) === dqTeams.has(sorted[j].teamId) &&
           sorted[i].points === sorted[j].points &&
           sorted[i].goalDifference === sorted[j].goalDifference &&
           sorted[i].goalsFor === sorted[j].goalsFor &&

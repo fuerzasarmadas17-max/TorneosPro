@@ -190,19 +190,20 @@ export function useVolleyballStandings(
       ? Math.ceil(tournament.bestOf / 2)
       : 2;
 
-    // Filter out matches involving disqualified teams
-    const validMatches = tournament.matches.filter(
-      (m) => !m.homeTeamId || !m.awayTeamId || (!dqTeams.has(m.homeTeamId) && !dqTeams.has(m.awayTeamId))
-    );
-
+    // Los partidos del descalificado cuentan (ya jugados = su resultado;
+    // pendientes = walkover al rival). El DQ solo se manda al fondo en el sort.
     const entries = buildEntries(
-      validMatches,
+      tournament.matches,
       tournament.teamIds,
       setsToWin
     );
 
     // Primary sort: by ranking points desc, then criteria 1-5
     const sorted = Object.values(entries).sort((a, b) => {
+      // Los descalificados van siempre al fondo, pase lo que pase.
+      const aDQ = dqTeams.has(a.teamId);
+      const bDQ = dqTeams.has(b.teamId);
+      if (aDQ !== bDQ) return aDQ ? 1 : -1;
       if (b.points !== a.points) return b.points - a.points;
       return compareByCriteria(a, b);
     });
@@ -214,9 +215,10 @@ export function useVolleyballStandings(
       // Find group of teams with same points AND same criteria 1-5 result
       let j = i + 1;
       while (j < sorted.length) {
+        const sameDQ = dqTeams.has(sorted[i].teamId) === dqTeams.has(sorted[j].teamId);
         const cmpPoints = sorted[i].points === sorted[j].points;
         const cmpCriteria = compareByCriteria(sorted[i], sorted[j]) === 0;
-        if (cmpPoints && cmpCriteria) {
+        if (sameDQ && cmpPoints && cmpCriteria) {
           j++;
         } else {
           break;

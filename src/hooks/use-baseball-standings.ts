@@ -30,8 +30,8 @@ export function useBaseballStandings(tournament: Tournament): BaseballStandingsE
       )
         continue;
 
-      if (dqTeams.has(match.homeTeamId) || dqTeams.has(match.awayTeamId)) continue;
-
+      // Los partidos del descalificado cuentan (ya jugados = su resultado;
+      // pendientes = walkover al rival). El DQ solo se manda al fondo en el sort.
       const home = entries[match.homeTeamId];
       const away = entries[match.awayTeamId];
       if (!home || !away) continue;
@@ -66,6 +66,10 @@ export function useBaseballStandings(tournament: Tournament): BaseballStandingsE
         diff: e.runsFor - e.runsAgainst,
       }))
       .sort((a, b) => {
+        // Los descalificados van siempre al fondo, pase lo que pase.
+        const aDQ = dqTeams.has(a.teamId);
+        const bDQ = dqTeams.has(b.teamId);
+        if (aDQ !== bDQ) return aDQ ? 1 : -1;
         // 1. PCT
         if (b.pct !== a.pct) return b.pct - a.pct;
         // 2. Run differential
@@ -82,9 +86,7 @@ export function useBaseballStandings(tournament: Tournament): BaseballStandingsE
         m.homeScore !== null &&
         m.awayScore !== null &&
         m.homeTeamId &&
-        m.awayTeamId &&
-        !dqTeams.has(m.homeTeamId!) &&
-        !dqTeams.has(m.awayTeamId!)
+        m.awayTeamId
     );
 
     const result: BaseballStandingsEntry[] = [];
@@ -93,6 +95,7 @@ export function useBaseballStandings(tournament: Tournament): BaseballStandingsE
       let j = i + 1;
       while (j < sorted.length) {
         const same =
+          dqTeams.has(sorted[i].teamId) === dqTeams.has(sorted[j].teamId) &&
           sorted[i].pct === sorted[j].pct &&
           sorted[i].diff === sorted[j].diff &&
           sorted[i].runsFor === sorted[j].runsFor;

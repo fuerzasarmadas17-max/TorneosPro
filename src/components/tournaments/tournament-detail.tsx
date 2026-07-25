@@ -363,9 +363,9 @@ function TeamsRosterSection({
             <div className="text-sm text-muted-foreground space-y-2">
               <p><strong>{confirmAction?.teamName}</strong> será descalificado del torneo.</p>
               <ul className="list-disc pl-4 space-y-1">
-                <li>Todos sus partidos (jugados y futuros) serán <strong>anulados</strong> en la tabla de posiciones</li>
-                <li>Ningun rival ganará ni perderá puntos por partidos contra este equipo</li>
-                <li>Si está en playoffs, el rival avanzará automáticamente (3-0)</li>
+                <li>Sus partidos <strong>ya jugados se mantienen</strong> tal cual (los rivales conservan esos resultados)</li>
+                <li>Los partidos que le faltan se dan por <strong>ganados al rival</strong> por walkover (3-0; en vóley 2-0)</li>
+                <li>Aparecerá siempre <strong>al final</strong> de la tabla de posiciones, marcado como descalificado</li>
                 <li>Las estadísticas individuales (goles, tarjetas) se mantienen</li>
               </ul>
               <p className="text-destructive font-medium">Esta acción no se puede deshacer.</p>
