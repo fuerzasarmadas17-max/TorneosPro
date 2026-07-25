@@ -116,6 +116,10 @@ export interface MatchEvent {
   matchId: string;
   teamId: string;
   playerName: string;
+  /** Vínculo estable al jugador de la plantilla. Nullable: los eventos viejos
+   *  (previos al backfill) y los que no matchean un jugador agregan por nombre.
+   *  Las stats agrupan por `playerId` cuando existe, si no por nombre. */
+  playerId?: string | null;
   type: MatchEventType;
   position?: string;
   paid?: boolean;

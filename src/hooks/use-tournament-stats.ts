@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { MatchEventType, Tournament, getStatDefinition, getSportCategory } from "@/types";
+import { normalizePlayerName } from "@/lib/name-utils";
 
 // Apariciones al plato requeridas por partido jugado para calificar al
 // ranking de bateadores (beisbol/softball/wiffleball). La MLB usa 3.1
@@ -16,6 +17,7 @@ const DEFENSE_QUALIFY_PCT = 0.6;
 
 export interface PlayerStatEntry {
   playerName: string;
+  playerId?: string | null;
   teamId: string;
   count: number;
 }
@@ -46,6 +48,7 @@ export interface StatLeaderboard {
 
 export interface BaseballPlayerStats {
   playerName: string;
+  playerId?: string | null;
   teamId: string;
   ab: number;
   h: number; // total hits = singles + doubles + triples + hr
@@ -74,6 +77,7 @@ export interface BaseballPlayerStats {
 // Fildeo por jugador (beisbol/softball/wiffleball): PO/A/E y % de fildeo.
 export interface BaseballFieldingStats {
   playerName: string;
+  playerId?: string | null;
   teamId: string;
   po: number; // outs (putouts)
   a: number;  // asistencias
@@ -87,6 +91,20 @@ export interface BaseballFieldingStats {
 export function useTournamentStats(tournament: Tournament) {
   return useMemo(() => {
     const enabledStats = tournament.enabledStats || [];
+
+    // Clave de agrupación de estadísticas: por `player_id` cuando existe, si no
+    // por nombre normalizado + equipo (fallback para eventos sin id: viejos sin
+    // backfill o nombres sueltos). Con el backfill hecho, casi todo cae en el
+    // camino por id, lo que deja las stats atadas al jugador (sobreviven a un
+    // renombre) y une variantes de mayúsculas/espacios del mismo jugador.
+    const playerKey = (
+      playerId: string | null | undefined,
+      playerName: string,
+      teamId: string
+    ) =>
+      playerId
+        ? `id:${playerId}`
+        : `name:${normalizePlayerName(playerName)}::${teamId}`;
 
     // Separate computed stats from event-based stats
     const eventStats: MatchEventType[] = [];
@@ -148,13 +166,14 @@ export function useTournamentStats(tournament: Tournament) {
         const statMap = maps.get(event.type);
         if (!statMap) continue;
 
-        const key = `${event.playerName}::${event.teamId}`;
+        const key = playerKey(event.playerId, event.playerName, event.teamId);
         const existing = statMap.get(key);
         if (existing) {
           existing.count++;
         } else {
           statMap.set(key, {
             playerName: event.playerName,
+            playerId: event.playerId ?? null,
             teamId: event.teamId,
             count: 1,
           });
@@ -256,7 +275,7 @@ export function useTournamentStats(tournament: Tournament) {
         // sumar el mismo juego dos veces al tener varios eventos.
         const seenThisMatch = new Set<string>();
         for (const event of match.events) {
-          const key = `${event.playerName}::${event.teamId}`;
+          const key = playerKey(event.playerId, event.playerName, event.teamId);
           if (!seenThisMatch.has(key)) {
             seenThisMatch.add(key);
             playerGames.set(key, (playerGames.get(key) || 0) + 1);
@@ -265,6 +284,7 @@ export function useTournamentStats(tournament: Tournament) {
           if (!entry) {
             entry = {
               playerName: event.playerName,
+              playerId: event.playerId ?? null,
               teamId: event.teamId,
               ab: 0, h: 0, singles: 0, doubles: 0, triples: 0, hr: 0,
               bb: 0, k: 0, rbi: 0, r: 0,
@@ -291,6 +311,7 @@ export function useTournamentStats(tournament: Tournament) {
             if (!f) {
               f = {
                 playerName: event.playerName,
+                playerId: event.playerId ?? null,
                 teamId: event.teamId,
                 po: 0, a: 0, e: 0, tc: 0, fld: 0,
                 gamesAppeared: 0, qualified: false,
@@ -350,7 +371,7 @@ export function useTournamentStats(tournament: Tournament) {
     for (const f of baseballFieldingStats) {
       f.tc = f.po + f.a + f.e;
       f.fld = f.tc > 0 ? (f.po + f.a) / f.tc : 0;
-      f.gamesAppeared = playerGames.get(`${f.playerName}::${f.teamId}`) || 0;
+      f.gamesAppeared = playerGames.get(playerKey(f.playerId, f.playerName, f.teamId)) || 0;
       const games = teamGames.get(f.teamId) || 0;
       f.qualified = games > 0 && f.gamesAppeared >= DEFENSE_QUALIFY_PCT * games;
     }

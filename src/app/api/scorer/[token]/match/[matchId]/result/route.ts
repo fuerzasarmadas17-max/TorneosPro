@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { validateScorerToken, recordScorerUsage } from "@/lib/scorer/token";
 import { checkRateLimit, getClientIp } from "@/lib/scorer/rate-limit";
+import { normalizePlayerName } from "@/lib/name-utils";
 
 interface EventInput {
   teamId: string;
@@ -194,16 +195,44 @@ export async function POST(
     }
     await supabaseAdmin.from("match_events").delete().eq("match_id", matchId);
     if (body.events.length > 0) {
-      const rows = body.events.map((e) => ({
-        match_id: matchId,
-        team_id: e.teamId,
-        player_name: e.playerName,
-        type: e.type,
-        position: e.position ?? null,
-        paid: !!e.paid,
-        entered_by_name: scorerName,
-        entered_via_token: token,
-      }));
+      // Estampar player_id (y canonizar el nombre) cuando el goleador coincide
+      // con un jugador de la plantilla, para que la estadística quede atada al
+      // jugador. El anotador NO inscribe: si el nombre no está en la plantilla,
+      // queda sin id y agrega por nombre (fallback).
+      const teamIds = [match.home_team_id, match.away_team_id].filter(
+        Boolean
+      ) as string[];
+      const rosterByTeam = new Map<
+        string,
+        Map<string, { name: string; id: string }>
+      >();
+      if (teamIds.length > 0) {
+        const { data: roster } = await supabaseAdmin
+          .from("players")
+          .select("id, name, team_id")
+          .in("team_id", teamIds);
+        for (const p of roster ?? []) {
+          const m = rosterByTeam.get(p.team_id) ?? new Map();
+          m.set(normalizePlayerName(p.name), { name: p.name, id: p.id });
+          rosterByTeam.set(p.team_id, m);
+        }
+      }
+      const rows = body.events.map((e) => {
+        const rp = rosterByTeam
+          .get(e.teamId)
+          ?.get(normalizePlayerName(e.playerName));
+        return {
+          match_id: matchId,
+          team_id: e.teamId,
+          player_name: rp ? rp.name : e.playerName,
+          player_id: rp ? rp.id : null,
+          type: e.type,
+          position: e.position ?? null,
+          paid: !!e.paid,
+          entered_by_name: scorerName,
+          entered_via_token: token,
+        };
+      });
       const { error } = await supabaseAdmin.from("match_events").insert(rows);
       if (error) {
         return NextResponse.json({ error: "Events DB error" }, { status: 500 });

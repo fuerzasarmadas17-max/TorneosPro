@@ -249,20 +249,23 @@ export function MatchResultForm({
     }
 
     const fresh = await fetchTeamsByIds(teamIds);
-    // teamId -> (nombre normalizado -> ortografía oficial del roster)
-    const rosterByTeam = new Map<string, Map<string, string>>();
+    // teamId -> (nombre normalizado -> jugador oficial del roster {name, id})
+    const rosterByTeam = new Map<
+      string,
+      Map<string, { name: string; id: string }>
+    >();
     for (const t of fresh) {
-      const m = new Map<string, string>();
-      for (const p of t.players ?? []) m.set(normalizePlayerName(p.name), p.name);
+      const m = new Map<string, { name: string; id: string }>();
+      for (const p of t.players ?? [])
+        m.set(normalizePlayerName(p.name), { name: p.name, id: p.id });
       rosterByTeam.set(t.id, m);
     }
 
-    // 1. Canonizar los nombres que ya existen en el roster.
+    // 1. Canonizar el nombre y ESTAMPAR el player_id de los que ya están en el
+    //    roster, para que la estadística quede atada al jugador correcto.
     const finalEvents = events.map((e) => {
-      const canonical = rosterByTeam
-        .get(e.teamId)
-        ?.get(normalizePlayerName(e.playerName));
-      return canonical ? { ...e, playerName: canonical } : e;
+      const rp = rosterByTeam.get(e.teamId)?.get(normalizePlayerName(e.playerName));
+      return rp ? { ...e, playerName: rp.name, playerId: rp.id } : e;
     });
 
     // 2. Agrupar los nombres que siguen sin estar en el roster (para inscribir).
@@ -306,6 +309,13 @@ export function MatchResultForm({
     if (!inscribeData) return;
     setInscribing(true);
     const { groups, freshTeams, finalEvents, performSave } = inscribeData;
+    // teamId -> (nombre normalizado -> player id), arrancando del roster fresco.
+    const idByTeam = new Map<string, Map<string, string>>();
+    for (const t of freshTeams) {
+      const m = new Map<string, string>();
+      for (const p of t.players ?? []) m.set(normalizePlayerName(p.name), p.id);
+      idByTeam.set(t.id, m);
+    }
     for (const g of groups) {
       // Partimos de la plantilla fresca (con sus ids estables) y le sumamos
       // solo los nombres nuevos; updateTeamPlayers conserva los existentes.
@@ -316,10 +326,20 @@ export function MatchResultForm({
         teamId: g.teamId,
       }));
       await updateTeamPlayers(g.teamId, [...existing, ...newPlayers]);
+      const m = idByTeam.get(g.teamId) ?? new Map<string, string>();
+      for (const p of newPlayers) m.set(normalizePlayerName(p.name), p.id);
+      idByTeam.set(g.teamId, m);
     }
+    // Estampar el player_id de los recién inscritos (los del roster ya lo
+    // traen desde la canonización).
+    const stamped = finalEvents.map((e) => {
+      if (e.playerId) return e;
+      const pid = idByTeam.get(e.teamId)?.get(normalizePlayerName(e.playerName));
+      return pid ? { ...e, playerId: pid } : e;
+    });
     setInscribing(false);
     setInscribeOpen(false);
-    performSave(finalEvents);
+    performSave(stamped);
   };
 
   const handleSave = () => {
