@@ -55,9 +55,13 @@ interface DateOrganizerProps {
    *  Used by the Pieza E completion modal to scope dates to a specific
    *  phase. Omit for the global behavior. */
   phaseFilter?: number;
+  /** Callback opcional al programar un partido. Cuando se pasa (p.ej. desde el
+   *  modal del dashboard) reemplaza el toast por feedback del padre — recibe un
+   *  resumen "Local vs Visitante". Sin este prop, muestra el toast de siempre. */
+  onScheduled?: (summary: string) => void;
 }
 
-export function DateOrganizer({ tournament, phaseFilter }: DateOrganizerProps) {
+export function DateOrganizer({ tournament, phaseFilter, onScheduled }: DateOrganizerProps) {
   const { updateMatchDetails, getTeamById } = useTournaments();
   const [activeSection, setActiveSection] = useState("");
   const [teamFilter, setTeamFilter] = useState<string>("all");
@@ -276,7 +280,13 @@ export function DateOrganizer({ tournament, phaseFilter }: DateOrganizerProps) {
 
   const handleSchedule = (match: Match) => {
     updateMatchDetails(tournament.id, match.id, { status: "scheduled" });
-    toast.success("Partido programado");
+    if (onScheduled) {
+      const h = match.homeTeamId ? getTeamById(match.homeTeamId)?.name : null;
+      const a = match.awayTeamId ? getTeamById(match.awayTeamId)?.name : null;
+      onScheduled(`${h ?? "?"} vs ${a ?? "?"}`);
+    } else {
+      toast.success("Partido programado");
+    }
   };
 
   // All existing rounds > 0 for the jornada selector (from ALL matches, not just unscheduled)

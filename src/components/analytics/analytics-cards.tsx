@@ -58,6 +58,7 @@ function MetricCard({
   current,
   previous,
   series,
+  compact = false,
 }: {
   icon: LucideIcon;
   label: string;
@@ -67,34 +68,45 @@ function MetricCard({
   current?: number;
   previous?: number;
   series?: number[];
+  compact?: boolean;
 }) {
   const hasDelta = current !== undefined && previous !== undefined;
   return (
     <Card>
-      <CardContent className="flex flex-col gap-3 p-5">
-        <div className="flex items-center gap-3">
+      <CardContent className={cn("flex flex-col", compact ? "gap-2 p-4" : "gap-3 p-5")}>
+        <div className="flex items-center gap-2">
           <div
             className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-lg",
+              "flex shrink-0 items-center justify-center rounded-lg",
+              compact ? "size-7" : "size-9",
               accentBox[accent]
             )}
           >
-            <Icon className="size-4" />
+            <Icon className={compact ? "size-3.5" : "size-4"} />
           </div>
-          <p className="text-sm text-muted-foreground">{label}</p>
+          <p className={cn("text-muted-foreground", compact ? "text-xs" : "text-sm")}>{label}</p>
         </div>
         <div className="flex items-end justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-2xl font-bold tracking-tight">{value}</p>
+            <p className={cn("truncate font-bold tracking-tight", compact ? "text-xl" : "text-2xl")}>{value}</p>
             <div className="mt-0.5 flex items-center gap-1.5">
               {hasDelta && <Delta current={current} previous={previous} />}
-              {hint && (
+              {hint && !compact && (
                 <span className="truncate text-xs text-muted-foreground/70">{hint}</span>
               )}
             </div>
           </div>
           {series && series.length >= 2 && (
-            <div className={cn("w-20 shrink-0", accentSpark[accent])}>
+            <div
+              className={cn(
+                "shrink-0",
+                accentSpark[accent],
+                // La sparkline es decorativa: en mobile compacto se lleva 56px
+                // de una tarjeta de ~138px y deja el número recortado ("12…").
+                // El valor manda, así que abajo de sm la escondemos.
+                compact ? "hidden w-14 sm:block" : "w-20"
+              )}
+            >
               <SparklineInline data={series} />
             </div>
           )}
@@ -145,6 +157,8 @@ interface AnalyticsCardsProps {
   previous?: PeriodTotals;
   /** Serie diaria, para las sparklines de cada tarjeta. */
   viewsByDay?: ViewsByDay[];
+  /** Versión compacta (dashboard): tarjetas más chicas. */
+  compact?: boolean;
 }
 
 export function AnalyticsCards({
@@ -154,9 +168,10 @@ export function AnalyticsCards({
   avgDurationMs,
   previous,
   viewsByDay,
+  compact = false,
 }: AnalyticsCardsProps) {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className={cn("grid gap-3", compact ? "grid-cols-2 lg:grid-cols-4" : "gap-4 sm:grid-cols-2 lg:grid-cols-4")}>
       <MetricCard
         icon={Users}
         label="Personas"
@@ -166,6 +181,7 @@ export function AnalyticsCards({
         current={uniquePersons}
         previous={previous?.unique_persons}
         series={viewsByDay?.map((d) => d.unique_persons)}
+        compact={compact}
       />
       <MetricCard
         icon={Activity}
@@ -175,6 +191,7 @@ export function AnalyticsCards({
         current={uniqueVisitors}
         previous={previous?.unique_visitors}
         series={viewsByDay?.map((d) => d.unique_visitors)}
+        compact={compact}
       />
       <MetricCard
         icon={Eye}
@@ -184,6 +201,7 @@ export function AnalyticsCards({
         current={totalViews}
         previous={previous?.total_views}
         series={viewsByDay?.map((d) => d.views)}
+        compact={compact}
       />
       <MetricCard
         icon={Clock}
@@ -193,6 +211,7 @@ export function AnalyticsCards({
         accent="amber"
         current={avgDurationMs}
         previous={previous?.avg_duration_ms}
+        compact={compact}
       />
     </div>
   );
