@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { requireTournamentOwner } from "@/lib/scorer/auth";
+import { requireUser } from "@/lib/scorer/auth";
 import { checkRateLimit, getClientIp } from "@/lib/scorer/rate-limit";
 
 /**
@@ -24,11 +24,11 @@ export async function POST(
     );
   }
 
-  // Buscar el link para conocer su tournament_id (necesario para
-  // requireTournamentOwner).
+  // La autorización va contra `created_by`: un link multi-torneo no tiene un
+  // torneo único contra el cual chequear, y el creador siempre es el dueño.
   const { data: link, error: fetchErr } = await supabaseAdmin
     .from("scorer_links")
-    .select("token, tournament_id, revoked_at")
+    .select("token, created_by, revoked_at")
     .eq("token", token)
     .maybeSingle();
   if (fetchErr) {
@@ -38,8 +38,11 @@ export async function POST(
     return NextResponse.json({ error: "Link not found" }, { status: 404 });
   }
 
-  const auth = await requireTournamentOwner(request, link.tournament_id);
+  const auth = await requireUser(request);
   if (auth instanceof NextResponse) return auth;
+  if (link.created_by !== auth.userId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   if (link.revoked_at) {
     // Idempotente.

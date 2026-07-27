@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { validateScorerToken, recordScorerUsage } from "@/lib/scorer/token";
+import {
+  validateScorerToken,
+  recordScorerUsage,
+  linkTournamentIds,
+} from "@/lib/scorer/token";
 import { checkRateLimit, getClientIp } from "@/lib/scorer/rate-limit";
 import { normalizePlayerName } from "@/lib/name-utils";
 
@@ -97,8 +101,8 @@ export async function POST(
   }
 
   // Cargar el match para conocer home/away teams y validar que pertenece
-  // al torneo del link (defensa en profundidad: el match_ids ya filtra,
-  // pero verificamos por si alguien manipuló la DB).
+  // a alguno de los torneos del link (defensa en profundidad: el match_ids
+  // ya filtra, pero verificamos por si alguien manipuló la DB).
   const { data: match, error: matchErr } = await supabaseAdmin
     .from("matches")
     .select("id, tournament_id, home_team_id, away_team_id")
@@ -107,7 +111,7 @@ export async function POST(
   if (matchErr || !match) {
     return NextResponse.json({ error: "Match no encontrado" }, { status: 404 });
   }
-  if (match.tournament_id !== link.tournament_id) {
+  if (!linkTournamentIds(link).includes(match.tournament_id)) {
     return NextResponse.json({ error: "Match de otro torneo" }, { status: 403 });
   }
 

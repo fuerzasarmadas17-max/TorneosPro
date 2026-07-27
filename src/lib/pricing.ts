@@ -79,6 +79,47 @@ export const MAX_SCORER_LINKS_BY_TIER: Record<TournamentTier | "free", number> =
   premium: Number.POSITIVE_INFINITY,
 };
 
+/** Planes de menor a mayor. El índice define cuál es "el mejor". */
+export const TIER_ORDER: readonly (TournamentTier | "free")[] = [
+  "free",
+  "basico",
+  "medio",
+  "pro",
+  "premium",
+] as const;
+
+/**
+ * El mejor plan entre los torneos de un organizador. Un torneo sin `tier`
+ * (gratis / cortesía) cuenta como "free".
+ */
+export function getBestTier(
+  tiers: (TournamentTier | null | undefined)[]
+): TournamentTier | "free" {
+  let bestIdx = 0;
+  for (const t of tiers) {
+    const idx = TIER_ORDER.indexOf(t ?? "free");
+    if (idx > bestIdx) bestIdx = idx;
+  }
+  return TIER_ORDER[bestIdx];
+}
+
+/**
+ * Cupo **global** de scorer-links activos de un organizador. Desde que un
+ * link puede cruzar varios torneos, el cap dejó de ser por torneo: se calcula
+ * con el mejor plan que tenga la cuenta y se reparte libremente entre todos
+ * sus torneos. Un link multi-torneo gasta un solo slot.
+ */
+export function getOrganizerScorerLinkCap(
+  tiers: (TournamentTier | null | undefined)[]
+): number {
+  return MAX_SCORER_LINKS_BY_TIER[getBestTier(tiers)];
+}
+
+/** Etiqueta legible de un plan, incluyendo el pseudo-plan "free". */
+export function getTierLabel(tier: TournamentTier | "free"): string {
+  return tier === "free" ? "Free" : TIER_LABELS[tier];
+}
+
 export function getTier(teamCount: number): TournamentTier {
   if (teamCount <= 8) return "basico";
   if (teamCount <= 16) return "medio";

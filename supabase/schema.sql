@@ -340,9 +340,13 @@ CREATE INDEX idx_volleyball_sets_match ON volleyball_sets(match_id);
 -- SCORER LINKS (anotadores via link compartible — Por hacer/anotadores.md)
 -- ========================
 
+-- Un link cubre N partidos que pueden cruzar varios torneos del mismo
+-- organizador (`tournament_ids`). `tournament_id` solo se setea cuando el
+-- link es de un torneo único, para conservar el ON DELETE CASCADE.
 CREATE TABLE scorer_links (
   token TEXT PRIMARY KEY,
-  tournament_id UUID NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  tournament_id UUID REFERENCES tournaments(id) ON DELETE CASCADE,
+  tournament_ids UUID[] NOT NULL,
   match_ids UUID[] NOT NULL,
   created_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -350,7 +354,8 @@ CREATE TABLE scorer_links (
   revoked_at TIMESTAMPTZ,
   last_used_at TIMESTAMPTZ,
   usage_count INT NOT NULL DEFAULT 0,
-  CONSTRAINT scorer_links_match_ids_not_empty CHECK (array_length(match_ids, 1) > 0)
+  CONSTRAINT scorer_links_match_ids_not_empty CHECK (array_length(match_ids, 1) > 0),
+  CONSTRAINT scorer_links_tournament_ids_not_empty CHECK (array_length(tournament_ids, 1) > 0)
 );
 
 CREATE INDEX idx_scorer_links_tournament_active
@@ -359,6 +364,32 @@ CREATE INDEX idx_scorer_links_tournament_active
 CREATE INDEX idx_scorer_links_expires
   ON scorer_links(expires_at)
   WHERE revoked_at IS NULL;
+-- Cupo global de links activos por organizador.
+CREATE INDEX idx_scorer_links_creator_active
+  ON scorer_links(created_by)
+  WHERE revoked_at IS NULL;
+-- Búsqueda inversa "¿este partido ya está en un link activo?".
+CREATE INDEX idx_scorer_links_match_ids
+  ON scorer_links USING GIN (match_ids);
+
+-- Red de seguridad: si un insert no manda tournament_ids, se deriva del
+-- tournament_id (caso de un solo torneo). El código siempre lo manda; esto
+-- cubre inserts manuales y el período entre migración y deploy.
+CREATE OR REPLACE FUNCTION scorer_links_fill_tournament_ids()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF (NEW.tournament_ids IS NULL OR array_length(NEW.tournament_ids, 1) IS NULL)
+     AND NEW.tournament_id IS NOT NULL THEN
+    NEW.tournament_ids := ARRAY[NEW.tournament_id];
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_scorer_links_fill_tournament_ids
+  BEFORE INSERT ON scorer_links
+  FOR EACH ROW
+  EXECUTE FUNCTION scorer_links_fill_tournament_ids();
 
 -- ========================
 -- ROW LEVEL SECURITY (RLS)
@@ -382,20 +413,14 @@ ALTER TABLE match_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE volleyball_sets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scorer_links ENABLE ROW LEVEL SECURITY;
 
--- Scorer links: solo el organizador del torneo gestiona sus links. Los
--- endpoints públicos (/api/scorer/*) usan service role para saltar RLS.
-CREATE POLICY "Organizer manages own tournament's scorer links"
+-- Scorer links: solo el organizador que lo creó gestiona sus links. Ancla en
+-- created_by (y no en tournament_id) porque un link multi-torneo no tiene un
+-- torneo único. Los endpoints públicos (/api/scorer/*) usan service role para
+-- saltar RLS.
+CREATE POLICY "Organizer manages own scorer links"
   ON scorer_links FOR ALL
-  USING (
-    tournament_id IN (
-      SELECT id FROM tournaments WHERE created_by = auth.uid()
-    )
-  )
-  WITH CHECK (
-    tournament_id IN (
-      SELECT id FROM tournaments WHERE created_by = auth.uid()
-    )
-  );
+  USING (created_by = auth.uid())
+  WITH CHECK (created_by = auth.uid());
 
 -- ========================
 -- POLICIES: Lectura publica

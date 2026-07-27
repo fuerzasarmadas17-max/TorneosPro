@@ -1,23 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { requireTournamentOwner } from "@/lib/scorer/auth";
+import { requireUser } from "@/lib/scorer/auth";
 import { generateScorerToken } from "@/lib/scorer/token";
+import { validateLinkMatches } from "@/lib/scorer/validate-link-matches";
 import { checkRateLimit, getClientIp } from "@/lib/scorer/rate-limit";
-import { MAX_SCORER_LINKS_BY_TIER } from "@/lib/pricing";
+import { getOrganizerScorerLinkCap } from "@/lib/pricing";
 import { TournamentTier } from "@/types";
 
 /**
  * POST /api/scorer/link
- * Body: { tournamentId: string; matchIds: string[] }
+ * Body: { matchIds: string[]; tournamentId?: string }
  *
- * Crea un scorer-link cubriendo los partidos seleccionados. Valida:
- *   - Caller es el organizer del torneo (Bearer token).
- *   - Todos los matchIds existen, pertenecen al torneo, status='scheduled'.
- *   - Tier-cap: cuántos scorer_links activos hay vs MAX_SCORER_LINKS_BY_TIER.
+ * Crea un scorer-link cubriendo los partidos seleccionados. Los partidos
+ * pueden venir de **varios torneos** del mismo organizador (la agenda del
+ * dashboard deja armar un link con todo lo que se juega un día). Los torneos
+ * se derivan de los propios partidos; `tournamentId` queda aceptado pero
+ * ignorado, por compatibilidad con la sección por torneo.
  *
- * `expires_at` se calcula server-side como MAX(match.date + match.time)
- * + 24h. Si algún partido no tiene `date`/`time` seteados, fallamos
- * con 400 (no podemos calcular expiración).
+ * La validación de los partidos (existencia, estado, propiedad, solapamiento
+ * con otros links, expiración) vive en `validateLinkMatches`, compartida con
+ * el PATCH que edita un link existente.
  */
 export async function POST(request: NextRequest) {
   // Rate limit (por IP, max 20 creaciones/min).
@@ -37,45 +39,38 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const tournamentId = body.tournamentId;
-  const matchIds = Array.isArray(body.matchIds) ? body.matchIds : [];
-  if (!tournamentId || typeof tournamentId !== "string") {
-    return NextResponse.json({ error: "Missing tournamentId" }, { status: 400 });
-  }
-  if (matchIds.length === 0) {
-    return NextResponse.json({ error: "matchIds vacío" }, { status: 400 });
-  }
-  if (matchIds.length > 50) {
-    return NextResponse.json({ error: "Máximo 50 partidos por link" }, { status: 400 });
-  }
-  if (!matchIds.every((id) => typeof id === "string")) {
-    return NextResponse.json({ error: "matchIds inválido" }, { status: 400 });
-  }
+  const matchIds = Array.isArray(body.matchIds)
+    ? Array.from(new Set(body.matchIds))
+    : [];
 
-  // Auth + organizer check.
-  const auth = await requireTournamentOwner(request, tournamentId);
+  // Auth primero: no tocamos la DB con service role para un caller anónimo.
+  const auth = await requireUser(request);
   if (auth instanceof NextResponse) return auth;
+  const userId = auth.userId;
 
-  // Cargar tier del torneo (para el cap).
-  const { data: tournament, error: tournErr } = await supabaseAdmin
+  const validated = await validateLinkMatches(matchIds, userId);
+  if (validated instanceof NextResponse) return validated;
+  const { tournamentIds, expiresAt } = validated;
+
+  // Cupo GLOBAL del organizador: el mejor plan entre todos sus torneos define
+  // cuántos links activos puede tener en total, repartidos como quiera.
+  const { data: ownedTournaments, error: tiersErr } = await supabaseAdmin
     .from("tournaments")
     .select("tier")
-    .eq("id", tournamentId)
-    .single();
-  if (tournErr || !tournament) {
-    return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
+    .eq("created_by", userId);
+  if (tiersErr) {
+    return NextResponse.json({ error: "DB error" }, { status: 500 });
   }
-  const tierKey = (tournament.tier as TournamentTier | null) ?? "free";
-  const cap = MAX_SCORER_LINKS_BY_TIER[tierKey as keyof typeof MAX_SCORER_LINKS_BY_TIER];
+  const cap = getOrganizerScorerLinkCap(
+    (ownedTournaments ?? []).map((t) => t.tier as TournamentTier | null)
+  );
 
-  // Cap por tier: contar links activos (no revoked, no expired).
-  const nowIso = new Date().toISOString();
   const { count: activeCount, error: countErr } = await supabaseAdmin
     .from("scorer_links")
     .select("token", { count: "exact", head: true })
-    .eq("tournament_id", tournamentId)
+    .eq("created_by", userId)
     .is("revoked_at", null)
-    .gt("expires_at", nowIso);
+    .gt("expires_at", new Date().toISOString());
   if (countErr) {
     return NextResponse.json({ error: "DB error" }, { status: 500 });
   }
@@ -90,65 +85,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Validar los partidos: existen + pertenecen al torneo + scheduled +
-  // tienen date+time para calcular expiración.
-  const { data: matches, error: matchErr } = await supabaseAdmin
-    .from("matches")
-    .select("id, tournament_id, status, date, time")
-    .in("id", matchIds);
-  if (matchErr) {
-    return NextResponse.json({ error: "DB error" }, { status: 500 });
-  }
-  if (!matches || matches.length !== matchIds.length) {
-    return NextResponse.json({ error: "Algunos partidos no existen" }, { status: 400 });
-  }
-  const wrongTournament = matches.find((m) => m.tournament_id !== tournamentId);
-  if (wrongTournament) {
-    return NextResponse.json(
-      { error: "Partidos de otro torneo" },
-      { status: 400 }
-    );
-  }
-  const notScheduled = matches.find(
-    (m) => m.status !== "scheduled" && m.status !== "postponed"
-  );
-  if (notScheduled) {
-    return NextResponse.json(
-      { error: "Solo se pueden incluir partidos programados o aplazados" },
-      { status: 400 }
-    );
-  }
-  // Calcular expires_at = MAX(date + time) + 24h. Si todos los partidos
-  // ya pasaron (organizador delega carga retroactiva), usamos now() como
-  // piso para que el link sirva al menos 24h desde su creación — sino
-  // arrancaría expirado y daría 404 al toque.
-  let latestMs = 0;
-  for (const m of matches) {
-    if (!m.date || !m.time) {
-      return NextResponse.json(
-        { error: "Todos los partidos deben tener fecha y hora" },
-        { status: 400 }
-      );
-    }
-    const ms = Date.parse(`${m.date}T${m.time}:00`);
-    if (Number.isNaN(ms)) {
-      return NextResponse.json(
-        { error: "Formato de fecha/hora inválido" },
-        { status: 400 }
-      );
-    }
-    if (ms > latestMs) latestMs = ms;
-  }
-  const baseMs = Math.max(latestMs, Date.now());
-  const expiresAt = new Date(baseMs + 24 * 60 * 60 * 1000).toISOString();
-
-  // Crear el link.
+  // Crear el link. `tournament_id` solo se setea si es de un torneo único:
+  // así ese caso conserva el ON DELETE CASCADE de la FK.
   const token = generateScorerToken();
   const { error: insertErr } = await supabaseAdmin.from("scorer_links").insert({
     token,
-    tournament_id: tournamentId,
+    tournament_id: tournamentIds.length === 1 ? tournamentIds[0] : null,
+    tournament_ids: tournamentIds,
     match_ids: matchIds,
-    created_by: auth.userId,
+    created_by: userId,
     expires_at: expiresAt,
   });
   if (insertErr) {
@@ -159,5 +104,6 @@ export async function POST(request: NextRequest) {
     token,
     expiresAt,
     matchCount: matchIds.length,
+    tournamentCount: tournamentIds.length,
   });
 }

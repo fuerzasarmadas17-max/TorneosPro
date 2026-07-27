@@ -32,6 +32,8 @@ import { PlayerCombobox } from "@/components/forms/player-combobox";
 
 interface ScorerMatch {
   id: string;
+  /** A qué torneo pertenece: un link puede cruzar varios. */
+  tournamentId: string;
   round: number;
   matchNumber: number;
   homeTeamId: string | null;
@@ -68,15 +70,19 @@ interface ScorerTeam {
   players: { id: string; name: string }[];
 }
 
+interface ScorerTournament {
+  id: string;
+  name: string;
+  sport: Sport;
+  format: string;
+  enabledStats: MatchEventType[];
+  plan: string;
+}
+
 interface ScorerData {
-  tournament: {
-    id: string;
-    name: string;
-    sport: Sport;
-    format: string;
-    enabledStats: MatchEventType[];
-    plan: string;
-  };
+  /** Torneos cubiertos por el link (1..N). El deporte y las stats
+   *  habilitadas salen del torneo de cada partido, no de uno global. */
+  tournaments: ScorerTournament[];
   teams: ScorerTeam[];
   matches: ScorerMatch[];
   expiresAt: string;
@@ -166,15 +172,26 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
     );
   }
 
+  // Título del link: el nombre del torneo si es uno solo, o cuántos son.
+  const headerTitle =
+    data.tournaments.length === 1
+      ? data.tournaments[0].name
+      : `${data.tournaments.length} torneos`;
+
   // Pantalla 1: pedir nombre si no lo tenemos.
   if (!scorerName) {
-    return <NameScreen tournamentName={data.tournament.name} onSubmit={handleNameSubmit} />;
+    return <NameScreen tournamentName={headerTitle} onSubmit={handleNameSubmit} />;
   }
 
   // Pantalla 3: scoresheet de un partido.
   if (activeMatchId) {
     const match = data.matches.find((m) => m.id === activeMatchId);
-    if (!match) {
+    // El torneo del partido define deporte y stats habilitadas. Si no
+    // aparece (torneo borrado entre carga y click), volvemos a la lista.
+    const matchTournament = match
+      ? data.tournaments.find((t) => t.id === match.tournamentId)
+      : undefined;
+    if (!match || !matchTournament) {
       setActiveMatchId(null);
       return null;
     }
@@ -183,7 +200,7 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
         token={token}
         scorerName={scorerName}
         match={match}
-        tournament={data.tournament}
+        tournament={matchTournament}
         teams={data.teams}
         allMatches={data.matches}
         onBack={() => setActiveMatchId(null)}
@@ -279,6 +296,15 @@ function MatchListScreen({
     return map;
   }, [data.teams]);
 
+  // Con un link multi-torneo, cada partido muestra de qué torneo es; con uno
+  // solo sería ruido repetido en cada fila y basta el badge del header.
+  const isMultiTournament = data.tournaments.length > 1;
+  const tournamentNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const t of data.tournaments) map.set(t.id, t.name);
+    return map;
+  }, [data.tournaments]);
+
   const sortedMatches = useMemo(
     () =>
       [...data.matches].sort((a, b) => {
@@ -296,7 +322,9 @@ function MatchListScreen({
     <div className="max-w-md mx-auto px-4 py-6 space-y-5">
       <header className="space-y-1">
         <Badge variant="outline" className="mb-1">
-          {data.tournament.name}
+          {isMultiTournament
+            ? `${data.tournaments.length} torneos`
+            : data.tournaments[0]?.name}
         </Badge>
         <h1 className="text-xl font-bold">Hola {scorerName} 👋</h1>
         <p className="text-sm text-muted-foreground">
@@ -331,6 +359,11 @@ function MatchListScreen({
                   </Badge>
                 )}
               </div>
+              {isMultiTournament && (
+                <div className="text-[11px] font-medium text-muted-foreground">
+                  {tournamentNameById.get(m.tournamentId) ?? ""}
+                </div>
+              )}
               <div className="text-xs text-muted-foreground">
                 {m.date} · {m.time}
                 {m.venue ? ` · ${m.venue}` : ""}
@@ -392,7 +425,7 @@ function MatchScreen({
   token: string;
   scorerName: string;
   match: ScorerMatch;
-  tournament: ScorerData["tournament"];
+  tournament: ScorerTournament;
   teams: ScorerTeam[];
   allMatches: ScorerMatch[];
   onBack: () => void;

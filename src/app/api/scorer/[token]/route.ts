@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { validateScorerToken } from "@/lib/scorer/token";
+import { validateScorerToken, linkTournamentIds } from "@/lib/scorer/token";
 import { checkRateLimit, getClientIp } from "@/lib/scorer/rate-limit";
 
 /**
@@ -36,28 +36,39 @@ export async function GET(
     );
   }
 
-  // Cargar tournament + matches en paralelo. Sólo los campos necesarios
+  // Cargar tournaments + matches en paralelo. Sólo los campos necesarios
   // para que el anotador pueda anotar (no exponemos config interna).
+  // Un link puede cubrir varios torneos: cada partido dice a cuál pertenece
+  // y el cliente usa el sport/enabledStats del torneo de ESE partido.
+  const tournamentIds = linkTournamentIds(link);
   const [tournRes, matchesRes] = await Promise.all([
     supabaseAdmin
       .from("tournaments")
       .select("id, name, sport, format, enabled_stats, plan")
-      .eq("id", link.tournament_id)
-      .single(),
+      .in("id", tournamentIds),
     supabaseAdmin
       .from("matches")
       .select(
-        "id, round, match_number, home_team_id, away_team_id, home_score, away_score, status, date, time, venue, result_entered_by_name, match_events(id, match_id, team_id, player_name, type, position, paid), volleyball_sets(set_number, home_points, away_points)"
+        "id, tournament_id, round, match_number, home_team_id, away_team_id, home_score, away_score, status, date, time, venue, result_entered_by_name, match_events(id, match_id, team_id, player_name, type, position, paid), volleyball_sets(set_number, home_points, away_points)"
       )
       .in("id", link.match_ids),
   ]);
 
-  if (tournRes.error || !tournRes.data) {
+  if (tournRes.error || !tournRes.data || tournRes.data.length === 0) {
     return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
   }
   if (matchesRes.error) {
     return NextResponse.json({ error: "DB error" }, { status: 500 });
   }
+
+  const tournaments = tournRes.data.map((t) => ({
+    id: t.id,
+    name: t.name,
+    sport: t.sport,
+    format: t.format,
+    enabledStats: t.enabled_stats ?? [],
+    plan: t.plan,
+  }));
 
   // Necesitamos nombre + colores + roster de los equipos involucrados
   // para que (a) la lista de partidos no muestre UUIDs y (b) el anotador
@@ -74,14 +85,11 @@ export async function GET(
     .in("id", Array.from(teamIds));
 
   return NextResponse.json({
-    tournament: {
-      id: tournRes.data.id,
-      name: tournRes.data.name,
-      sport: tournRes.data.sport,
-      format: tournRes.data.format,
-      enabledStats: tournRes.data.enabled_stats ?? [],
-      plan: tournRes.data.plan,
-    },
+    tournaments,
+    // Compat: si un anotador tiene la página vieja abierta cuando se
+    // despliega esto, `tournament` evita que le explote hasta que refresque.
+    // Se puede borrar en un release siguiente.
+    tournament: tournaments[0],
     teams: (teamsRows ?? []).map((t) => ({
       id: t.id,
       name: t.name,
@@ -99,6 +107,7 @@ export async function GET(
     })),
     matches: (matchesRes.data ?? []).map((m) => ({
       id: m.id,
+      tournamentId: m.tournament_id,
       round: m.round,
       matchNumber: m.match_number,
       homeTeamId: m.home_team_id,

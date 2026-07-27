@@ -1,13 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Share2, Copy, MessageSquare, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Share2, ChevronDown, ChevronUp } from "lucide-react";
 import { Tournament } from "@/types";
-import { supabase } from "@/lib/supabase";
 import { useTournaments } from "@/context/tournament-context";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -16,19 +14,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { MAX_SCORER_LINKS_BY_TIER, TIER_LABELS } from "@/lib/pricing";
-import { TournamentTier } from "@/types";
-
-interface ScorerLinkRow {
-  token: string;
-  tournament_id: string;
-  match_ids: string[];
-  created_at: string;
-  expires_at: string;
-  revoked_at: string | null;
-  last_used_at: string | null;
-  usage_count: number;
-}
+import {
+  useScorerLinks,
+  scorerLinkTournamentIds,
+  CreateLinkResult,
+  ScorerLinkRow,
+} from "@/hooks/use-scorer-links";
+import {
+  ShareScorerLinkDialog,
+  ScorerLinkRowItem,
+} from "@/components/scorer/scorer-link-share";
 
 interface ScorerLinksSectionProps {
   tournament: Tournament;
@@ -39,14 +34,11 @@ interface ScorerLinksSectionProps {
  *   - Botón "Compartir partidos con anotador" → abre el diálogo de crear.
  *   - Lista de links activos con copiar / WhatsApp / revocar.
  *
- * Se carga directo desde la tabla `scorer_links` por RLS (la policy filtra
- * por torneo del organizer). La creación va por el endpoint server-side
- * para que valide tier-cap y calcule expires_at correctamente.
+ * Alcance: muestra los links que tocan ESTE torneo (un link puede cruzar
+ * varios; para armar esos está el botón "Generar links" del dashboard). El
+ * cupo, en cambio, es global de la cuenta.
  */
 export function ScorerLinksSection({ tournament }: ScorerLinksSectionProps) {
-  const { getTeamById } = useTournaments();
-  const [links, setLinks] = useState<ScorerLinkRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   // Historial = expirados y revocados. Lo escondemos por default porque
@@ -55,69 +47,57 @@ export function ScorerLinksSection({ tournament }: ScorerLinksSectionProps) {
   // los casos de auditoría.
   const [showHistory, setShowHistory] = useState(false);
 
-  // Cap por tier — usado para deshabilitar el botón al tope.
-  const tierKey = (tournament.tier as TournamentTier | null) ?? "free";
-  const cap =
-    MAX_SCORER_LINKS_BY_TIER[tierKey as keyof typeof MAX_SCORER_LINKS_BY_TIER];
+  const {
+    activeLinks,
+    historicalLinks,
+    linkedMatchIds,
+    loading,
+    createLink,
+    revokeLink,
+    capLabel,
+    atCap,
+    bestTierLabel,
+  } = useScorerLinks();
 
-  const activeLinks = useMemo(
-    () =>
-      links.filter(
-        (l) =>
-          !l.revoked_at && new Date(l.expires_at).getTime() > Date.now()
-      ),
-    [links]
-  );
-  const historicalLinks = useMemo(
-    () =>
-      links.filter(
-        (l) =>
-          l.revoked_at || new Date(l.expires_at).getTime() <= Date.now()
-      ),
-    [links]
+  const coversThisTournament = useMemo(
+    () => (ids: string[]) => ids.includes(tournament.id),
+    [tournament.id]
   );
 
-  const atCap = cap !== Number.POSITIVE_INFINITY && activeLinks.length >= cap;
-  const capLabel = cap === Number.POSITIVE_INFINITY ? "∞" : String(cap);
-
-  const loadLinks = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("scorer_links")
-      .select("*")
-      .eq("tournament_id", tournament.id)
-      .order("created_at", { ascending: false });
-    if (error) {
-      console.error("Error loading scorer links", error);
-    }
-    setLinks((data ?? []) as ScorerLinkRow[]);
-    setLoading(false);
-  }, [tournament.id]);
-
-  useEffect(() => {
-    loadLinks();
-  }, [loadLinks]);
+  const tournamentActiveLinks = useMemo(
+    () =>
+      activeLinks.filter((l) =>
+        coversThisTournament(scorerLinkTournamentIds(l))
+      ),
+    [activeLinks, coversThisTournament]
+  );
+  const tournamentHistoricalLinks = useMemo(
+    () =>
+      historicalLinks.filter((l) =>
+        coversThisTournament(scorerLinkTournamentIds(l))
+      ),
+    [historicalLinks, coversThisTournament]
+  );
 
   const handleRevoke = async (token: string) => {
-    if (!confirm("¿Revocar este link? El anotador no podrá seguir cargando.")) {
+    if (!confirm("¿Revocar este link? El anotador no podrá seguir cargando, y sus partidos vuelven a estar disponibles.")) {
       return;
     }
-    const { data } = await supabase.auth.getSession();
-    const accessToken = data.session?.access_token;
-    if (!accessToken) {
-      toast.error("Tu sesión expiró. Recargá la página.");
-      return;
-    }
-    const res = await fetch(`/api/scorer/${token}/revoke`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!res.ok) {
-      toast.error("No pudimos revocar el link");
-      return;
-    }
-    toast.success("Link revocado");
-    loadLinks();
+    const ok = await revokeLink(token);
+    toast[ok ? "success" : "error"](
+      ok ? "Link revocado" : "No pudimos revocar el link"
+    );
+  };
+
+  /** Aclara que el link también cubre partidos de otros torneos. */
+  const describeLink = (link: ScorerLinkRow) => {
+    const others = scorerLinkTournamentIds(link).filter(
+      (id) => id !== tournament.id
+    ).length;
+    if (others === 0) return undefined;
+    return others === 1
+      ? "También cubre partidos de otro torneo"
+      : `También cubre partidos de otros ${others} torneos`;
   };
 
   return (
@@ -137,7 +117,7 @@ export function ScorerLinksSection({ tournament }: ScorerLinksSectionProps) {
           size="sm"
           onClick={() => setCreateOpen(true)}
           disabled={atCap}
-          title={atCap ? `Tu plan ${TIER_LABELS[tierKey as TournamentTier] ?? "Free"} permite ${capLabel} links activos` : undefined}
+          title={atCap ? `Tu plan ${bestTierLabel} permite ${capLabel} links activos en total` : undefined}
         >
           <Share2 className="h-4 w-4 mr-2" />
           Compartir con anotador
@@ -145,10 +125,11 @@ export function ScorerLinksSection({ tournament }: ScorerLinksSectionProps) {
       </div>
 
       <div className="text-xs text-muted-foreground">
-        {activeLinks.length} / {capLabel} links activos
+        {tournamentActiveLinks.length} activos en este torneo · {activeLinks.length}/
+        {capLabel} en tu cuenta
         {atCap && (
           <span className="ml-2 text-amber-600">
-            · Subí de plan para crear más
+            · Subí de plan o revocá uno para crear más
           </span>
         )}
       </div>
@@ -156,14 +137,13 @@ export function ScorerLinksSection({ tournament }: ScorerLinksSectionProps) {
       {/* Lista de links activos. Si no hay activos pero sí historial, se
           esconde toda la lista y solo se muestra el toggle de historial al
           final. */}
-      {!loading && activeLinks.length > 0 && (
+      {!loading && tournamentActiveLinks.length > 0 && (
         <div className="border-t pt-3 space-y-1.5">
-          {activeLinks.map((l) => (
+          {tournamentActiveLinks.map((l) => (
             <ScorerLinkRowItem
               key={l.token}
               link={l}
-              tournament={tournament}
-              getTeamName={(id) => getTeamById(id)?.name ?? "TBD"}
+              subtitle={describeLink(l)}
               onRevoke={() => handleRevoke(l.token)}
             />
           ))}
@@ -171,24 +151,23 @@ export function ScorerLinksSection({ tournament }: ScorerLinksSectionProps) {
       )}
 
       {/* Historial colapsado. Solo aparece el toggle si hay algo viejo. */}
-      {!loading && historicalLinks.length > 0 && (
-        <div className={activeLinks.length > 0 ? "pt-1" : "border-t pt-3"}>
+      {!loading && tournamentHistoricalLinks.length > 0 && (
+        <div className={tournamentActiveLinks.length > 0 ? "pt-1" : "border-t pt-3"}>
           <button
             type="button"
             onClick={() => setShowHistory(!showHistory)}
             className="text-xs font-medium flex items-center gap-1 text-muted-foreground hover:text-foreground"
           >
             {showHistory ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            {showHistory ? "Ocultar historial" : "Ver historial"} ({historicalLinks.length})
+            {showHistory ? "Ocultar historial" : "Ver historial"} ({tournamentHistoricalLinks.length})
           </button>
           {showHistory && (
             <div className="space-y-1.5 mt-2">
-              {historicalLinks.map((l) => (
+              {tournamentHistoricalLinks.map((l) => (
                 <ScorerLinkRowItem
                   key={l.token}
                   link={l}
-                  tournament={tournament}
-                  getTeamName={(id) => getTeamById(id)?.name ?? "TBD"}
+                  subtitle={describeLink(l)}
                   onRevoke={() => handleRevoke(l.token)}
                 />
               ))}
@@ -201,10 +180,11 @@ export function ScorerLinksSection({ tournament }: ScorerLinksSectionProps) {
         tournament={tournament}
         open={createOpen}
         onOpenChange={setCreateOpen}
+        linkedMatchIds={linkedMatchIds}
+        createLink={createLink}
         onCreated={(token) => {
           setCreateOpen(false);
           setCreatedToken(token);
-          loadLinks();
         }}
       />
 
@@ -217,87 +197,6 @@ export function ScorerLinksSection({ tournament }: ScorerLinksSectionProps) {
 }
 
 // ============================================================
-// Sub-componente: fila de un link
-// ============================================================
-
-interface ScorerLinkRowItemProps {
-  link: ScorerLinkRow;
-  tournament: Tournament;
-  getTeamName: (id: string) => string;
-  onRevoke: () => void;
-}
-
-function ScorerLinkRowItem({ link, onRevoke }: ScorerLinkRowItemProps) {
-  const isRevoked = !!link.revoked_at;
-  const isExpired = !isRevoked && new Date(link.expires_at).getTime() <= Date.now();
-  const isActive = !isRevoked && !isExpired;
-
-  const url =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/score/${link.token}`
-      : `/score/${link.token}`;
-
-  const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.success("Link copiado");
-    } catch {
-      toast.error("No pudimos copiar. Probá manualmente.");
-    }
-  };
-
-  const sendWhatsApp = () => {
-    const text = `Hola! Por favor anotá estos partidos: ${url}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
-  };
-
-  const expiresLabel = new Date(link.expires_at).toLocaleString("es-CO", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  return (
-    <div className="rounded-md border bg-muted/30 p-2.5 space-y-1.5">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          {isActive && <Badge variant="default" className="text-[10px]">Activo</Badge>}
-          {isExpired && <Badge variant="secondary" className="text-[10px]">Expirado</Badge>}
-          {isRevoked && <Badge variant="destructive" className="text-[10px]">Revocado</Badge>}
-          <span className="text-xs text-muted-foreground">
-            {link.match_ids.length} {link.match_ids.length === 1 ? "partido" : "partidos"}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          {isActive && (
-            <>
-              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={copyLink}>
-                <Copy className="h-3 w-3 mr-1" /> Copiar
-              </Button>
-              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={sendWhatsApp}>
-                <MessageSquare className="h-3 w-3 mr-1" /> WhatsApp
-              </Button>
-              <Button size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={onRevoke}>
-                <X className="h-3 w-3 mr-1" /> Revocar
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-      <div className="text-[11px] text-muted-foreground">
-        Expira: {expiresLabel} · {link.usage_count} cargas
-        {link.last_used_at && (
-          <> · Última actividad: {new Date(link.last_used_at).toLocaleString("es-CO", {
-            day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
-          })}</>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
 // Sub-componente: diálogo de crear link
 // ============================================================
 
@@ -305,6 +204,11 @@ interface CreateScorerLinkDialogProps {
   tournament: Tournament;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Partidos ya cubiertos por un link vigente — se esconden de la lista. */
+  linkedMatchIds: Set<string>;
+  /** Viene del hook del padre: usar otra instancia dejaría al padre con la
+   *  lista y el cupo desactualizados después de crear. */
+  createLink: (matchIds: string[]) => Promise<CreateLinkResult>;
   onCreated: (token: string) => void;
 }
 
@@ -312,6 +216,8 @@ function CreateScorerLinkDialog({
   tournament,
   open,
   onOpenChange,
+  linkedMatchIds,
+  createLink,
   onCreated,
 }: CreateScorerLinkDialogProps) {
   const { getTeamById } = useTournaments();
@@ -319,21 +225,22 @@ function CreateScorerLinkDialog({
   const [submitting, setSubmitting] = useState(false);
 
   // Solo partidos que el anotador puede tocar: scheduled o postponed con
-  // fecha + hora. Los unscheduled o sin fecha quedan afuera.
+  // fecha + hora, y que no estén ya repartidos a otro anotador.
   const eligibleMatches = useMemo(() => {
     return tournament.matches
       .filter(
         (m) =>
           (m.status === "scheduled" || m.status === "postponed") &&
           m.date &&
-          m.time
+          m.time &&
+          !linkedMatchIds.has(m.id)
       )
       .sort((a, b) => {
         const aMs = Date.parse(`${a.date}T${a.time}:00`);
         const bMs = Date.parse(`${b.date}T${b.time}:00`);
         return aMs - bMs;
       });
-  }, [tournament.matches]);
+  }, [tournament.matches, linkedMatchIds]);
 
   // Calcular expires_at preview para los partidos seleccionados.
   const expiresPreview = useMemo(() => {
@@ -346,7 +253,7 @@ function CreateScorerLinkDialog({
       if (ms > latest) latest = ms;
     }
     if (latest === 0) return null;
-    return new Date(latest + 24 * 60 * 60 * 1000);
+    return new Date(Math.max(latest, Date.now()) + 24 * 60 * 60 * 1000);
   }, [selected, tournament.matches]);
 
   const toggle = (id: string) => {
@@ -364,43 +271,21 @@ function CreateScorerLinkDialog({
       return;
     }
     setSubmitting(true);
-    try {
-      const { data: sess } = await supabase.auth.getSession();
-      const accessToken = sess.session?.access_token;
-      if (!accessToken) {
-        toast.error("Tu sesión expiró. Recargá la página.");
-        return;
+    const result = await createLink(Array.from(selected));
+    setSubmitting(false);
+    if (!result.ok) {
+      toast.error(result.error);
+      if (result.takenMatchIds?.length) {
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const id of result.takenMatchIds!) next.delete(id);
+          return next;
+        });
       }
-      const res = await fetch("/api/scorer/link", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          tournamentId: tournament.id,
-          matchIds: Array.from(selected),
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        if (json.error === "tier-limit") {
-          toast.error(
-            `Llegaste al máximo de links de tu plan (${json.current}/${json.max ?? "∞"})`
-          );
-        } else {
-          toast.error(json.error || "No pudimos crear el link");
-        }
-        return;
-      }
-      onCreated(json.token);
-      setSelected(new Set());
-    } catch (err) {
-      console.error(err);
-      toast.error("Error inesperado");
-    } finally {
-      setSubmitting(false);
+      return;
     }
+    setSelected(new Set());
+    onCreated(result.token);
   };
 
   return (
@@ -417,8 +302,9 @@ function CreateScorerLinkDialog({
         <div className="flex-1 min-h-0 overflow-y-auto px-6 py-2 space-y-2">
           {eligibleMatches.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">
-              No hay partidos programados con fecha y hora. Programá un
-              partido desde el tab Fechas o Calendario para poder compartirlo.
+              No hay partidos disponibles. Programá un partido con fecha y hora
+              desde el tab Fechas o Calendario, o revocá un link existente para
+              liberar los suyos.
             </p>
           ) : (
             eligibleMatches.map((m) => {
@@ -477,69 +363,6 @@ function CreateScorerLinkDialog({
             disabled={submitting || selected.size === 0}
           >
             {submitting ? "Generando..." : `Generar link (${selected.size})`}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ============================================================
-// Sub-componente: diálogo de share del link recién creado
-// ============================================================
-
-interface ShareScorerLinkDialogProps {
-  token: string | null;
-  onClose: () => void;
-}
-
-function ShareScorerLinkDialog({ token, onClose }: ShareScorerLinkDialogProps) {
-  const open = !!token;
-  const url = token && typeof window !== "undefined"
-    ? `${window.location.origin}/score/${token}`
-    : "";
-
-  const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.success("Link copiado");
-    } catch {
-      toast.error("No pudimos copiar. Probá manualmente.");
-    }
-  };
-
-  const sendWhatsApp = () => {
-    const text = `Hola! Por favor anotá estos partidos: ${url}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>✓ Link creado</DialogTitle>
-          <DialogDescription>
-            Compartilo con el anotador. Va a poder cargar los resultados sin
-            tener que iniciar sesión.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="rounded-md border bg-muted p-3 text-xs font-mono break-all">
-          {url}
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <Button variant="outline" onClick={copyLink}>
-            <Copy className="h-4 w-4 mr-2" /> Copiar link
-          </Button>
-          <Button onClick={sendWhatsApp}>
-            <MessageSquare className="h-4 w-4 mr-2" /> WhatsApp
-          </Button>
-        </div>
-
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} className="w-full">
-            Cerrar
           </Button>
         </DialogFooter>
       </DialogContent>

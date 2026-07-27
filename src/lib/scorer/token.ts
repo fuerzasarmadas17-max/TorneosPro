@@ -12,8 +12,11 @@ export function generateScorerToken(): string {
 }
 
 export interface ScorerLinkRow {
+  /** Torneo único del link, o NULL si cruza varios. Usá `linkTournamentIds`. */
   token: string;
-  tournament_id: string;
+  tournament_id: string | null;
+  /** Todos los torneos que cubre el link (1..N). Fuente de verdad. */
+  tournament_ids: string[] | null;
   match_ids: string[];
   created_by: string;
   created_at: string;
@@ -21,6 +24,20 @@ export interface ScorerLinkRow {
   revoked_at: string | null;
   last_used_at: string | null;
   usage_count: number;
+}
+
+/**
+ * Torneos que cubre un link. Cae a `tournament_id` para filas creadas antes
+ * de la migración multi-torneo (por si quedó alguna sin backfillear).
+ */
+export function linkTournamentIds(row: {
+  tournament_id: string | null;
+  tournament_ids: string[] | null;
+}): string[] {
+  if (row.tournament_ids && row.tournament_ids.length > 0) {
+    return row.tournament_ids;
+  }
+  return row.tournament_id ? [row.tournament_id] : [];
 }
 
 /**
