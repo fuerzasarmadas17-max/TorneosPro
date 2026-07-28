@@ -130,5 +130,9 @@ export async function updateTeamPlayers(
     })),
     { onConflict: "id" }
   );
+  // Sin este log, un fallo del upsert (típicamente RLS: el organizador no es
+  // el creador del equipo) era completamente invisible — la UI avisaba
+  // "actualizado" igual. Ver handleSave en team-roster-dialog.
+  if (error) console.error("updateTeamPlayers falló", error);
   return !error;
 }

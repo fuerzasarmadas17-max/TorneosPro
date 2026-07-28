@@ -40,6 +40,7 @@ import { getSportInfo } from "@/data/sports";
 import { getDepartmentLabel, getMunicipalityLabel } from "@/data/colombia";
 import { getSportCategory, Tournament, Sponsor, Match } from "@/types";
 import { supabase } from "@/lib/supabase";
+import { getAgeFromBirthDate, getShortName } from "@/lib/name-utils";
 import { SponsorBanner } from "@/components/sponsors/sponsor-banner";
 import { SponsorForm } from "@/components/sponsors/sponsor-form";
 import { SponsorPicker } from "@/components/sponsors/sponsor-picker";
@@ -52,7 +53,22 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Download, Settings, MoreVertical, Trash2, Ban, ChevronLeft, ChevronRight, CheckCircle2, Trophy, Plus, RefreshCw } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Download, Settings, MoreVertical, Trash2, Ban, ChevronLeft, ChevronRight, CheckCircle2, Trophy, Plus, RefreshCw, Users } from "lucide-react";
 import { toast } from "sonner";
 // xlsx pesa ~700KB y solo se usa cuando el organizador descarga la
 // plantilla de jugadores. Dynamic import dentro del handler para que
@@ -240,6 +256,9 @@ function TemplateDownloadDialog() {
   );
 }
 
+/** Valor centinela del selector de equipos: "sin filtro" = ver la grilla. */
+const ALL_TEAMS = "all";
+
 function TeamsRosterSection({
   teamIds,
   canEdit,
@@ -251,9 +270,68 @@ function TeamsRosterSection({
 }) {
   const { getTeamById, removeTeamFromTournament, disqualifyTeam } = useTournaments();
   const [confirmAction, setConfirmAction] = useState<{ type: "delete" | "disqualify"; teamId: string; teamName: string } | null>(null);
+  // "" = sin equipo elegido. Para el organizador eso significa la grilla con
+  // todos sus equipos; para el espectador, un placeholder. Un id concreto =
+  // panel con la nómina de ese equipo.
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("");
 
   const isDisqualified = (teamId: string) =>
     tournament?.disqualifiedTeamIds?.includes(teamId) ?? false;
+
+  const teams = teamIds
+    .map((id) => getTeamById(id))
+    .filter((t): t is NonNullable<typeof t> => !!t);
+  const selectedTeam = teams.find((t) => t.id === selectedTeamId);
+
+  const teamActions = (team: (typeof teams)[number]) => {
+    const dq = isDisqualified(team.id);
+    return (
+      <div className="flex shrink-0 items-center gap-1">
+        {canEdit && <TeamRosterDialog team={team} />}
+        {canEdit && tournament && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {!dq && (
+                <DropdownMenuItem
+                  onClick={() => setConfirmAction({ type: "disqualify", teamId: team.id, teamName: team.name })}
+                >
+                  <Ban className="h-4 w-4 mr-2" />
+                  Descalificar
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => setConfirmAction({ type: "delete", teamId: team.id, teamName: team.name })}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Eliminar del torneo
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    );
+  };
+
+  const playerCountLabel = (n: number) =>
+    n === 0 ? "Sin jugadores registrados" : `${n} jugador${n === 1 ? "" : "es"}`;
+
+  // Promedio sobre los jugadores que SÍ tienen fecha de nacimiento. Si ninguno
+  // la tiene devolvemos null y el dato simplemente no se muestra (en vez de un
+  // "0 años" que se leería como un error).
+  const averageAge = (() => {
+    if (!selectedTeam) return null;
+    const ages = selectedTeam.players
+      .map((p) => getAgeFromBirthDate(p.birthDate))
+      .filter((a): a is number => a !== null);
+    if (ages.length === 0) return null;
+    return Math.round(ages.reduce((sum, a) => sum + a, 0) / ages.length);
+  })();
 
   const handleConfirm = async () => {
     if (!confirmAction || !tournament) return;
@@ -277,69 +355,155 @@ function TeamsRosterSection({
           <TemplateDownloadDialog />
         </div>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {teamIds.map((teamId) => {
-          const team = getTeamById(teamId);
-          if (!team) return null;
-          const dq = isDisqualified(teamId);
-          return (
-            <Card key={teamId} className={dq ? "opacity-60 border-destructive/30" : ""}>
-              <CardHeader className="pb-3">
-                {/* min-w-0 + break-words: los nombres largos de una sola palabra
-                    (ej. CELUPAISAGUADASPORT) se parten en varias lineas en vez de
-                    estirar la fila y empujar los botones fuera de la tarjeta. */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <TeamMark team={team} size={32} />
-                    <CardTitle className="text-base min-w-0 break-words leading-tight">{team.name}</CardTitle>
-                    {dq && (
-                      <Badge variant="destructive" className="shrink-0 text-[10px] px-1.5 py-0">
-                        DQ
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {canEdit && <TeamRosterDialog team={team} />}
-                    {canEdit && tournament && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {!dq && (
-                            <DropdownMenuItem
-                              onClick={() => setConfirmAction({ type: "disqualify", teamId, teamName: team.name })}
-                            >
-                              <Ban className="h-4 w-4 mr-2" />
-                              Descalificar
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setConfirmAction({ type: "delete", teamId, teamName: team.name })}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Eliminar del torneo
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </div>
+      {teams.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
+          {/* Radix no acepta un SelectItem con value="", así que la opción de
+              "volver a la grilla" viaja como "all" y se traduce a "" acá. Solo
+              existe para el organizador: el espectador no tiene grilla a la
+              que volver. */}
+          <Select
+            value={selectedTeamId || (canEdit ? ALL_TEAMS : "")}
+            onValueChange={(v) => setSelectedTeamId(v === ALL_TEAMS ? "" : v)}
+          >
+            <SelectTrigger className="h-9 w-full sm:w-72">
+              <SelectValue placeholder="Elige un equipo" />
+            </SelectTrigger>
+            <SelectContent>
+              {canEdit && <SelectItem value={ALL_TEAMS}>Todos los equipos</SelectItem>}
+              {teams.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* `selectedTeam` (y no `selectedTeamId !== "all"`) para que, si el
+          equipo elegido deja de existir —lo eliminan del torneo, o cambia
+          el torneo en pantalla—, caigamos a la grilla en vez de a un panel
+          vacío. */}
+      {selectedTeam ? (
+        <Card className={isDisqualified(selectedTeam.id) ? "border-destructive/30" : ""}>
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <TeamMark team={selectedTeam} size={32} />
+                <div className="min-w-0">
+                  <CardTitle className="text-base min-w-0 break-words leading-tight">
+                    {selectedTeam.name}
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    {playerCountLabel(selectedTeam.players.length)}
+                    {averageAge !== null && ` · edad promedio ${averageAge}`}
+                  </p>
                 </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <p className="text-xs text-muted-foreground">
-                  {team.players.length === 0
-                    ? "Sin jugadores registrados"
-                    : `${team.players.length} jugador${team.players.length === 1 ? "" : "es"}`}
-                </p>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                {isDisqualified(selectedTeam.id) && (
+                  <Badge variant="destructive" className="shrink-0 text-[10px] px-1.5 py-0">
+                    DQ
+                  </Badge>
+                )}
+              </div>
+              {teamActions(selectedTeam)}
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {selectedTeam.players.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Este equipo todavía no tiene jugadores registrados.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">#</TableHead>
+                    <TableHead>Jugador</TableHead>
+                    <TableHead className="w-20 text-right">Edad</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedTeam.players.map((player, i) => {
+                    const age = getAgeFromBirthDate(player.birthDate);
+                    return (
+                      <TableRow key={player.id || `${player.name}-${i}`}>
+                        <TableCell className="tabular-nums text-muted-foreground">
+                          {i + 1}
+                        </TableCell>
+                        {/* Mismo criterio que las estadísticas: en mobile no
+                            cabe el nombre completo, así que mostramos primer
+                            nombre + primer apellido. */}
+                        <TableCell className="font-medium">
+                          <span className="sm:hidden">{getShortName(player.name)}</span>
+                          <span className="hidden sm:inline">{player.name}</span>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {age !== null ? age : "–"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      ) : canEdit && teams.length > 0 ? (
+        // El organizador arranca viendo TODOS sus equipos: la grilla es su
+        // vista de gestión (editar nómina, descalificar, eliminar). El
+        // espectador no la ve — para él la pestaña es solo "elegí un equipo
+        // y mirá su nómina".
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {teams.map((team) => {
+            const dq = isDisqualified(team.id);
+            return (
+              <Card key={team.id} className={dq ? "opacity-60 border-destructive/30" : ""}>
+                <CardHeader className="pb-3">
+                  {/* min-w-0 + break-words: los nombres largos de una sola palabra
+                      (ej. CELUPAISAGUADASPORT) se parten en varias lineas en vez de
+                      estirar la fila y empujar los botones fuera de la tarjeta. */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <TeamMark team={team} size={32} />
+                      <CardTitle className="text-base min-w-0 break-words leading-tight">{team.name}</CardTitle>
+                      {dq && (
+                        <Badge variant="destructive" className="shrink-0 text-[10px] px-1.5 py-0">
+                          DQ
+                        </Badge>
+                      )}
+                    </div>
+                    {teamActions(team)}
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <p className="text-xs text-muted-foreground">
+                    {playerCountLabel(team.players.length)}
+                  </p>
+                  {team.players.length > 0 && (
+                    <Button
+                      variant="link"
+                      className="mt-1 h-auto p-0 text-xs"
+                      onClick={() => setSelectedTeamId(team.id)}
+                    >
+                      Ver nómina
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed py-12 text-center">
+          <Users className="mx-auto h-8 w-8 text-muted-foreground/50" />
+          <p className="mt-3 text-sm text-muted-foreground">
+            {teams.length === 0
+              ? "Este torneo todavía no tiene equipos."
+              : "Elige un equipo para ver su nómina."}
+          </p>
+        </div>
+      )}
 
       {/* Confirmation dialog */}
       <Dialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
@@ -603,9 +767,7 @@ export function TournamentDetail({
       tabs.push({ key: "playoffs", label: "Playoffs" });
     }
     tabs.push({ key: "schedule", label: "Calendario" });
-    if (isAuthenticated) {
-      tabs.push({ key: "teams", label: "Equipos" });
-    }
+    tabs.push({ key: "teams", label: "Equipos" });
     if (showStats) {
       tabs.push({ key: "stats", label: "Estadísticas" });
     }
@@ -869,7 +1031,7 @@ export function TournamentDetail({
             {isTabVisible("playoffs") && <TabsTrigger value="playoffs">Playoffs</TabsTrigger>}
             {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
             {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
-            {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+            {isTabVisible("teams") && <TabsTrigger value="teams">Equipos</TabsTrigger>}
             {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadísticas</TabsTrigger>}
           </TabsList>
           {tournament.phaseConfigs.map((pc) => {
@@ -899,7 +1061,7 @@ export function TournamentDetail({
               <DateOrganizer tournament={tournament} />
             </TabsContent>
           )}
-          {isTabVisible("teams") && isAuthenticated && (
+          {isTabVisible("teams") && (
             <TabsContent value="teams" className="mt-4">
               <TeamsRosterSection teamIds={tournament.teamIds} canEdit={canEdit} tournament={tournament} />
             </TabsContent>
@@ -919,7 +1081,7 @@ export function TournamentDetail({
             {isTabVisible("playoffs") && <TabsTrigger value="playoffs">Playoffs</TabsTrigger>}
             {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
             {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
-            {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+            {isTabVisible("teams") && <TabsTrigger value="teams">Equipos</TabsTrigger>}
             {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadísticas</TabsTrigger>}
           </TabsList>
           <TabsContent value="groups" className="mt-4">
@@ -946,7 +1108,7 @@ export function TournamentDetail({
               <DateOrganizer tournament={tournament} />
             </TabsContent>
           )}
-          {isTabVisible("teams") && isAuthenticated && (
+          {isTabVisible("teams") && (
             <TabsContent value="teams" className="mt-4">
               <TeamsRosterSection teamIds={tournament.teamIds} canEdit={canEdit} tournament={tournament} />
             </TabsContent>
@@ -963,7 +1125,7 @@ export function TournamentDetail({
             <TabsTrigger value="bracket">Bracket</TabsTrigger>
             {isTabVisible("schedule") && <TabsTrigger value="matches">Partidos</TabsTrigger>}
             {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
-            {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+            {isTabVisible("teams") && <TabsTrigger value="teams">Equipos</TabsTrigger>}
             {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadísticas</TabsTrigger>}
           </TabsList>
           <TabsContent value="bracket" className="mt-4">
@@ -979,7 +1141,7 @@ export function TournamentDetail({
               <DateOrganizer tournament={tournament} />
             </TabsContent>
           )}
-          {isTabVisible("teams") && isAuthenticated && (
+          {isTabVisible("teams") && (
             <TabsContent value="teams" className="mt-4">
               <TeamsRosterSection teamIds={tournament.teamIds} canEdit={canEdit} tournament={tournament} />
             </TabsContent>
@@ -996,7 +1158,7 @@ export function TournamentDetail({
             <TabsTrigger value="groups">Grupos</TabsTrigger>
             {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
             {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
-            {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+            {isTabVisible("teams") && <TabsTrigger value="teams">Equipos</TabsTrigger>}
             {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadísticas</TabsTrigger>}
           </TabsList>
           <TabsContent value="groups" className="mt-4">
@@ -1018,7 +1180,7 @@ export function TournamentDetail({
               <DateOrganizer tournament={tournament} />
             </TabsContent>
           )}
-          {isTabVisible("teams") && isAuthenticated && (
+          {isTabVisible("teams") && (
             <TabsContent value="teams" className="mt-4">
               <TeamsRosterSection teamIds={tournament.teamIds} canEdit={canEdit} tournament={tournament} />
             </TabsContent>
@@ -1035,7 +1197,7 @@ export function TournamentDetail({
             <TabsTrigger value="standings">Clasificación</TabsTrigger>
             {isTabVisible("schedule") && <TabsTrigger value="schedule">Calendario</TabsTrigger>}
             {canEdit && <TabsTrigger value="dates">Fechas</TabsTrigger>}
-            {isTabVisible("teams") && isAuthenticated && <TabsTrigger value="teams">Equipos</TabsTrigger>}
+            {isTabVisible("teams") && <TabsTrigger value="teams">Equipos</TabsTrigger>}
             {isTabVisible("stats") && showStats && <TabsTrigger value="stats">Estadísticas</TabsTrigger>}
           </TabsList>
           <TabsContent value="standings" className="mt-4">
@@ -1065,7 +1227,7 @@ export function TournamentDetail({
               <DateOrganizer tournament={tournament} />
             </TabsContent>
           )}
-          {isTabVisible("teams") && isAuthenticated && (
+          {isTabVisible("teams") && (
             <TabsContent value="teams" className="mt-4">
               <TeamsRosterSection teamIds={tournament.teamIds} canEdit={canEdit} tournament={tournament} />
             </TabsContent>

@@ -25,6 +25,25 @@ export function getShortName(fullName: string): string {
 }
 
 /**
+ * Edad del jugador a partir de su fecha de nacimiento, calculada POR AÑO
+ * (año actual − año de nacimiento), no por cumpleaños exacto. Es la misma
+ * convención que usa la importación de planillas en `team-roster-dialog`, y
+ * la que manejan las ligas para las categorías por edad ("los del 2010").
+ *
+ * Devuelve null si no hay fecha o si no parsea, para que la UI simplemente
+ * omita la edad en vez de mostrar "NaN años".
+ */
+export function getAgeFromBirthDate(birthDate?: string): number | null {
+  if (!birthDate) return null;
+  const parsed = new Date(birthDate);
+  if (isNaN(parsed.getTime())) return null;
+  const age = new Date().getFullYear() - parsed.getFullYear();
+  // Descarta fechas absurdas (typos de año, fechas futuras).
+  if (age < 0 || age > 120) return null;
+  return age;
+}
+
+/**
  * Quita jugadores con nombre repetido, conservando el primero.
  *
  * La identidad de un jugador es su nombre: `match_events` guarda

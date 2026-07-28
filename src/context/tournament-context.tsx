@@ -123,8 +123,10 @@ interface TournamentContextType {
     matchId: string,
     patch: Partial<Match>
   ) => void;
-  updateTeamPlayers: (teamId: string, players: Player[]) => Promise<void>;
-  updateTeam: (teamId: string, updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor" | "logoUrl" | "clubLogoId">>) => Promise<void>;
+  /** `false` si la escritura falló (RLS, red). Quien llame DEBE avisar al
+   *  usuario: antes se descartaba y el guardado fallido pasaba por exitoso. */
+  updateTeamPlayers: (teamId: string, players: Player[]) => Promise<boolean>;
+  updateTeam: (teamId: string, updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor" | "logoUrl" | "clubLogoId">>) => Promise<boolean>;
   updateEventPaid: (tournamentId: string, matchId: string, eventId: string, paid: boolean) => Promise<void>;
   assignTeamsToGroupFn: (groupId: string, teamIds: string[]) => Promise<boolean>;
   addMatchesToTournament: (tournamentId: string, newMatches: Match[]) => Promise<void>;
@@ -1406,17 +1408,19 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   );
 
   const updateTeamPlayers = useCallback(async (teamId: string, players: Player[]) => {
-    await dbUpdateTeamPlayers(teamId, players);
+    const ok = await dbUpdateTeamPlayers(teamId, players);
     // Reload teams to get new player IDs
     const teamsData = await fetchAllTeams();
     setTeams(teamsData);
+    return ok;
   }, []);
 
   const updateTeam = useCallback(async (teamId: string, updates: Partial<Pick<Team, "name" | "primaryColor" | "secondaryColor" | "logoUrl" | "clubLogoId">>) => {
-    await dbUpdateTeam(teamId, updates);
+    const ok = await dbUpdateTeam(teamId, updates);
     setTeams((prev) =>
       prev.map((t) => (t.id === teamId ? { ...t, ...updates } : t))
     );
+    return ok;
   }, []);
 
   const updateEventPaid = useCallback(

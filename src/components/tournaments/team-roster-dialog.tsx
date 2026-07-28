@@ -51,6 +51,7 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
     team.players.map((p) => ({ id: p.id || crypto.randomUUID(), name: p.name, age: p.age ? String(p.age) : "", documentNumber: p.documentNumber || "", eps: p.eps || "", birthDate: p.birthDate || "" }))
   );
   const [expandedPlayers, setExpandedPlayers] = useState<Set<number>>(new Set());
+  const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const toggleExpanded = (index: number) => {
@@ -187,17 +188,16 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleSave = () => {
-    // Save team info
-    updateTeam(team.id, {
-      name: teamName.trim() || team.name,
-      primaryColor,
-      secondaryColor,
-      logoUrl,
-      clubLogoId,
-    });
+  // Antes esto era sincrónico: disparaba los dos guardados sin `await`,
+  // cantaba "actualizado" y cerraba el diálogo en el mismo tick. Si la
+  // escritura fallaba (RLS, red, sesión vencida) el usuario veía el toast de
+  // éxito y perdía los cambios sin ningún aviso — así se perdían ediciones
+  // como la fecha de nacimiento. Ahora esperamos el resultado real y solo
+  // cerramos si ambas escrituras confirmaron.
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
 
-    // Save players
     const players: Player[] = playerEntries
       .filter((p) => p.name.trim())
       .map((entry) => ({
@@ -210,9 +210,31 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
         birthDate: entry.birthDate.trim() || undefined,
       }));
 
-    updateTeamPlayers(team.id, players);
-    toast.success(`${teamName.trim() || team.name} actualizado`);
-    setOpen(false);
+    try {
+      const teamOk = await updateTeam(team.id, {
+        name: teamName.trim() || team.name,
+        primaryColor,
+        secondaryColor,
+        logoUrl,
+        clubLogoId,
+      });
+      const playersOk = await updateTeamPlayers(team.id, players);
+
+      if (!teamOk || !playersOk) {
+        toast.error(
+          "No se pudieron guardar los cambios. Revisa tu conexión e inténtalo de nuevo."
+        );
+        return;
+      }
+
+      toast.success(`${teamName.trim() || team.name} actualizado`);
+      setOpen(false);
+    } catch (err) {
+      console.error("Guardar nómina falló", err);
+      toast.error("No se pudieron guardar los cambios.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleOpenChange = (isOpen: boolean) => {
@@ -487,8 +509,8 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
           >
             Cancelar
           </Button>
-          <Button className="flex-1" onClick={handleSave}>
-            Guardar
+          <Button className="flex-1" onClick={handleSave} disabled={saving}>
+            {saving ? "Guardando…" : "Guardar"}
           </Button>
         </div>
       </DialogContent>
