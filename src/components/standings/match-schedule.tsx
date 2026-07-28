@@ -21,7 +21,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tournament, Match, MatchStatus } from "@/types";
+import { Tournament, Match, MatchStatus, getSportCategory } from "@/types";
+import { MatchEventsDialog } from "@/components/standings/match-events-dialog";
 import { useTournaments } from "@/context/tournament-context";
 import {
   generateEliminationMatches,
@@ -136,6 +137,21 @@ function MatchDisplay({
   const [rescheduleVenue, setRescheduleVenue] = useState("");
   const [teamFilter, setTeamFilter] = useState<string>("all");
   const [statusTab, setStatusTab] = useState<"upcoming" | "completed" | "postponed">("upcoming");
+
+  // Detalle de estadísticas del partido para quien NO puede editar: el
+  // organizador ya llega a lo mismo (y más) por "Editar resultado". Limitado a
+  // fútbol y vóley porque son los únicos donde el evento por jugador se lee
+  // solo — béisbol y básquet necesitan la tabla completa de la pestaña
+  // Estadísticas para significar algo.
+  const eventsSportCategory = getSportCategory(tournament.sport);
+  const supportsEventsDialog =
+    eventsSportCategory === "futbol" || eventsSportCategory === "volleyball";
+  const showEventsDialog = (match: Match) =>
+    !canEdit &&
+    supportsEventsDialog &&
+    match.status === "completed" &&
+    !!match.homeTeamId &&
+    !!match.awayTeamId;
 
   // Collect unique venues already used across the tournament
   const usedVenues = Array.from(new Set(
@@ -411,6 +427,11 @@ function MatchDisplay({
                 </Button>
               </div>
             )}
+            {showEventsDialog(match) && (
+              <div className="flex justify-end mt-1">
+                <MatchEventsDialog match={match} tournament={tournament} />
+              </div>
+            )}
           </div>
 
           {/* Desktop: horizontal layout */}
@@ -451,6 +472,11 @@ function MatchDisplay({
                     {match.status === "completed" ? "Editar resultado" : "Cargar resultado"}
                   </Link>
                 </Button>
+              </div>
+            )}
+            {showEventsDialog(match) && (
+              <div className="shrink-0">
+                <MatchEventsDialog match={match} tournament={tournament} />
               </div>
             )}
           </div>
