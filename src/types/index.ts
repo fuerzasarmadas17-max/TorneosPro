@@ -217,6 +217,9 @@ export interface Match {
   sets?: VolleyballSet[];
   phase?: MatchPhase;
   groupId?: string;
+  /** Ganado por W: el rival no se presentó o fue descalificado. El marcador
+   *  por sí solo no alcanza para saberlo (un 3-0 es un resultado normal). */
+  walkover?: boolean;
 }
 
 export interface StandingsEntry {

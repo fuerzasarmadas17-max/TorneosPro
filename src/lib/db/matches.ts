@@ -75,7 +75,10 @@ export async function updateMatchResult(
   winnerId: string | null,
   events?: MatchEvent[],
   sets?: VolleyballSet[],
-  client: SupabaseClient = supabase
+  client: SupabaseClient = supabase,
+  /** true = ganado por W. Se escribe SIEMPRE (no solo cuando es true) para
+   *  que corregir un partido mal cargado como W lo desmarque. */
+  walkover = false
 ): Promise<boolean> {
   const { error } = await client
     .from("matches")
@@ -84,6 +87,7 @@ export async function updateMatchResult(
       away_score: awayScore,
       winner_id: winnerId,
       status: "completed",
+      walkover,
     })
     .eq("id", matchId);
 

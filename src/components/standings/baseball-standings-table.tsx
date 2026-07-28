@@ -23,6 +23,7 @@ import { TeamMark } from "@/components/teams/team-mark";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { TableWatermark } from "./table-watermark";
 import { Info } from "lucide-react";
+import { WalkoverRuleNote } from "@/components/standings/walkover-rule-note";
 
 interface BaseballStandingsTableProps {
   tournament: Tournament;
@@ -86,6 +87,7 @@ function ScoringRulesDialog() {
             La tabla de stats individuales aparece en la pestaña Estadisticas si hay datos cargados.
           </p>
         </div>
+        <WalkoverRuleNote sport="beisbol" />
       </div>
     </DialogContent>
   );

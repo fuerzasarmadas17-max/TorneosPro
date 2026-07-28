@@ -10,7 +10,7 @@ import {
   useRef,
   ReactNode,
 } from "react";
-import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, VolleyballSet, Sponsor, PhaseConfig, getSportCategory } from "@/types";
+import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, VolleyballSet, Sponsor, PhaseConfig } from "@/types";
 import {
   generateRoundRobinCircle,
   generateAdditionalGroupRounds,
@@ -20,6 +20,7 @@ import { fetchTournaments, fetchTournamentsWithMatches, createTournament as dbCr
 import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam, updateTeamPlayers as dbUpdateTeamPlayers } from "@/lib/db/teams";
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
+import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/auth-context";
 
@@ -113,7 +114,9 @@ interface TournamentContextType {
     homeScore: number,
     awayScore: number,
     events?: MatchEvent[],
-    sets?: VolleyballSet[]
+    sets?: VolleyballSet[],
+    /** true = ganado por W (el rival no se presentó). */
+    walkover?: boolean
   ) => Promise<void>;
   /** Apply an externally-sourced match update (Realtime channel). Only
    *  patches local state — does NOT write to the DB. The patch comes from
@@ -490,14 +493,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     const newDQ = [...current, teamId];
     const dqSet = new Set(newDQ);
 
-    // Marcador de walkover por deporte: vóley = sets para ganar (2-0 en
-    // best-of-3, 3-0 en best-of-5); resto de deportes 3-0.
-    const wSets =
-      getSportCategory(tournament.sport) === "volleyball"
-        ? tournament.bestOf
-          ? Math.ceil(tournament.bestOf / 2)
-          : 2
-        : 3;
+    // Marcador reglamentario de W según el deporte. Ver lib/walkover.ts: es la
+    // misma regla que usan el botón de W del organizador y el del anotador.
+    const rule = getWalkoverRule(tournament.sport, tournament.bestOf);
 
     // 2. TODOS los partidos no jugados del DQ contra un rival NO descalificado
     //    se dan por ganados al rival (walkover). Los ya jugados se conservan.
@@ -514,20 +512,28 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         return {
           match: m,
           winnerId: opponentId,
-          homeScore: opponentIsHome ? wSets : 0,
-          awayScore: opponentIsHome ? 0 : wSets,
+          homeScore: opponentIsHome ? rule.winnerScore : rule.loserScore,
+          awayScore: opponentIsHome ? rule.loserScore : rule.winnerScore,
+          sets: buildWalkoverSets(rule, opponentIsHome),
         };
       })
       .filter((w): w is NonNullable<typeof w> => w !== null);
 
     // 3. Persistir cada walkover (+ propagar el ganador en playoffs).
+    //    Vía updateMatchResult y no updateMatchDetails porque es la que sabe
+    //    escribir los parciales de vóley (25-0 por set). `events` va undefined
+    //    a propósito: un partido no jugado no tiene estadísticas que tocar.
     for (const w of walkovers) {
-      await dbUpdateMatchDetails(w.match.id, {
-        homeScore: w.homeScore,
-        awayScore: w.awayScore,
-        winnerId: w.winnerId,
-        status: "completed",
-      });
+      await dbUpdateMatchResult(
+        w.match.id,
+        w.homeScore,
+        w.awayScore,
+        w.winnerId,
+        undefined,
+        w.sets,
+        undefined,
+        true
+      );
       if (w.match.phase === "playoff" && w.match.nextMatchId) {
         const nextMatch = tournament.matches.find((m) => m.id === w.match.nextMatchId);
         if (nextMatch) {
@@ -557,6 +563,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                 awayScore: w.awayScore,
                 winnerId: w.winnerId,
                 status: "completed" as const,
+                ...(w.sets ? { sets: w.sets } : {}),
+                walkover: true,
               }
             : m;
         });
@@ -1455,7 +1463,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       homeScore: number,
       awayScore: number,
       events?: MatchEvent[],
-      sets?: VolleyballSet[]
+      sets?: VolleyballSet[],
+      walkover = false
     ) => {
       setTournaments((prev) =>
         prev.map((t) => {
@@ -1524,6 +1533,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
               status: "completed" as const,
               events: events || [],
               ...(sets ? { sets } : {}),
+              walkover,
             };
           });
 
@@ -1742,7 +1752,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
             : null;
       })();
 
-      await dbUpdateMatchResult(matchId, homeScore, awayScore, winnerId, events, sets);
+      await dbUpdateMatchResult(matchId, homeScore, awayScore, winnerId, events, sets, undefined, walkover);
     },
     [tournaments]
   );

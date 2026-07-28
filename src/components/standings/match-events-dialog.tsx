@@ -227,6 +227,11 @@ export function MatchEventsDialog({
                 {match.sets.map((s) => `${s.homePoints}-${s.awayPoints}`).join(" · ")}
               </p>
             )}
+            {match.walkover && (
+              <p className="mt-1 text-[11px] font-medium text-amber-700">
+                Ganado por W
+              </p>
+            )}
           </div>
 
           <div className={cn("flex flex-1 flex-col items-center gap-1.5 text-center", homeWon && "opacity-60")}>

@@ -24,6 +24,7 @@ import { TeamMark } from "@/components/teams/team-mark";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { TableWatermark } from "./table-watermark";
 import { Info } from "lucide-react";
+import { WalkoverRuleNote } from "@/components/standings/walkover-rule-note";
 
 interface VolleyballStandingsTableProps {
   tournament: Tournament;
@@ -111,6 +112,7 @@ function ScoringRulesDialog({ bestOf }: { bestOf: 3 | 5 }) {
             <li>Resultado directo entre los equipos empatados</li>
           </ol>
         </div>
+        <WalkoverRuleNote sport="volleyball" bestOf={bestOf} />
       </div>
     </DialogContent>
   );

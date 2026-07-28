@@ -37,6 +37,7 @@ import {
   BASEBALL_DEFENSIVE_STATS,
 } from "@/lib/baseball-scoresheet";
 import { dedupePlayersByName, buildPlayerNameOptions, normalizePlayerName } from "@/lib/name-utils";
+import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
 import { fetchTeamsByIds } from "@/lib/db/teams";
 import { PlayerCombobox } from "./player-combobox";
 import {
@@ -91,6 +92,8 @@ export function MatchResultForm({
     }))
   );
   const [error, setError] = useState("");
+  // null = no hay W pendiente de confirmar; true/false = a quién se le daría.
+  const [walkoverWinnerIsHome, setWalkoverWinnerIsHome] = useState<boolean | null>(null);
   // 4 pasos de planilla: 1=local ofensiva, 2=local defensiva,
   // 3=visitante ofensiva, 4=visitante defensiva.
   const [scoresheetStep, setScoresheetStep] = useState<1 | 2 | 3 | 4>(1);
@@ -131,6 +134,9 @@ export function MatchResultForm({
   const isFutbol = sport ? getSportCategory(sport) === "futbol" : false;
   const stackScorersMobile = isFutbol || isVolleyball;
   const setsToWin = bestOf ? Math.ceil(bestOf / 2) : 2;
+  // Marcador reglamentario de W del deporte. Misma fuente que usa la
+  // descalificación y el anotador con link. Ver lib/walkover.ts.
+  const walkoverRule = getWalkoverRule(sport ?? "futbol", bestOf);
 
   // Scoresheet state for baseball — pre-cargar la matriz player×stat
   // desde `match.events` para que la edición arranque con los datos
@@ -345,6 +351,29 @@ export function MatchResultForm({
     setInscribing(false);
     setInscribeOpen(false);
     performSave(stamped);
+  };
+
+  // W (walkover). No pasa por `saveWithInscription` porque no hay eventos que
+  // canonizar, y manda `[]` explícito para borrar cualquier estadística previa
+  // si se está corrigiendo un partido ya cargado.
+  const handleWalkover = () => {
+    if (walkoverWinnerIsHome === null) return;
+    const winnerIsHome = walkoverWinnerIsHome;
+    const home = winnerIsHome ? walkoverRule.winnerScore : walkoverRule.loserScore;
+    const away = winnerIsHome ? walkoverRule.loserScore : walkoverRule.winnerScore;
+
+    updateMatch(
+      match.tournamentId,
+      match.id,
+      home,
+      away,
+      [],
+      buildWalkoverSets(walkoverRule, winnerIsHome),
+      true
+    );
+    setWalkoverWinnerIsHome(null);
+    toast.success("Partido cargado como W");
+    router.push(`/tournaments/${match.tournamentId}`);
   };
 
   const handleSave = () => {
@@ -806,6 +835,40 @@ export function MatchResultForm({
               })}
             </>
           )}
+
+          {/* W (walkover): un equipo no se presentó. Se resuelve con el
+              marcador reglamentario del deporte y sin estadísticas, así que
+              es un atajo aparte y no algo que el organizador deba escribir a
+              mano. Va al final para no competir con la carga normal. */}
+          <div className="mt-8 rounded-lg border border-dashed p-3">
+            <p className="text-sm font-medium">¿Un equipo no se presentó?</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Se carga la W con el marcador reglamentario: {walkoverRule.description}.
+              El partido queda sin estadísticas de jugadores.
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                disabled={!match.homeTeamId}
+                onClick={() => setWalkoverWinnerIsHome(true)}
+              >
+                Gana {homeTeam?.name || "Local"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                disabled={!match.awayTeamId}
+                onClick={() => setWalkoverWinnerIsHome(false)}
+              >
+                Gana {awayTeam?.name || "Visitante"}
+              </Button>
+            </div>
+          </div>
         </CardContent>
         <CardFooter className="flex gap-2 pt-6">
           {useScoresheet ? (() => {
@@ -886,6 +949,60 @@ export function MatchResultForm({
           )}
         </CardFooter>
       </form>
+
+      <Dialog
+        open={walkoverWinnerIsHome !== null}
+        onOpenChange={(o) => !o && setWalkoverWinnerIsHome(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cargar W</DialogTitle>
+            <DialogDescription>
+              {(() => {
+                const winner = walkoverWinnerIsHome ? homeTeam : awayTeam;
+                const loser = walkoverWinnerIsHome ? awayTeam : homeTeam;
+                const home = walkoverWinnerIsHome
+                  ? walkoverRule.winnerScore
+                  : walkoverRule.loserScore;
+                const away = walkoverWinnerIsHome
+                  ? walkoverRule.loserScore
+                  : walkoverRule.winnerScore;
+                return (
+                  <>
+                    <strong>{loser?.name || "El rival"}</strong> no se presentó.
+                    El partido queda{" "}
+                    <strong>
+                      {home} - {away}
+                    </strong>{" "}
+                    a favor de <strong>{winner?.name}</strong>
+                    {walkoverRule.setCount
+                      ? `, con ${walkoverRule.setCount} sets de ${walkoverRule.setPoints?.winner}-${walkoverRule.setPoints?.loser}`
+                      : ""}
+                    .
+                  </>
+                );
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {isEditing
+              ? "Se sobrescribe el resultado actual y se borran las estadísticas ya cargadas de este partido."
+              : "El partido no llevará estadísticas de jugadores."}
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setWalkoverWinnerIsHome(null)}
+            >
+              Cancelar
+            </Button>
+            <Button size="sm" onClick={handleWalkover}>
+              Cargar W
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={inscribeOpen} onOpenChange={(o) => !inscribing && setInscribeOpen(o)}>
         <DialogContent className="sm:max-w-md">

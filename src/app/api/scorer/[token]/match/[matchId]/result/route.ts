@@ -70,6 +70,7 @@ export async function POST(
     awayScore?: number;
     sets?: SetInput[];
     events?: EventInput[];
+    walkover?: boolean;
   };
   try {
     body = await request.json();
@@ -132,6 +133,10 @@ export async function POST(
       away_score: awayScore,
       winner_id: winnerId,
       status: "completed",
+      // Se escribe siempre, no solo cuando es true: así corregir un partido
+      // mal cargado como W lo desmarca. El cliente manda el marcador
+      // reglamentario; acá solo registramos la marca.
+      walkover: body.walkover === true,
       result_entered_by_name: scorerName,
       result_entered_via_token: token,
       updated_at: new Date().toISOString(),

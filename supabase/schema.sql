@@ -287,6 +287,8 @@ CREATE TABLE matches (
   group_id UUID REFERENCES tournament_groups(id) ON DELETE SET NULL,
   result_entered_by_name TEXT, -- scorer-link: nombre que escribió el anotador
   result_entered_via_token TEXT, -- scorer-link: token del link usado
+  walkover BOOLEAN, -- ganado por W (no se presentó / descalificado). NULL = no
+
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

@@ -24,6 +24,7 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { TableWatermark } from "./table-watermark";
 import { TeamMark } from "@/components/teams/team-mark";
 import { Info } from "lucide-react";
+import { WalkoverRuleNote } from "@/components/standings/walkover-rule-note";
 
 interface StandingsTableProps {
   tournament: Tournament;
@@ -92,6 +93,7 @@ function ScoringRulesDialog({ tournament }: { tournament: Tournament }) {
             <li>Resultado directo entre los equipos empatados</li>
           </ol>
         </div>
+        <WalkoverRuleNote sport={tournament.sport} bestOf={tournament.bestOf} />
       </div>
     </DialogContent>
   );

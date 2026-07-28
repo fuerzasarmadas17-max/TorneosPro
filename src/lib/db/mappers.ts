@@ -191,6 +191,7 @@ export function mapMatch(row: Record<string, unknown>): Match {
     sets: setsRows ? setsRows.map(mapVolleyballSet) : undefined,
     phase: (row.phase as MatchPhase) ?? undefined,
     groupId: (row.group_id as string) ?? undefined,
+    walkover: (row.walkover as boolean) ?? undefined,
   };
 }
 
@@ -295,6 +296,7 @@ export function toDbMatch(m: Partial<Match>): Record<string, unknown> {
   if (m.nextMatchId !== undefined) db.next_match_id = m.nextMatchId;
   if (m.phase !== undefined) db.phase = m.phase;
   if (m.groupId !== undefined) db.group_id = m.groupId;
+  if (m.walkover !== undefined) db.walkover = m.walkover;
   return db;
 }
 

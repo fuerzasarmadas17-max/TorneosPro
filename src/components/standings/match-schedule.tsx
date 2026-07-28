@@ -349,6 +349,17 @@ function MatchDisplay({
                 {groupName}
               </Badge>
             )}
+            {/* W: el marcador solo no lo delata (un 3-0 es un resultado
+                normal), así que el tag sale del flag guardado en el partido. */}
+            {match.walkover && (
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 border-amber-500/40 bg-amber-500/10 text-amber-700"
+                title="Ganado por W: un equipo no se presentó"
+              >
+                W
+              </Badge>
+            )}
           </div>
           <div className="shrink-0">
             {canEdit && !isCompleted ? (
