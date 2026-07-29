@@ -1,7 +1,8 @@
 # Plan: analítica de publicidad y reparto con organizadores
 
-**Estado:** pasos 0 y 1 implementados en local, sin commitear ni desplegar.
-Las dos migraciones ya están corridas en la base. Pasos 2-3 planeados.
+**Estado:** pasos 0 y 1 desplegados. Paso 2 en local, **falta correr su
+migración** (`20260729c_ad_analytics_by_organizer.sql`) antes de desplegarlo.
+Paso 3 planeado.
 **Última actualización:** 2026-07-29
 
 ---
@@ -159,15 +160,43 @@ importar qué campaña vieron. Ahí sí suma y da el 100%.
 
 ---
 
-## Paso 2 — Detalle por campaña y reparto por organizador
+## Paso 2 — Detalle por campaña y reparto por organizador ✅ hecho, sin desplegar
 
-**Estimado: medio día**, después del Paso 1.
+**Hecho:**
+- Migración `20260729c_ad_analytics_by_organizer.sql`: agrega el corte
+  `by_organizer` a `get_ad_analytics`, calculado en la base, y `organizer_name`
+  a `by_tournament` y `detail`. **Falta correrla.**
+- `lib/ad-analytics.ts`: tipos de la RPC y `computeRevenueShare`, fuera del
+  componente para que el cálculo de plata se pueda leer y probar solo.
+- `components/ads/ad-campaign-detail.tsx`: desglose de una campaña por torneo
+  y organizador — el informe al anunciante.
+- `components/ads/ad-revenue-share.tsx`: tabla de reparto con personas-día,
+  porcentaje y monto por organizador.
 
-- **Detalle de una campaña:** desglose por torneo y por organizador, con
-  impresiones, personas-día, clics y CTR. Es el informe que se le entrega al
-  anunciante.
-- **Vista por organizador:** personas-día aportadas, su porcentaje del fondo y
-  el monto que le corresponde del 50%.
+**El fondo se escribe a mano.** De dónde sale (lo facturado, lo efectivamente
+recaudado, cómo se prorratea una campaña que cruza dos meses) es decisión
+comercial abierta, y cablearla a `ad_payments` habría sido adivinar. Cuando se
+decida, el input se reemplaza por el cálculo y el resto no se toca.
+
+### El denominador del reparto no es el total global
+
+El porcentaje de cada organizador se calcula sobre la **suma de las filas de
+`by_organizer`**, no sobre `totals.person_days`. No son lo mismo: quien el
+mismo día ve torneos de dos organizadores aporta 1 al total global pero 1 a
+cada uno, así que la suma de filas es siempre >= el global. Hay que usar la
+suma porque es la única que da 100% exacto — con el global los porcentajes
+pasarían de 100% y el reparto excedería el fondo.
+
+El panel muestra las dos cifras con la explicación al lado, porque ver dos
+"personas-día" distintas en la misma pantalla se lee como un error.
+
+### Los montos se reparten por residuo mayor
+
+Redondear cada fila por separado descuadra contra el fondo (con 5
+organizadores, hasta $2-3 de más o de menos). Cada fila recibe su piso entero
+y los pesos sobrantes van de a uno a las fracciones más grandes, así la suma da
+el fondo exacto. Verificado contra el ejemplo de abajo: reproduce los cinco
+montos al peso.
 
 ### Ejemplo validado con el modelo comercial
 

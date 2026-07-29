@@ -49,9 +49,18 @@ import {
   CircleDashed,
   CalendarRange,
   Users,
+  BarChart3,
 } from "lucide-react";
 import { SPORTS } from "@/data/sports";
 import { SCOPES, DEPARTMENTS } from "@/data/colombia";
+import {
+  DATE_RANGE_LABELS,
+  rangeBounds,
+  type AdAnalytics,
+  type DateRange,
+} from "@/lib/ad-analytics";
+import { AdRevenueShare } from "@/components/ads/ad-revenue-share";
+import { AdCampaignDetail } from "@/components/ads/ad-campaign-detail";
 
 /**
  * Panel admin de Publicidad (Pieza 2 de Por hacer/modal-publicidad-y-tienda.md).
@@ -108,65 +117,6 @@ interface Counts {
    *  `impressions`, `personDays` subestima (los eventos previos a la migración
    *  del 2026-07-29 no tienen persona). */
   withPerson: number;
-}
-
-/**
- * Lo que devuelve `get_ad_analytics`. Cada corte viene YA agregado desde
- * Postgres, con su propio COUNT(DISTINCT): personas-día no se puede sumar
- * entre filas (la misma persona el mismo día puede aparecer en dos campañas o
- * dos torneos). Acá no se suma nada, solo se indexa.
- */
-interface AdAnalytics {
-  by_campaign: {
-    campaign_id: string;
-    impressions: number;
-    clicks: number;
-    persons: number;
-    person_days: number;
-    impressions_with_person: number;
-  }[];
-  by_tournament: {
-    tournament_id: string;
-    tournament_name: string | null;
-    organizer_id: string | null;
-    impressions: number;
-    clicks: number;
-    person_days: number;
-  }[];
-  detail: {
-    campaign_id: string;
-    tournament_id: string | null;
-    tournament_name: string | null;
-    organizer_id: string | null;
-    impressions: number;
-    clicks: number;
-    person_days: number;
-  }[];
-  totals: {
-    impressions: number;
-    clicks: number;
-    person_days: number;
-    impressions_with_person: number;
-  } | null;
-}
-
-/** Rango de fechas del panel. `all` = sin filtro (histórico completo). */
-type DateRange = "current" | "previous" | "all";
-
-const DATE_RANGE_LABELS: Record<DateRange, string> = {
-  current: "Mes en curso",
-  previous: "Mes pasado",
-  all: "Todo el histórico",
-};
-
-/** Límites del rango, en hora local, como ISO para la RPC. */
-function rangeBounds(range: DateRange): { from: string | null; to: string | null } {
-  if (range === "all") return { from: null, to: null };
-  const now = new Date();
-  const monthOffset = range === "previous" ? -1 : 0;
-  const from = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
-  const to = new Date(now.getFullYear(), now.getMonth() + monthOffset + 1, 1);
-  return { from: from.toISOString(), to: to.toISOString() };
 }
 
 /** Chip toggle multi-select reutilizable. */
@@ -253,8 +203,12 @@ function AdsContent() {
   const [listMap, setListMap] = useState<Record<string, string[]>>({});
   const [counts, setCounts] = useState<Record<string, Counts>>({});
   const [totals, setTotals] = useState<AdAnalytics["totals"]>(null);
+  const [byOrganizer, setByOrganizer] = useState<AdAnalytics["by_organizer"]>([]);
+  const [detail, setDetail] = useState<AdAnalytics["detail"]>([]);
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>("current");
+  /** Campaña cuyo desglose por torneo se está mirando. */
+  const [detailFor, setDetailFor] = useState<CampaignRow | null>(null);
   const [tournaments, setTournaments] = useState<TournamentLite[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -345,6 +299,13 @@ function AdsContent() {
       setMetricsError(
         "La base no devolvió métricas. Suele ser que tu usuario no tiene rol de admin."
       );
+    } else if (!(evRes.data as AdAnalytics).by_organizer) {
+      // La RPC responde pero le falta el corte por organizador: está corriendo
+      // la v1. Si no se dijera, el reparto se vería vacío y se leería como
+      // "ningún organizador aportó audiencia" en vez de "falta una migración".
+      setMetricsError(
+        "La base está corriendo una versión vieja de get_ad_analytics (sin corte por organizador). Falta correr la migración 20260729c_ad_analytics_by_organizer.sql."
+      );
     } else {
       setMetricsError(null);
     }
@@ -361,6 +322,8 @@ function AdsContent() {
     }
     setCounts(tally);
     setTotals(analytics?.totals ?? null);
+    setByOrganizer(analytics?.by_organizer ?? []);
+    setDetail(analytics?.detail ?? []);
 
     setTournaments((tournRes.data as TournamentLite[]) || []);
     setLoading(false);
@@ -979,6 +942,15 @@ function AdsContent() {
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
+                        title="Ver desglose por torneo y organizador"
+                        onClick={() => setDetailFor(c)}
+                      >
+                        <BarChart3 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
                         title={c.is_active ? "Pausar" : "Activar"}
                         onClick={() => toggleActive(c)}
                       >
@@ -1024,6 +996,28 @@ function AdsContent() {
             );
           })}
         </div>
+      )}
+
+      {/* ===== Reparto con organizadores ===== */}
+      {!metricsError && (
+        <AdRevenueShare
+          organizers={byOrganizer}
+          periodLabel={DATE_RANGE_LABELS[dateRange]}
+          coverage={personCoverage}
+          globalPersonDays={totalPersonDays}
+        />
+      )}
+
+      {/* ===== Diálogo: desglose de una campaña ===== */}
+      {detailFor && (
+        <AdCampaignDetail
+          open
+          onOpenChange={(o) => !o && setDetailFor(null)}
+          advertiserName={detailFor.advertiser_name}
+          periodLabel={DATE_RANGE_LABELS[dateRange]}
+          rows={detail.filter((d) => d.campaign_id === detailFor.id)}
+          campaignPersonDays={counts[detailFor.id]?.personDays ?? 0}
+        />
       )}
 
       {/* ===== Diálogo: crear campaña ===== */}
