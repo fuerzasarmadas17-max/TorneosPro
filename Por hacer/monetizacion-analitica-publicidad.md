@@ -1,8 +1,7 @@
 # Plan: analítica de publicidad y reparto con organizadores
 
-**Estado:** pasos 0 y 1 desplegados. Paso 2 en local, **falta correr su
-migración** (`20260729c_ad_analytics_by_organizer.sql`) antes de desplegarlo.
-Paso 3 planeado.
+**Estado:** pasos 0, 1 y 2 desplegados, con sus migraciones corridas. Falta el
+Paso 3, que depende de decisiones comerciales aún abiertas.
 **Última actualización:** 2026-07-29
 
 ---
@@ -160,12 +159,12 @@ importar qué campaña vieron. Ahí sí suma y da el 100%.
 
 ---
 
-## Paso 2 — Detalle por campaña y reparto por organizador ✅ hecho, sin desplegar
+## Paso 2 — Detalle por campaña y reparto por organizador ✅ hecho
 
 **Hecho:**
 - Migración `20260729c_ad_analytics_by_organizer.sql`: agrega el corte
   `by_organizer` a `get_ad_analytics`, calculado en la base, y `organizer_name`
-  a `by_tournament` y `detail`. **Falta correrla.**
+  a `by_tournament` y `detail`. Ya corrida.
 - `lib/ad-analytics.ts`: tipos de la RPC y `computeRevenueShare`, fuera del
   componente para que el cálculo de plata se pueda leer y probar solo.
 - `components/ads/ad-campaign-detail.tsx`: desglose de una campaña por torneo
