@@ -10,9 +10,10 @@ import { useAuth } from "@/context/auth-context";
  * Modal de publicidad (Pieza 2 de Por hacer/modal-publicidad-y-tienda.md).
  *
  * Se muestra al espectador ANÓNIMO en la vista pública del torneo, hasta
- * `AD_DAILY_CAP` veces por persona y día (ver `lib/ad-frequency.ts`). Pide a
- * `/api/ads/resolve` qué anuncio mostrar — el pick ponderado por monto ocurre
- * server-side. Si no hay campaña que aplique, no renderiza nada.
+ * `AD_DAILY_CAP` veces por persona, por torneo y por día (ver
+ * `lib/ad-frequency.ts`). Pide a `/api/ads/resolve` qué anuncio mostrar — el
+ * pick ponderado por monto ocurre server-side. Si no hay campaña que aplique,
+ * no renderiza nada.
  *
  * El tope reemplaza la decisión del 2026-07-03 ("en cada carga, sin tope"),
  * que tenía sentido cuando las impresiones eran la única métrica. Con
@@ -91,9 +92,14 @@ export function AdModal({ tournamentId }: AdModalProps) {
   // real la haya visto.
   useEffect(() => {
     if (authLoading || isAuthenticated) return;
-    // Tope diario por persona: se chequea ANTES de pedir el anuncio, así quien
-    // ya cumplió su cuota tampoco gasta el request.
-    if (adCapReached()) return;
+    // Tope diario por persona Y POR TORNEO: se chequea ANTES de pedir el
+    // anuncio, así quien ya cumplió su cuota tampoco gasta el request.
+    //
+    // La cuota es por torneo y no global porque el crédito de personas-día del
+    // reparto se registra solo cuando hay impresión: con cuota global, quien
+    // la quemaba en un torneo dejaba sin crédito a los otros organizadores que
+    // sí visitó. Ver lib/ad-frequency.ts.
+    if (adCapReached(tournamentId)) return;
     let cancelled = false;
     (async () => {
       try {
@@ -110,7 +116,7 @@ export function AdModal({ tournamentId }: AdModalProps) {
           // El contador sube junto con la impresión que se registra, no al
           // entrar al effect: si la API no devolvió anuncio o la petición
           // falló, no se mostró nada y no debe gastar cuota.
-          recordAdShown();
+          recordAdShown(tournamentId);
           trackEvent({
             eventType: "ad_impression",
             tournamentId,

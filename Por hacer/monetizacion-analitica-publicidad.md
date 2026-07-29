@@ -246,17 +246,38 @@ Lo que se sabe que necesita:
 
 ## Tope de frecuencia del modal ✅ hecho
 
-**7 impresiones por persona y día** (`AD_DAILY_CAP` en `lib/ad-frequency.ts`),
-reemplazando el "en cada carga, sin tope" del 2026-07-03. Esa decisión tenía
-sentido cuando las impresiones eran la única métrica; con personas-día
-liquidando, inflarlas solo empeora el informe al anunciante.
+**7 impresiones por persona, por torneo y por día** (`AD_DAILY_CAP` en
+`lib/ad-frequency.ts`), reemplazando el "en cada carga, sin tope" del
+2026-07-03. Esa decisión tenía sentido cuando las impresiones eran la única
+métrica; con personas-día liquidando, inflarlas solo empeora el informe al
+anunciante.
 
 El contador vive en `localStorage`, con la misma noción de persona que el
 `visitor_id`, y sube junto con la impresión que se registra — no al entrar al
 componente, así una petición fallida no gasta cuota.
 
-**No cambia la liquidación.** Personas-día cuenta personas distintas por día,
-así que quien entra 20 veces aporta 1 con tope o sin él.
+### Por qué la cuota es por torneo y no global
+
+El primer intento usó cuota global por día y **rompía el reparto**.
+
+El crédito de personas-día se registra solo cuando hay un `ad_impression`. Con
+cuota global, quien la quemaba en el torneo de un organizador y después abría
+los de otros tres no generaba impresión en esos tres, así que esos
+organizadores no recibían crédito por una persona que sí visitó su torneo.
+
+Lo grave no era perder el dato sino que **el sesgo no era parejo**: favorecía
+al torneo que la persona abre primero, que suele ser el principal. Los
+secundarios —normalmente los organizadores más chicos— perdían crédito. Todo el
+razonamiento de este plan se apoya en que los sesgos golpeen a todos por igual,
+porque en un reparto proporcional un sesgo parejo se cancela. Ese no lo era, y
+empujaba justo en la dirección contraria a la nota de operación del Paso 2.
+
+Con cuota por torneo cada organizador siempre captura la persona-día de quien
+lo visitó. El techo total sube (alguien que abre 4 torneos podría ver hasta 28
+avisos en un día) y es el precio de que el reparto sea correcto.
+
+**No cambia la liquidación dentro de un torneo.** Personas-día cuenta personas
+distintas por día, así que quien entra 20 veces aporta 1 con tope o sin él.
 
 Falla abierto a propósito: si `localStorage` no está disponible (modo privado)
 o lo guardado no se puede interpretar, se muestra el aviso igual. La
@@ -317,4 +338,4 @@ venta al anunciante querría.
 | 2026-07-29 | El reparto se calcula sobre la **suma de `by_organizer`**, no sobre `totals.person_days`: es la única base que da 100% exacto. |
 | 2026-07-29 | Los montos se reparten por **residuo mayor**, para que la suma cuadre al peso con el fondo. |
 | 2026-07-29 | El **fondo se escribe a mano** hasta que se decida de dónde sale (facturado vs. recaudado, y cómo prorratear campañas que cruzan meses). |
-| 2026-07-29 | Tope del modal en **7 por persona y día**, reemplazando el "sin tope" del 2026-07-03. |
+| 2026-07-29 | Tope del modal en **7 por persona, torneo y día**, reemplazando el "sin tope" del 2026-07-03. Por torneo y no global: con cuota global el organizador que la persona abría primero se quedaba con todo el crédito de personas-día. |
