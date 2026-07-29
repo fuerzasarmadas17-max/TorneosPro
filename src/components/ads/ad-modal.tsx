@@ -3,15 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import { X, ExternalLink, MessageCircle } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
+import { adCapReached, recordAdShown } from "@/lib/ad-frequency";
 import { useAuth } from "@/context/auth-context";
 
 /**
  * Modal de publicidad (Pieza 2 de Por hacer/modal-publicidad-y-tienda.md).
  *
- * Se muestra al espectador ANÓNIMO en la vista pública del torneo, en cada
- * carga / refresh (decisión 2026-07-03: sin tope por sesión). Pide a
+ * Se muestra al espectador ANÓNIMO en la vista pública del torneo, hasta
+ * `AD_DAILY_CAP` veces por persona y día (ver `lib/ad-frequency.ts`). Pide a
  * `/api/ads/resolve` qué anuncio mostrar — el pick ponderado por monto ocurre
  * server-side. Si no hay campaña que aplique, no renderiza nada.
+ *
+ * El tope reemplaza la decisión del 2026-07-03 ("en cada carga, sin tope"),
+ * que tenía sentido cuando las impresiones eran la única métrica. Con
+ * personas-día liquidando, inflar impresiones solo empeora el informe al
+ * anunciante. El tope no cambia personas-día.
  *
  * Los usuarios con sesión iniciada (los organizadores) no ven publicidad: son
  * los clientes que pagan, no la audiencia que el anunciante compró. El chequeo
@@ -85,6 +91,9 @@ export function AdModal({ tournamentId }: AdModalProps) {
   // real la haya visto.
   useEffect(() => {
     if (authLoading || isAuthenticated) return;
+    // Tope diario por persona: se chequea ANTES de pedir el anuncio, así quien
+    // ya cumplió su cuota tampoco gasta el request.
+    if (adCapReached()) return;
     let cancelled = false;
     (async () => {
       try {
@@ -98,6 +107,10 @@ export function AdModal({ tournamentId }: AdModalProps) {
         setCanClose(false);
         if (impressionFor.current !== data.ad.id) {
           impressionFor.current = data.ad.id;
+          // El contador sube junto con la impresión que se registra, no al
+          // entrar al effect: si la API no devolvió anuncio o la petición
+          // falló, no se mostró nada y no debe gastar cuota.
+          recordAdShown();
           trackEvent({
             eventType: "ad_impression",
             tournamentId,

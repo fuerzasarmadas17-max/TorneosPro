@@ -244,17 +244,32 @@ Lo que se sabe que necesita:
 
 ---
 
-## Pendiente aparte: tope de frecuencia del modal
+## Tope de frecuencia del modal ✅ hecho
 
-No bloquea nada de lo anterior, pero conviene.
+**7 impresiones por persona y día** (`AD_DAILY_CAP` en `lib/ad-frequency.ts`),
+reemplazando el "en cada carga, sin tope" del 2026-07-03. Esa decisión tenía
+sentido cuando las impresiones eran la única métrica; con personas-día
+liquidando, inflarlas solo empeora el informe al anunciante.
 
-Hoy el modal se muestra en **cada carga**, sin tope por sesión (decisión
-2026-07-03, documentada en `ad-modal.tsx`). Un tope de 2-3 por persona y día:
+El contador vive en `localStorage`, con la misma noción de persona que el
+`visitor_id`, y sube junto con la impresión que se registra — no al entrar al
+componente, así una petición fallida no gasta cuota.
 
-- Mejora la experiencia del espectador, que no ve el mismo anuncio en cada
-  refresh.
-- Limpia las impresiones que se le reportan al anunciante. "Llegué a 3.000
-  personas" vende mejor que "me mostré 40.000 veces a 200 personas aburridas".
+**No cambia la liquidación.** Personas-día cuenta personas distintas por día,
+así que quien entra 20 veces aporta 1 con tope o sin él.
+
+Falla abierto a propósito: si `localStorage` no está disponible (modo privado)
+o lo guardado no se puede interpretar, se muestra el aviso igual. La
+publicidad no puede romper la vista del torneo.
+
+El día del tope es **local**; el de personas-día es UTC (`created_at::date`).
+En Colombia (UTC-5) no cortan a la misma hora. No importa: son cosas distintas
+y el tope no alimenta la liquidación.
+
+Se eligió 7 y no los 2-3 que estimaba este plan (decisión del organizador,
+2026-07-29). Corta el caso que más ensucia —quien refresca decenas de veces en
+una sentada— pero deja las impresiones más altas de lo que el argumento de
+venta al anunciante querría.
 
 ---
 
@@ -299,3 +314,7 @@ Hoy el modal se muestra en **cada carga**, sin tope por sesión (decisión
 | 2026-07-29 | `visitor_id` en `analytics_events` va primero, aunque el resto tarde: el dato perdido no se recupera. |
 | 2026-07-29 | Impresiones y CTR se usan para el **informe al anunciante**; persona-día para **liquidar**. |
 | 2026-07-29 | La unidad monetizable es el **organizador** (`organization_profiles.user_id` es UNIQUE, no hay sub-usuarios). Se le paga a la cuenta; si hay varias personas detrás, reparten por fuera. |
+| 2026-07-29 | El reparto se calcula sobre la **suma de `by_organizer`**, no sobre `totals.person_days`: es la única base que da 100% exacto. |
+| 2026-07-29 | Los montos se reparten por **residuo mayor**, para que la suma cuadre al peso con el fondo. |
+| 2026-07-29 | El **fondo se escribe a mano** hasta que se decida de dónde sale (facturado vs. recaudado, y cómo prorratear campañas que cruzan meses). |
+| 2026-07-29 | Tope del modal en **7 por persona y día**, reemplazando el "sin tope" del 2026-07-03. |
