@@ -261,10 +261,40 @@ no sabe por qué; con dos, el requisito se vuelve la explicación de qué le fal
 **Los umbrales van en configuración, no hardcodeados**, para poder moverlos sin
 desplegar.
 
-**Los números están sin validar contra datos reales.** Hay una consulta lista
-para eso en `Por hacer/consultas/organizadores-vs-requisitos.sql`: muestra cada
-organizador contra cada requisito y marca cuál le falta. Si una sola columna
-sale en rojo para casi todos, ese umbral está mal puesto.
+**Los números están sin validar contra datos reales.** La consulta está en
+`Por hacer/consultas/organizadores-vs-requisitos.sql`.
+
+### Primera medición (2026-07-29): no concluyente
+
+Corrió sobre 6 organizadores pero **la ventana estaba truncada**:
+`page_views.visitor_id` existe desde el 20 de julio, así que solo había 9 días
+de dato contra un umbral mensual. Cuatro organizadores mostraban `dias = 9` —el
+techo del dato, no su comportamiento— y `f_pers_dia` salía X para 5 de 6 por
+eso, no porque 300 estuviera alto.
+
+Extrapolando por 31/9, calificarían 2 o 3 de 6, o sea **el umbral de 300
+probablemente está bien**. Queda por confirmar con un mes entero limpio:
+**re-medir en septiembre, sobre agosto.** La consulta ahora trae una columna
+`dias_del_mes_con_datos` para que esta trampa se vea de entrada.
+
+Lo que sí quedó claro:
+
+- **Los umbrales de equipos y partidos no filtran.** Todos los activos tienen
+  16-22 equipos (barra: 6) y 39-157 partidos (barra: 10). Cumplen su función de
+  piso —dejaron fuera a uno con 0 torneos y a uno con 4 partidos— pero no son
+  los que deciden.
+- **La audiencia es diaria, no en ráfagas.** Los cinco activos tuvieron 8 o 9
+  días de 9 posibles. Valida la regla de días distintos: el único con `dias = 1`
+  cayó solo.
+- **La concentración del Paso 2 ya es real, no hipótesis.** El organizador más
+  grande tiene el 49% de las personas-día. Con un fondo de $600.000, el
+  penúltimo se llevaría ~$23.000 y el último ~$13.000. Si hay que suavizarlo,
+  es con un mínimo garantizado o un techo, no con la puerta.
+- **El volumen es ~5x menor que el ejemplo de este plan.** ~2.100 personas-día
+  al mes en toda la plataforma, contra las 10.000 del ejemplo del Paso 2, y una
+  tasa de retorno de ~1,5 días por persona en 9 días, no los 15 que asumía la
+  sección de la métrica. El $/persona-día simplemente sube (~$140 en vez de
+  $30), pero **no armar el pitch comercial sobre las cifras del ejemplo**.
 
 #### Por qué la audiencia se mide de `page_views` y no de impresiones
 

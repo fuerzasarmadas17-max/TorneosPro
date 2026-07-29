@@ -17,12 +17,24 @@
 -- Las columnas `f_*` dicen qué requisito de nivel 2 le falta, para ver si hay
 -- uno solo que esté frenando a todos (señal de que ese umbral está mal puesto).
 --
+-- ⚠️ MIRAR PRIMERO `dias_del_mes_con_datos` (última columna).
+--
+-- Si es menor que los días transcurridos del mes, la audiencia está TRUNCADA y
+-- los umbrales mensuales no se pueden calibrar con esta corrida. Pasó en la
+-- primera (2026-07-29): daba 9 días porque `page_views.visitor_id` se agregó el
+-- 20 de julio y esta consulta filtra `visitor_id IS NOT NULL`. Cuatro
+-- organizadores mostraban `dias = 9` y se leía como comportamiento cuando era
+-- el techo del dato. `f_pers_dia` salía X para 5 de 6 por eso, no porque 300
+-- estuviera alto.
+--
+-- Primera corrida con un mes entero limpio: septiembre 2026 (para agosto).
+--
 -- OJO con personas-día: sale de `page_views`, no de impresiones de publicidad,
 -- porque la puerta no puede depender de que le hayas asignado una campaña.
--- Incluye las visitas del propio organizador — `page_views` no guarda si el
--- visitante estaba logueado, así que no se pueden descontar. Con umbral 300 eso
--- es ~10% de ruido. La migración que agrega esa marca está pendiente de
--- decisión; hasta entonces, leer estos números sabiendo que vienen infladitos.
+--
+-- Las visitas del propio organizador se excluyen vía `is_authenticated`
+-- (migración 20260729d). Las anteriores a esa fecha tienen NULL —no se sabe— y
+-- se dejan pasar, así que los meses previos a agosto 2026 vienen infladitos.
 
 WITH params AS (
   -- Mes en curso. Para probar contra un mes cerrado, cambiar por ejemplo a
@@ -93,9 +105,29 @@ audiencia AS (
   CROSS JOIN params p
   WHERE pv.entity_type = 'tournament'
     AND pv.visitor_id IS NOT NULL
+    -- Excluye al propio organizador revisando su torneo. NULL = visita
+    -- anterior a la migración 20260729d, no se sabe, se deja pasar.
+    AND pv.is_authenticated IS NOT TRUE
     AND pv.created_at >= p.mes_desde
     AND pv.created_at <  p.mes_hasta
   GROUP BY t.created_by
+),
+
+-- CONTROL DE COBERTURA. Cuántos días del período tienen dato utilizable, en
+-- toda la plataforma. Si es menor que los días transcurridos del mes, la
+-- audiencia de arriba está truncada y los umbrales no se pueden calibrar.
+cobertura AS (
+  SELECT
+    COUNT(DISTINCT pv.created_at::date) AS dias_con_datos,
+    LEAST(
+      EXTRACT(day FROM (SELECT mes_hasta FROM params) - interval '1 day')::int,
+      EXTRACT(day FROM now())::int
+    )                                   AS dias_transcurridos
+  FROM page_views pv
+  CROSS JOIN params p
+  WHERE pv.visitor_id IS NOT NULL
+    AND pv.created_at >= p.mes_desde
+    AND pv.created_at <  p.mes_hasta
 ),
 
 base AS (
@@ -153,6 +185,10 @@ SELECT
   CASE WHEN n2_personas_dia  THEN '' ELSE 'X' END AS "f_pers_dia",
   CASE WHEN n2_dias          THEN '' ELSE 'X' END AS "f_dias",
   CASE WHEN antiguedad_ok    THEN '' ELSE 'X' END AS "f_antig",
-  CASE WHEN perfil_ok        THEN '' ELSE 'X' END AS "f_perfil"
+  CASE WHEN perfil_ok        THEN '' ELSE 'X' END AS "f_perfil",
+  -- LEER ESTO PRIMERO. "9/29" = solo 9 de los 29 días transcurridos tienen
+  -- dato: la audiencia está truncada y los umbrales no se pueden calibrar.
+  (SELECT dias_con_datos || '/' || dias_transcurridos FROM cobertura)
+                                                  AS "dias_del_mes_con_datos"
 FROM evaluado
 ORDER BY nivel DESC, personas_dia DESC, partidos DESC;
