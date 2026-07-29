@@ -203,7 +203,9 @@ function AdsContent() {
   const [listMap, setListMap] = useState<Record<string, string[]>>({});
   const [counts, setCounts] = useState<Record<string, Counts>>({});
   const [totals, setTotals] = useState<AdAnalytics["totals"]>(null);
-  const [byOrganizer, setByOrganizer] = useState<AdAnalytics["by_organizer"]>([]);
+  const [byCampaignOrganizer, setByCampaignOrganizer] = useState<
+    AdAnalytics["by_campaign_organizer"]
+  >([]);
   const [detail, setDetail] = useState<AdAnalytics["detail"]>([]);
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>("current");
@@ -299,12 +301,13 @@ function AdsContent() {
       setMetricsError(
         "La base no devolvió métricas. Suele ser que tu usuario no tiene rol de admin."
       );
-    } else if (!(evRes.data as AdAnalytics).by_organizer) {
-      // La RPC responde pero le falta el corte por organizador: está corriendo
-      // la v1. Si no se dijera, el reparto se vería vacío y se leería como
-      // "ningún organizador aportó audiencia" en vez de "falta una migración".
+    } else if (!(evRes.data as AdAnalytics).by_campaign_organizer) {
+      // La RPC responde pero le falta el cruce campaña × organizador: está
+      // corriendo una versión vieja. Si no se dijera, el reparto se vería
+      // vacío y se leería como "ningún organizador aportó audiencia" en vez de
+      // "falta una migración".
       setMetricsError(
-        "La base está corriendo una versión vieja de get_ad_analytics (sin corte por organizador). Falta correr la migración 20260729c_ad_analytics_by_organizer.sql."
+        "La base está corriendo una versión vieja de get_ad_analytics (sin el cruce campaña × organizador). Falta correr la migración 20260729e_ad_analytics_by_campaign_organizer.sql."
       );
     } else {
       setMetricsError(null);
@@ -322,7 +325,7 @@ function AdsContent() {
     }
     setCounts(tally);
     setTotals(analytics?.totals ?? null);
-    setByOrganizer(analytics?.by_organizer ?? []);
+    setByCampaignOrganizer(analytics?.by_campaign_organizer ?? []);
     setDetail(analytics?.detail ?? []);
 
     setTournaments((tournRes.data as TournamentLite[]) || []);
@@ -1001,10 +1004,15 @@ function AdsContent() {
       {/* ===== Reparto con organizadores ===== */}
       {!metricsError && (
         <AdRevenueShare
-          organizers={byOrganizer}
+          rows={byCampaignOrganizer}
+          campaignNames={Object.fromEntries(
+            campaigns.map((c) => [c.id, c.advertiser_name])
+          )}
+          monthlyPrices={Object.fromEntries(
+            campaigns.map((c) => [c.id, c.monthly_price])
+          )}
           periodLabel={DATE_RANGE_LABELS[dateRange]}
           coverage={personCoverage}
-          globalPersonDays={totalPersonDays}
         />
       )}
 

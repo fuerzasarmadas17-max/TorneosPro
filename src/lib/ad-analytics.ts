@@ -29,6 +29,7 @@ export interface AdAnalytics {
     person_days: number;
   }[];
   by_organizer: AdOrganizerRow[];
+  by_campaign_organizer: AdCampaignOrganizerRow[];
   detail: AdDetailRow[];
   totals: {
     impressions: number;
@@ -41,10 +42,16 @@ export interface AdAnalytics {
 export interface AdOrganizerRow {
   organizer_id: string;
   organizer_name: string | null;
+  organizer_excluded: boolean;
   tournaments: number;
   impressions: number;
   clicks: number;
   person_days: number;
+}
+
+/** Celda campaña × organizador: la base del reparto. */
+export interface AdCampaignOrganizerRow extends AdOrganizerRow {
+  campaign_id: string;
 }
 
 export interface AdDetailRow {
@@ -80,107 +87,233 @@ export function rangeBounds(range: DateRange): {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-/** Porción del fondo que va a los organizadores. El otro 50% es de la app. */
+/** Porción de lo que paga cada campaña que va a los organizadores que le
+ *  entregaron audiencia. El otro 50% es de la app. */
 export const ORGANIZER_SHARE = 0.5;
 
-export interface ShareRow extends AdOrganizerRow {
-  /** Participación sobre el total de personas-día repartibles, en 0..1. */
-  share: number;
-  /** Pesos colombianos, entero. La suma de todas las filas da exactamente
-   *  `pool` — ver el reparto de residuos en `computeRevenueShare`. */
+/** Lo que se le cobra a una campaña por el período que se está liquidando. */
+export interface CampaignRevenue {
+  campaignId: string;
+  /** COP. Ya prorrateado a los días que la campaña estuvo al aire, si aplica. */
   amountCop: number;
 }
 
-export interface RevenueShare {
-  rows: ShareRow[];
-  /** Denominador del reparto: la SUMA de personas-día por organizador.
-   *
-   *  NO es `totals.person_days`, y la diferencia no es un error. El total
-   *  global cuenta personas-día distintas en toda la plataforma, así que quien
-   *  el mismo día ve torneos de dos organizadores aporta 1 al global pero 1 a
-   *  cada uno. Por eso esta suma es siempre >= el global.
-   *
-   *  Para repartir hay que usar esta suma, porque es lo único que da 100%
-   *  exacto: con el global los porcentajes sumarían más de 100% y el reparto
-   *  excedería el fondo. */
-  totalPersonDays: number;
-  /** Plata para los organizadores: el fondo por `ORGANIZER_SHARE`. */
-  pool: number;
-  /** Pesos por persona-día. Informativo: los montos NO se calculan
-   *  multiplicando por esto (ver el reparto de residuos), así que puede no
-   *  cuadrar al peso contra las filas. */
+/** Qué le tocó a un organizador dentro de UNA campaña. */
+export interface CampaignSlice {
+  campaignId: string;
+  personDays: number;
+  /** Participación en esa campaña, 0..1. */
+  share: number;
+  /** COP. Cero si el organizador no es elegible: su parte queda con la
+   *  plataforma, no se reparte entre los demás. */
+  amountCop: number;
+  /** Lo que le habría tocado si fuera elegible. Sirve para mostrarle al
+   *  organizador cuánto está dejando sobre la mesa por no cumplir requisitos. */
+  wouldBeCop: number;
+}
+
+export interface OrganizerPayout {
+  organizerId: string;
+  organizerName: string | null;
+  eligible: boolean;
+  /** Motivo de la no-elegibilidad, para mostrarlo en el panel. */
+  reason: string | null;
+  /** Solo las campañas donde aportó personas-día. */
+  slices: CampaignSlice[];
+  /** Personas-día sumadas sobre las campañas donde aportó. OJO: es una suma de
+   *  celdas campaña × organizador, así que cuenta dos veces a quien vio dos
+   *  campañas el mismo día. Sirve para ordenar la tabla, NO para repartir —
+   *  cada campaña ya reparte con su propio denominador. */
+  personDaysAcrossCampaigns: number;
+  /** COP a transferirle: la suma de sus tajadas. */
+  totalCop: number;
+}
+
+export interface CampaignPool {
+  campaignId: string;
+  /** COP para organizadores en esta campaña. */
+  poolCop: number;
+  /** Denominador: personas-día de esta campaña sumadas por organizador. */
+  personDays: number;
+  /** COP por persona-día en esta campaña. Cada campaña tiene su propia tarifa:
+   *  una campaña departamental chica paga mucho más por persona-día que una
+   *  nacional grande, porque su bolsa se divide entre menos audiencia. */
   ratePerPersonDay: number;
+  /** COP que quedan con la plataforma por organizadores no elegibles. */
+  retainedCop: number;
+}
+
+export interface RevenueShare {
+  /** Todos los organizadores con aporte, elegibles o no, de mayor a menor. */
+  organizers: OrganizerPayout[];
+  perCampaign: CampaignPool[];
+  /** Suma de las bolsas de todas las campañas. */
+  poolCop: number;
+  /** Suma de lo que hay que transferir. */
+  payableCop: number;
+  /** Lo que queda con la plataforma por no-elegibles. Siempre se cumple:
+   *  payableCop + retainedCop === poolCop. */
+  retainedCop: number;
+}
+
+/** Decide si un organizador cobra. Hoy el panel solo conoce la bandera de
+ *  cuenta excluida; el umbral mensual de monetización llega con el Paso 3. */
+export type EligibilityFn = (
+  row: AdCampaignOrganizerRow
+) => { eligible: boolean; reason: string | null };
+
+/** Elegibilidad por defecto: cobra todo el que no esté excluido a mano. */
+export const defaultEligibility: EligibilityFn = (row) =>
+  row.organizer_excluded
+    ? { eligible: false, reason: "Cuenta excluida del reparto" }
+    : { eligible: true, reason: null };
+
+/**
+ * Reparte por RESIDUO MAYOR. Devuelve un monto entero por índice, cuya suma da
+ * exactamente `pool`.
+ *
+ * Redondear cada fila por separado descuadra contra la bolsa (con 5 filas,
+ * hasta $2-3 de más o de menos), y un total que no cuadra con lo que se va a
+ * transferir es una discusión asegurada cuando hay plata de por medio. Acá cada
+ * fila recibe su piso entero y los pesos que sobran van de a uno a las
+ * fracciones más grandes.
+ *
+ * Los empates se resuelven por fracción, luego por peso y luego por la clave de
+ * desempate, para que el resultado no cambie entre recargas: a quién le tocó el
+ * peso extra tiene que ser estable.
+ */
+function largestRemainder(
+  weights: number[],
+  pool: number,
+  tieBreak: string[]
+): number[] {
+  const total = weights.reduce((a, w) => a + w, 0);
+  if (total <= 0 || pool <= 0) return weights.map(() => 0);
+
+  const parts = weights.map((w, i) => {
+    const raw = (w / total) * pool;
+    const floor = Math.floor(raw);
+    return { i, w, floor, frac: raw - floor };
+  });
+
+  let remainder = pool - parts.reduce((a, p) => a + p.floor, 0);
+  const order = [...parts].sort(
+    (a, b) => b.frac - a.frac || b.w - a.w || tieBreak[a.i].localeCompare(tieBreak[b.i])
+  );
+
+  const out = parts.map((p) => p.floor);
+  for (const p of order) {
+    if (remainder <= 0) break;
+    out[p.i] += 1;
+    remainder--;
+  }
+  return out;
 }
 
 /**
- * Reparte `pool` entre organizadores en proporción a sus personas-día.
+ * Reparte lo que pagó cada campaña entre los organizadores que le entregaron
+ * audiencia A ELLA.
  *
- * Los montos se reparten por RESIDUO MAYOR, no redondeando cada fila por
- * separado. Redondear fila por fila deja un descuadre contra el fondo (con 5
- * organizadores puede sobrar o faltar hasta $2-3), y un total que no cuadra
- * con lo que se va a transferir es una discusión asegurada cuando hay plata de
- * por medio. Acá cada fila recibe su piso entero y los pesos que sobran van de
- * a uno a las fracciones más grandes, así la suma da `pool` exacto.
+ * POR QUÉ POR CAMPAÑA Y NO CON UN FONDO ÚNICO
+ * Las campañas están segmentadas. Una dirigida a Córdoba solo se muestra en
+ * torneos de Córdoba, así que con un fondo único repartido por audiencia total
+ * de la plataforma, el organizador más grande cobraba de una campaña a la que
+ * no le aportó ni una persona, y los que entregaron el 100% de esa audiencia
+ * recibían migajas. Cada campaña reparte lo suyo; el pago de un organizador es
+ * la suma de sus tajadas.
  *
- * Empates de fracción: se resuelven por más personas-día y luego por
- * `organizer_id`, para que el resultado sea estable entre recargas y no cambie
- * a quién le tocó el peso extra.
+ * EL DENOMINADOR INCLUYE A LOS NO ELEGIBLES
+ * El porcentaje de quien no califica se queda con la plataforma, NO se
+ * redistribuye entre los que sí. Por eso el denominador de cada campaña son
+ * todos los que aportaron: si fueran solo los elegibles, absorberían esa parte
+ * y cobrarían más que su aporte real.
  */
 export function computeRevenueShare(
-  organizers: AdOrganizerRow[],
-  fundCop: number
+  rows: AdCampaignOrganizerRow[],
+  revenues: CampaignRevenue[],
+  isEligible: EligibilityFn = defaultEligibility
 ): RevenueShare {
-  const eligible = organizers.filter((o) => o.person_days > 0);
-  const totalPersonDays = eligible.reduce((a, o) => a + o.person_days, 0);
-  const pool = Math.floor(Math.max(0, fundCop) * ORGANIZER_SHARE);
+  const revenueByCampaign = new Map(revenues.map((r) => [r.campaignId, r.amountCop]));
 
-  if (totalPersonDays === 0 || pool === 0) {
-    return {
-      rows: organizers.map((o) => ({ ...o, share: 0, amountCop: 0 })),
-      totalPersonDays,
+  const byCampaign = new Map<string, AdCampaignOrganizerRow[]>();
+  for (const r of rows) {
+    if (r.person_days <= 0) continue;
+    const list = byCampaign.get(r.campaign_id);
+    if (list) list.push(r);
+    else byCampaign.set(r.campaign_id, [r]);
+  }
+
+  const perCampaign: CampaignPool[] = [];
+  const payouts = new Map<string, OrganizerPayout>();
+
+  for (const [campaignId, cells] of byCampaign) {
+    const revenue = Math.max(0, revenueByCampaign.get(campaignId) ?? 0);
+    const pool = Math.floor(revenue * ORGANIZER_SHARE);
+    const personDays = cells.reduce((a, c) => a + c.person_days, 0);
+
+    // El reparto se hace sobre TODAS las celdas, elegibles o no, para que los
+    // porcentajes sean el aporte real y la suma cierre en `pool`.
+    const amounts = largestRemainder(
+      cells.map((c) => c.person_days),
       pool,
-      ratePerPersonDay: 0,
-    };
+      cells.map((c) => c.organizer_id)
+    );
+
+    let retained = 0;
+    cells.forEach((cell, i) => {
+      const { eligible, reason } = isEligible(cell);
+      const wouldBe = amounts[i];
+      const amount = eligible ? wouldBe : 0;
+      if (!eligible) retained += wouldBe;
+
+      let payout = payouts.get(cell.organizer_id);
+      if (!payout) {
+        payout = {
+          organizerId: cell.organizer_id,
+          organizerName: cell.organizer_name,
+          eligible,
+          reason,
+          slices: [],
+          personDaysAcrossCampaigns: 0,
+          totalCop: 0,
+        };
+        payouts.set(cell.organizer_id, payout);
+      }
+      payout.slices.push({
+        campaignId,
+        personDays: cell.person_days,
+        share: personDays > 0 ? cell.person_days / personDays : 0,
+        amountCop: amount,
+        wouldBeCop: wouldBe,
+      });
+      payout.personDaysAcrossCampaigns += cell.person_days;
+      payout.totalCop += amount;
+    });
+
+    perCampaign.push({
+      campaignId,
+      poolCop: pool,
+      personDays,
+      ratePerPersonDay: personDays > 0 ? pool / personDays : 0,
+      retainedCop: retained,
+    });
   }
 
-  const exact = eligible.map((o) => {
-    const share = o.person_days / totalPersonDays;
-    const raw = share * pool;
-    return { row: o, share, floor: Math.floor(raw), frac: raw - Math.floor(raw) };
-  });
-
-  let remainder = pool - exact.reduce((a, e) => a + e.floor, 0);
-  const byFrac = [...exact].sort(
+  const organizers = [...payouts.values()].sort(
     (a, b) =>
-      b.frac - a.frac ||
-      b.row.person_days - a.row.person_days ||
-      a.row.organizer_id.localeCompare(b.row.organizer_id)
+      b.totalCop - a.totalCop ||
+      b.personDaysAcrossCampaigns - a.personDaysAcrossCampaigns ||
+      a.organizerId.localeCompare(b.organizerId)
   );
-  const bonus = new Map<string, number>();
-  for (const e of byFrac) {
-    if (remainder <= 0) break;
-    bonus.set(e.row.organizer_id, 1);
-    remainder--;
-  }
 
-  const rows: ShareRow[] = exact
-    .map((e) => ({
-      ...e.row,
-      share: e.share,
-      amountCop: e.floor + (bonus.get(e.row.organizer_id) ?? 0),
-    }))
-    .sort((a, b) => b.person_days - a.person_days);
-
-  // Los que no aportaron personas-día en el período igual se listan, en cero:
-  // que no aparezcan se lee como "se me perdió un organizador".
-  for (const o of organizers) {
-    if (o.person_days <= 0) rows.push({ ...o, share: 0, amountCop: 0 });
-  }
+  const poolCop = perCampaign.reduce((a, c) => a + c.poolCop, 0);
+  const retainedCop = perCampaign.reduce((a, c) => a + c.retainedCop, 0);
 
   return {
-    rows,
-    totalPersonDays,
-    pool,
-    ratePerPersonDay: pool / totalPersonDays,
+    organizers,
+    perCampaign: perCampaign.sort((a, b) => b.poolCop - a.poolCop),
+    poolCop,
+    payableCop: poolCop - retainedCop,
+    retainedCop,
   };
 }

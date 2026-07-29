@@ -172,22 +172,61 @@ importar qué campaña vieron. Ahí sí suma y da el 100%.
 - `components/ads/ad-revenue-share.tsx`: tabla de reparto con personas-día,
   porcentaje y monto por organizador.
 
-**El fondo se escribe a mano.** De dónde sale (lo facturado, lo efectivamente
-recaudado, cómo se prorratea una campaña que cruza dos meses) es decisión
-comercial abierta, y cablearla a `ad_payments` habría sido adivinar. Cuando se
-decida, el input se reemplaza por el cálculo y el resto no se toca.
+**El cobro de cada campaña se precarga de `monthly_price` y se puede corregir.**
+Lo que queda por decidir es si la fuente definitiva es lo facturado o lo
+efectivamente recaudado (`ad_payments`), y cómo prorratear una campaña que cruza
+dos meses. Mientras eso se decida, el admin ajusta a mano.
 
-### El denominador del reparto no es el total global
+### El reparto es POR CAMPAÑA, no por fondo único
 
-El porcentaje de cada organizador se calcula sobre la **suma de las filas de
-`by_organizer`**, no sobre `totals.person_days`. No son lo mismo: quien el
-mismo día ve torneos de dos organizadores aporta 1 al total global pero 1 a
-cada uno, así que la suma de filas es siempre >= el global. Hay que usar la
-suma porque es la única que da 100% exacto — con el global los porcentajes
-pasarían de 100% y el reparto excedería el fondo.
+Corregido el 2026-07-29, después de que el organizador preguntara qué pasa con
+una campaña dirigida a Córdoba que solo sale en torneos de dos organizadores
+nuevos de Montería.
 
-El panel muestra las dos cifras con la explicación al lado, porque ver dos
-"personas-día" distintas en la misma pantalla se lee como un error.
+**El hueco:** con fondo único, la plata se repartía según las personas-día
+totales de cada organizador en la plataforma. Pero las campañas están
+segmentadas. Esa campaña de $600.000 le habría pagado ~$147.000 al organizador
+más grande —que aportó CERO audiencia a esa campaña— mientras los dos que
+entregaron el 100% recibían migajas. El anunciante de Montería financiando a un
+organizador de otro departamento.
+
+**La corrección:** cada campaña reparte su propia plata entre quienes le
+entregaron audiencia a ELLA. El pago de un organizador es la suma de sus
+tajadas. En el ejemplo, Pedro (400 personas-día) cobra $200.000 y Luisa (200)
+cobra $100.000; los demás, cero.
+
+Eso exige el cruce campaña × organizador (`by_campaign_organizer`), que no se
+puede armar en el cliente agrupando `detail`: sería una suma, y quien vio la
+misma campaña en dos torneos del mismo organizador el mismo día contaría dos
+veces.
+
+**Cada campaña tiene su propia tarifa por persona-día**, y es correcto: una
+campaña departamental chica paga más por persona que una nacional grande,
+porque su bolsa se divide entre menos audiencia.
+
+**Beneficio lateral:** con reparto por campaña, el monto sale de
+`ad_campaigns.monthly_price` en vez de ser un número escrito a mano. El panel lo
+precarga desde ahí y deja corregirlo (una campaña que arrancó a mitad de mes
+cobra menos).
+
+### El denominador incluye a los que no cobran
+
+El porcentaje de un organizador que no participa del reparto —cuenta excluida o
+que no llegó al umbral— **se queda con la plataforma y no se redistribuye**.
+
+Por eso el denominador de cada campaña son todos los que aportaron, no solo los
+elegibles: si fueran solo los elegibles, absorberían esa parte y cobrarían más
+que su aporte real. Se cumple siempre `payableCop + retainedCop === poolCop`.
+
+### Cuentas excluidas
+
+`users.revenue_share_excluded` marca cuentas que no cobran. Se marca explícito y
+no se adivina por rol ni por nombre, para poder excluir una cuenta de demo o un
+socio sin tocar código.
+
+La cuenta de pruebas de la plataforma ("Torneos Pro") quedó marcada en la
+migración `20260729e`: hasta entonces habría entrado a cobrar como cualquier
+organizador.
 
 ### Los montos se reparten por residuo mayor
 
@@ -431,7 +470,10 @@ venta al anunciante querría.
 | 2026-07-29 | `visitor_id` en `analytics_events` va primero, aunque el resto tarde: el dato perdido no se recupera. |
 | 2026-07-29 | Impresiones y CTR se usan para el **informe al anunciante**; persona-día para **liquidar**. |
 | 2026-07-29 | La unidad monetizable es el **organizador** (`organization_profiles.user_id` es UNIQUE, no hay sub-usuarios). Se le paga a la cuenta; si hay varias personas detrás, reparten por fuera. |
-| 2026-07-29 | El reparto se calcula sobre la **suma de `by_organizer`**, no sobre `totals.person_days`: es la única base que da 100% exacto. |
+| 2026-07-29 | El reparto es **por campaña**, no con un fondo único: las campañas están segmentadas y un fondo único le paga a organizadores que no aportaron audiencia a esa campaña. |
+| 2026-07-29 | El **denominador de cada campaña incluye a los no elegibles**; su parte se queda con la plataforma y no se redistribuye. |
+| 2026-07-29 | **Sin mínimo garantizado** por organizador: el reparto es puramente proporcional. |
+| 2026-07-29 | La cuenta de pruebas "Torneos Pro" queda **excluida** del reparto vía `users.revenue_share_excluded`. |
 | 2026-07-29 | Los montos se reparten por **residuo mayor**, para que la suma cuadre al peso con el fondo. |
 | 2026-07-29 | El **fondo se escribe a mano** hasta que se decida de dónde sale (facturado vs. recaudado, y cómo prorratear campañas que cruzan meses). |
 | 2026-07-29 | Tope del modal en **7 por persona, torneo y día**, reemplazando el "sin tope" del 2026-07-03. Por torneo y no global: con cuota global el organizador que la persona abría primero se quedaba con todo el crédito de personas-día. |
