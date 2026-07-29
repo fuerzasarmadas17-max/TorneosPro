@@ -101,6 +101,11 @@ export function trackEvent(input: TrackEventInput): void {
       entity_type: input.entityType ?? null,
       entity_id: input.entityId ?? null,
       session_id: getSessionId(),
+      // Persona (permanente), además de la sesión (caduca a los 30 min). Es lo
+      // que permite contar PERSONA-DÍA en publicidad: quien recarga muchas
+      // veces el mismo día aporta 1. Ver la migración
+      // 20260729_analytics_events_visitor_id.
+      visitor_id: getVisitorId() || null,
       device_type: getDeviceType(),
       metadata: input.metadata ?? null,
     })
