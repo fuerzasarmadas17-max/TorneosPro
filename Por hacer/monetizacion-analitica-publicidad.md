@@ -28,7 +28,7 @@ Se llegó a ella descartando dos alternativas:
 
 | Métrica | Por qué no |
 |---|---|
-| **Impresiones crudas** | El modal se muestra en cada carga, sin tope (decisión 2026-07-03). Quien refresca 50 veces genera 50 impresiones. Pagar por esto es invitar a inflarlo. |
+| **Impresiones crudas** | Quien refresca genera una impresión por carga. Pagar por eso es invitar a inflarlo. El tope de 7 por torneo y día (ver más abajo) acota el abuso, pero no cambia el fondo del problema: la impresión mide cargas, no gente. |
 | **Personas únicas del mes** | Se estanca. Un torneo de 20 equipos tiene ~200 personas el primer fin de semana y las mismas 200 al final, aunque hayan vuelto 15 veces. Subestima el valor real entregado al anunciante. |
 
 **Persona-día resuelve las dos.** 200 personas × 15 fechas = 3.000, o sea crece
