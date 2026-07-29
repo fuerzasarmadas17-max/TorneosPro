@@ -47,6 +47,8 @@ import {
   CheckCircle2,
   Clock,
   CircleDashed,
+  CalendarRange,
+  Users,
 } from "lucide-react";
 import { SPORTS } from "@/data/sports";
 import { SCOPES, DEPARTMENTS } from "@/data/colombia";
@@ -99,6 +101,72 @@ interface TournamentLite {
 interface Counts {
   impressions: number;
   clicks: number;
+  /** Personas-día: visitantes distintos por día. Métrica de reparto con
+   *  organizadores — inmune al refresh pero crece con la actividad real. */
+  personDays: number;
+  /** Impresiones que ya traen `visitor_id`. Mientras sea menor que
+   *  `impressions`, `personDays` subestima (los eventos previos a la migración
+   *  del 2026-07-29 no tienen persona). */
+  withPerson: number;
+}
+
+/**
+ * Lo que devuelve `get_ad_analytics`. Cada corte viene YA agregado desde
+ * Postgres, con su propio COUNT(DISTINCT): personas-día no se puede sumar
+ * entre filas (la misma persona el mismo día puede aparecer en dos campañas o
+ * dos torneos). Acá no se suma nada, solo se indexa.
+ */
+interface AdAnalytics {
+  by_campaign: {
+    campaign_id: string;
+    impressions: number;
+    clicks: number;
+    persons: number;
+    person_days: number;
+    impressions_with_person: number;
+  }[];
+  by_tournament: {
+    tournament_id: string;
+    tournament_name: string | null;
+    organizer_id: string | null;
+    impressions: number;
+    clicks: number;
+    person_days: number;
+  }[];
+  detail: {
+    campaign_id: string;
+    tournament_id: string | null;
+    tournament_name: string | null;
+    organizer_id: string | null;
+    impressions: number;
+    clicks: number;
+    person_days: number;
+  }[];
+  totals: {
+    impressions: number;
+    clicks: number;
+    person_days: number;
+    impressions_with_person: number;
+  } | null;
+}
+
+/** Rango de fechas del panel. `all` = sin filtro (histórico completo). */
+type DateRange = "current" | "previous" | "all";
+
+const DATE_RANGE_LABELS: Record<DateRange, string> = {
+  current: "Mes en curso",
+  previous: "Mes pasado",
+  all: "Todo el histórico",
+};
+
+/** Límites del rango, en hora local, como ISO para la RPC. */
+function rangeBounds(range: DateRange): { from: string | null; to: string | null } {
+  if (range === "all") return { from: null, to: null };
+  const now = new Date();
+  const monthOffset = range === "previous" ? -1 : 0;
+  const from = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const to = new Date(now.getFullYear(), now.getMonth() + monthOffset + 1, 1);
+  return { from: from.toISOString(), to: to.toISOString() };
 }
 
 /** Chip toggle multi-select reutilizable. */
@@ -184,6 +252,9 @@ function AdsContent() {
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [listMap, setListMap] = useState<Record<string, string[]>>({});
   const [counts, setCounts] = useState<Record<string, Counts>>({});
+  const [totals, setTotals] = useState<AdAnalytics["totals"]>(null);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<DateRange>("current");
   const [tournaments, setTournaments] = useState<TournamentLite[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -218,10 +289,15 @@ function AdsContent() {
         .select("*")
         .order("created_at", { ascending: false }),
       supabase.from("ad_campaign_tournaments").select("campaign_id, tournament_id"),
-      supabase
-        .from("analytics_events")
-        .select("target_id, event_type")
-        .in("event_type", ["ad_impression", "ad_click"]),
+      // Agregación en Postgres, NO en el navegador. Antes esto era un
+      // `.select()` sobre analytics_events sin paginar: PostgREST corta en
+      // 1000 filas, así que el conteo se congelaba en silencio pasado ese
+      // punto. La RPC devuelve el grano campaña × torneo (decenas de filas) y
+      // acá abajo se agrupa como haga falta.
+      supabase.rpc("get_ad_analytics", {
+        p_from: rangeBounds(dateRange).from,
+        p_to: rangeBounds(dateRange).to,
+      }),
       supabase
         .from("tournaments")
         .select("id, name")
@@ -254,19 +330,43 @@ function AdsContent() {
     }
     setListMap(map);
 
+    // Un fallo de la RPC NO puede pasar por "no hay datos": se vería como
+    // todo en cero y es indistinguible de un período sin actividad. Los dos
+    // casos reales son la función sin crear (PGRST202, migración sin correr) y
+    // el chequeo de admin devolviendo NULL.
+    if (evRes.error) {
+      console.error("get_ad_analytics falló", evRes.error);
+      setMetricsError(
+        evRes.error.code === "PGRST202"
+          ? "Falta correr la migración 20260729b_get_ad_analytics.sql en Supabase."
+          : `No se pudieron cargar las métricas: ${evRes.error.message}`
+      );
+    } else if (evRes.data === null) {
+      setMetricsError(
+        "La base no devolvió métricas. Suele ser que tu usuario no tiene rol de admin."
+      );
+    } else {
+      setMetricsError(null);
+    }
+
+    const analytics = evRes.data as AdAnalytics | null;
     const tally: Record<string, Counts> = {};
-    for (const row of evRes.data || []) {
-      const r = row as { target_id: string | null; event_type: string };
-      if (!r.target_id) continue;
-      const c = (tally[r.target_id] ??= { impressions: 0, clicks: 0 });
-      if (r.event_type === "ad_impression") c.impressions++;
-      else if (r.event_type === "ad_click") c.clicks++;
+    for (const r of analytics?.by_campaign ?? []) {
+      tally[r.campaign_id] = {
+        impressions: r.impressions,
+        clicks: r.clicks,
+        personDays: r.person_days,
+        withPerson: r.impressions_with_person,
+      };
     }
     setCounts(tally);
+    setTotals(analytics?.totals ?? null);
 
     setTournaments((tournRes.data as TournamentLite[]) || []);
     setLoading(false);
-  }, []);
+    // Cambiar el rango re-consulta: el filtro de fechas lo aplica la RPC, no
+    // el cliente (que ya no tiene los eventos crudos).
+  }, [dateRange]);
 
   useEffect(() => {
     loadAll();
@@ -550,8 +650,18 @@ function AdsContent() {
     c.is_active && new Date(c.starts_at) <= now && new Date(c.ends_at) > now;
 
   const liveCount = campaigns.filter(isLive).length;
-  const totalImpr = Object.values(counts).reduce((a, c) => a + c.impressions, 0);
-  const totalClicks = Object.values(counts).reduce((a, c) => a + c.clicks, 0);
+  // Los totales vienen de la RPC, no de sumar `counts`: personas-día no es
+  // aditivo entre campañas (la misma persona el mismo día puede ver dos).
+  const totalImpr = totals?.impressions ?? 0;
+  const totalClicks = totals?.clicks ?? 0;
+  const totalPersonDays = totals?.person_days ?? 0;
+  // Qué proporción de las impresiones del período ya trae persona. Mientras
+  // sea baja, personas-día subestima: los eventos previos a la migración del
+  // 2026-07-29 no tienen visitor_id y no se pueden reconstruir.
+  const personCoverage =
+    totals && totals.impressions > 0
+      ? totals.impressions_with_person / totals.impressions
+      : 0;
 
   // Ordenar: al aire primero, luego programadas/pausadas, vencidas al final.
   const sortRank = (c: CampaignRow) => {
@@ -656,13 +766,24 @@ function AdsContent() {
         </Button>
       </div>
 
+      {/* Rango del período. Aplica a impresiones, clics, personas-día y CTR —
+          no a la lista de campañas, que siempre se muestra completa. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <CalendarRange className="h-4 w-4 shrink-0 text-muted-foreground" />
+        {(Object.keys(DATE_RANGE_LABELS) as DateRange[]).map((r) => (
+          <Button
+            key={r}
+            variant={dateRange === r ? "default" : "outline"}
+            size="sm"
+            onClick={() => setDateRange(r)}
+          >
+            {DATE_RANGE_LABELS[r]}
+          </Button>
+        ))}
+      </div>
+
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard
-          label="Campañas"
-          value={campaigns.length}
-          icon={Megaphone}
-        />
         <StatCard
           label="Al aire ahora"
           value={liveCount}
@@ -676,12 +797,50 @@ function AdsContent() {
           accent="bg-blue-500/10 text-blue-600"
         />
         <StatCard
+          label="Personas-día"
+          value={totalPersonDays.toLocaleString()}
+          icon={Users}
+          accent="bg-amber-500/10 text-amber-600"
+        />
+        <StatCard
           label="Clics"
           value={totalClicks.toLocaleString()}
           icon={MousePointerClick}
           accent="bg-violet-500/10 text-violet-600"
         />
       </div>
+
+      {/* Las métricas fallaron: hay que decirlo. Un cero real y un cero por
+          error se ven idénticos, y este panel alimenta decisiones de plata. */}
+      {metricsError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+          <p className="font-medium text-destructive">
+            Las métricas no se pudieron cargar
+          </p>
+          <p className="mt-0.5 text-muted-foreground">
+            {metricsError} Los ceros de abajo no son datos reales.
+          </p>
+        </div>
+      )}
+
+      {/* Aviso mientras el histórico no tenga persona. Sin esto, personas-día
+          se lee como "hubo poca gente" cuando en realidad es "todavía no
+          medíamos personas". Los eventos previos al 2026-07-29 no tienen
+          visitor_id y no se pueden reconstruir. */}
+      {!metricsError && totalImpr > 0 && personCoverage < 0.99 && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+          <p className="font-medium text-amber-700">
+            Personas-día parcial: {Math.round(personCoverage * 100)}% de las
+            impresiones de este período tienen persona identificada.
+          </p>
+          <p className="mt-0.5 text-muted-foreground">
+            Empezamos a medir personas el 29/07/2026. Lo anterior solo tiene
+            impresiones y no se puede reconstruir, así que personas-día
+            subestima hasta que el período esté completo. No liquidar con este
+            número mientras la cobertura no esté cerca del 100%.
+          </p>
+        </div>
+      )}
 
       {/* Campaign list */}
       {loading ? (
@@ -711,7 +870,12 @@ function AdsContent() {
       ) : (
         <div className="space-y-3">
           {sortedCampaigns.map((c) => {
-            const cnt = counts[c.id] || { impressions: 0, clicks: 0 };
+            const cnt = counts[c.id] || {
+              impressions: 0,
+              clicks: 0,
+              personDays: 0,
+              withPerson: 0,
+            };
             const ctr =
               cnt.impressions > 0
                 ? ((cnt.clicks / cnt.impressions) * 100).toFixed(1) + "%"
@@ -785,6 +949,18 @@ function AdsContent() {
                           {cnt.impressions.toLocaleString()}
                         </p>
                         <p className="text-[10px] text-muted-foreground">impr.</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="flex items-center gap-1 text-sm font-semibold">
+                          <Users className="h-3.5 w-3.5 text-amber-600" />
+                          {cnt.personDays.toLocaleString()}
+                        </p>
+                        <p
+                          className="text-[10px] text-muted-foreground"
+                          title="Personas distintas que la vieron cada día, sumadas en el período. No se suma entre campañas."
+                        >
+                          pers-día
+                        </p>
                       </div>
                       <div className="text-center">
                         <p className="flex items-center gap-1 text-sm font-semibold">
