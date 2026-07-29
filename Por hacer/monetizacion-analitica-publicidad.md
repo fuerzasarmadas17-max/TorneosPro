@@ -227,9 +227,6 @@ premiar organizadores.
 
 Lo que se sabe que necesita:
 
-- **Requisitos evaluables por el sistema** para desbloquearla (torneos
-  activos, partidos con resultado, mínimo de audiencia real). Si son
-  automáticos, se desbloquea sola y no hay que negociar caso por caso.
 - **Panel:** campañas corriendo en sus torneos, personas-día aportadas, su
   participación, estimado del mes, acumulado histórico.
 - **Corte mensual congelado.** Crítico: si se calcula en vivo, el número que
@@ -241,6 +238,75 @@ Lo que se sabe que necesita:
   se sabe a quién ya se le pagó.
 - El estimado del mes debe etiquetarse como **proyección**: mientras el fondo
   dependa de lo que se venda ese mes, ese número puede bajar.
+
+### Requisitos para desbloquear (aprobados 2026-07-29)
+
+Dos niveles, no una sola puerta. Con una sola, el que no califica no ve nada y
+no sabe por qué; con dos, el requisito se vuelve la explicación de qué le falta.
+
+- **Nivel 1 — ve la sección.** Barra baja. Adentro ve la lista de requisitos
+  con su progreso ("vas 180 de 300 personas-día").
+- **Nivel 2 — liquidable este mes.** Solo acá se genera la cuenta de cobro.
+
+| Requisito | Nivel | Umbral |
+|---|---|---|
+| Torneo en curso (`status = 'in-progress'`) | 1 | ≥ 1 |
+| Equipos en ese torneo | 1 | ≥ 6 |
+| Partidos con resultado en el mes | 2 | ≥ 10 |
+| Personas-día en el mes (`page_views`) | 2 | ≥ 300 |
+| Días distintos con audiencia | 2 | ≥ 8 |
+| Antigüedad de la cuenta | 2 | ≥ 30 días |
+| Perfil con nombre y logo | 2 | sí |
+
+**Los umbrales van en configuración, no hardcodeados**, para poder moverlos sin
+desplegar.
+
+**Los números están sin validar contra datos reales.** Hay una consulta lista
+para eso en `Por hacer/consultas/organizadores-vs-requisitos.sql`: muestra cada
+organizador contra cada requisito y marca cuál le falta. Si una sola columna
+sale en rojo para casi todos, ese umbral está mal puesto.
+
+#### Por qué la audiencia se mide de `page_views` y no de impresiones
+
+Las impresiones dependen de que el admin le haya asignado una campaña al
+torneo. Un organizador con audiencia real pero sin campaña marcaría cero y
+**nunca podría desbloquear la sección**: la puerta dependería de una decisión
+del admin, no de su mérito.
+
+Así que la audiencia de la puerta sale de `page_views` (audiencia entregada, la
+vea o no un aviso) y la del pago sigue saliendo de impresiones.
+
+#### Partidos con resultado, no solo "torneo en curso"
+
+El estado `in-progress` lo pone el organizador a mano y puede llevar meses
+abandonado. Contar partidos con resultado **cargado en el mes** prueba que lo
+está operando. Se mira `matches.updated_at` (cuándo se cargó) y no
+`matches.date` (cuándo se jugó, que puede ser de otro mes).
+
+#### Días distintos con audiencia: el antifraude que más rinde
+
+Es más difícil de simular que cualquier total. Quien arma tráfico falso lo hace
+en una o dos sentadas; quien tiene un torneo real recibe gente cada fin de
+semana. Y no le cuesta nada a quien es legítimo.
+
+Contra el que sí tenga la paciencia de entrar todos los días desde varios
+dispositivos, la defensa es el volumen del umbral: con un navegador el techo es
+un punto por día, así que 300 personas-día exigen ~10 dispositivos durante todo
+el mes.
+
+#### Las visitas del organizador contaban para su propio umbral
+
+`page_views` incluye TODAS las visitas, también las del propio organizador
+revisando su torneo — hasta ~30 personas-día propias al mes, ~10% de ruido
+sobre un umbral de 300, y para alguien justo en la línea eso decide si cobra.
+
+No se podía descontar porque la tabla no guardaba si había sesión iniciada. Lo
+arregla `20260729d_page_views_is_authenticated.sql` (columna nullable: NULL =
+visita anterior, no se sabe; nunca `false` por defecto, que mentiría sobre el
+histórico). Aplica solo hacia adelante.
+
+Para el **pago** este problema no existía: el modal no se le muestra a nadie
+logueado, así que el organizador nunca se cuenta a sí mismo en lo que cobra.
 
 ---
 
@@ -339,3 +405,5 @@ venta al anunciante querría.
 | 2026-07-29 | Los montos se reparten por **residuo mayor**, para que la suma cuadre al peso con el fondo. |
 | 2026-07-29 | El **fondo se escribe a mano** hasta que se decida de dónde sale (facturado vs. recaudado, y cómo prorratear campañas que cruzan meses). |
 | 2026-07-29 | Tope del modal en **7 por persona, torneo y día**, reemplazando el "sin tope" del 2026-07-03. Por torneo y no global: con cuota global el organizador que la persona abría primero se quedaba con todo el crédito de personas-día. |
+| 2026-07-29 | Requisitos de "Monetizar" en **dos niveles** (ve la sección / liquida), con los umbrales de la tabla del Paso 3. Pendiente validarlos contra datos reales. |
+| 2026-07-29 | La audiencia de la **puerta** se mide de `page_views`; la del **pago**, de impresiones. Si la puerta usara impresiones, dependería de que el admin le asignara campaña. |

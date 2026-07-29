@@ -47,6 +47,24 @@ export function usePageView(
     viewIdRef.current = viewId;
 
     const insertView = async () => {
+      // ¿Había sesión iniciada? Sirve para excluir al propio organizador del
+      // requisito de audiencia de "Monetizar": el que revisa su torneo todos
+      // los días sumaría ~30 personas-día propias a su propio umbral.
+      //
+      // Se lee la sesión acá y no vía `useAuth()` para no acoplar el hook al
+      // contexto y para tomar el estado en el momento del insert, no en el del
+      // render. `getSession()` lee de localStorage, sin ida al servidor.
+      //
+      // Si falla queda NULL ("no se sabe"), nunca false: marcar como anónimo a
+      // alguien que sí estaba logueado le infla el umbral a su favor.
+      let isAuthenticated: boolean | null = null;
+      try {
+        const { data } = await supabase.auth.getSession();
+        isAuthenticated = data.session !== null;
+      } catch {
+        /* queda null */
+      }
+
       const { error } = await supabase.from("page_views").insert({
         id: viewId,
         page_path: window.location.pathname,
@@ -55,6 +73,7 @@ export function usePageView(
         entity_type: entityType,
         session_id: sessionId,
         visitor_id: visitorId,
+        is_authenticated: isAuthenticated,
         referrer: getCleanReferrer(),
         device_type: getDeviceType(),
         browser: getBrowser(),
