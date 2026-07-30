@@ -247,7 +247,7 @@ export function AdRevenueShare({
             {new Date(settlements[0].closed_at).toLocaleDateString("es-CO")}. No
             se recalcula: es lo que se le prometió a cada organizador.
           </p>
-          <div className="overflow-x-auto">
+          <ScrollRows count={settlements.length} rowHeight={ROW_H_INPUT}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -307,7 +307,7 @@ export function AdRevenueShare({
                 </TableRow>
               </TableFooter>
             </Table>
-          </div>
+          </ScrollRows>
         </CardContent>
       </Card>
     );
@@ -393,8 +393,16 @@ export function AdRevenueShare({
 
         {/* ============ 2. POR CAMPAÑA ============ */}
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Por campaña</h3>
-          <div className="overflow-x-auto">
+          <h3 className="text-sm font-semibold">
+            Por campaña
+            <span className="ml-1.5 font-normal text-muted-foreground">
+              ({share.perCampaign.length}) · {formatCOP(share.poolCop)} a repartir
+            </span>
+          </h3>
+          <ScrollRows
+            count={share.perCampaign.length}
+            rowHeight={ROW_H_INPUT}
+          >
             <Table>
               <TableHeader>
                 <TableRow>
@@ -455,7 +463,7 @@ export function AdRevenueShare({
                 </TableRow>
               </TableFooter>
             </Table>
-          </div>
+          </ScrollRows>
           <p className="text-xs text-muted-foreground">
             El cobro sale de los pagos aprobados, ya prorrateado a los días que
             la campaña estuvo al aire en el mes. Si cobraste por fuera
@@ -469,7 +477,7 @@ export function AdRevenueShare({
           <h3 className="text-sm font-semibold">
             Organizadores que cobran
             <span className="ml-1.5 font-normal text-muted-foreground">
-              ({cobran.length})
+              ({cobran.length}) · {formatCOP(share.payableCop)}
             </span>
           </h3>
           {cobran.length === 0 ? (
@@ -477,7 +485,7 @@ export function AdRevenueShare({
               Ninguno. {share.poolCop === 0 && "Falta registrar el cobro de las campañas."}
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            <ScrollRows count={cobran.length}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -514,7 +522,7 @@ export function AdRevenueShare({
                   </TableRow>
                 </TableFooter>
               </Table>
-            </div>
+            </ScrollRows>
           )}
         </section>
 
@@ -523,8 +531,11 @@ export function AdRevenueShare({
           <section className="space-y-2">
             <h3 className="text-sm font-semibold">
               No clasificaron — su parte te queda a ti
+              <span className="ml-1.5 font-normal text-muted-foreground">
+                ({noCobran.length}) · {formatCOP(share.retainedCop)}
+              </span>
             </h3>
-            <div className="overflow-x-auto">
+            <ScrollRows count={noCobran.length}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -561,7 +572,7 @@ export function AdRevenueShare({
                   </TableRow>
                 </TableFooter>
               </Table>
-            </div>
+            </ScrollRows>
             <p className="text-xs text-muted-foreground">
               Su audiencia sí cuenta para calcular los porcentajes, así que los
               que cobran reciben exactamente su aporte — no más. Lo que no se
@@ -593,6 +604,52 @@ export function AdRevenueShare({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+
+/** Filas visibles antes de que la tabla empiece a scrollear. */
+const MAX_ROWS = 5;
+/** Altura aproximada de una fila: celda `p-2` (16px) + línea (~21px). */
+const ROW_H = 37;
+/** Filas con un <Input h-8> adentro son más altas. */
+const ROW_H_INPUT = 49;
+const HEAD_H = 40;
+const FOOT_H = 37;
+
+/**
+ * Limita la tabla a `MAX_ROWS` filas y deja scrollear el resto.
+ *
+ * Solo pone el tope si hace falta: con 5 filas o menos no aparece scrollbar ni
+ * se recorta nada.
+ *
+ * El encabezado y el pie NO quedan fijos a propósito. `Table` ya se envuelve en
+ * un contenedor con `overflow-x-auto`, y en CSS eso convierte también el eje
+ * vertical en scrollable, así que un `sticky` adentro se anclaría a ese
+ * contenedor —que no es el que scrollea— y no haría nada. Por eso los totales
+ * van en el título de cada sección, donde siempre se ven.
+ */
+function ScrollRows({
+  count,
+  rowHeight = ROW_H,
+  children,
+}: {
+  count: number;
+  rowHeight?: number;
+  children: React.ReactNode;
+}) {
+  const limited = count > MAX_ROWS;
+  return (
+    <div
+      className={limited ? "overflow-y-auto rounded-lg border" : "overflow-x-auto"}
+      style={
+        limited
+          ? { maxHeight: HEAD_H + MAX_ROWS * rowHeight + FOOT_H }
+          : undefined
+      }
+    >
+      {children}
+    </div>
   );
 }
 
