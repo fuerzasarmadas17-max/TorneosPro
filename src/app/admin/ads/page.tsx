@@ -254,6 +254,8 @@ function AdsContent() {
   const [creating, setCreating] = useState(false);
 
   const [payStatus, setPayStatus] = useState<Record<string, "paid" | "pending">>({});
+  /** COP cobrados (pagos aprobados) por campaña. */
+  const [paidByCampaign, setPaidByCampaign] = useState<Record<string, number>>({});
 
   const loadAll = useCallback(async () => {
     const [campRes, mapRes, evRes, tournRes, payRes] = await Promise.all([
@@ -275,20 +277,32 @@ function AdsContent() {
         .from("tournaments")
         .select("id, name")
         .order("created_at", { ascending: false }),
-      supabase.from("ad_payments").select("campaign_id, status"),
+      supabase.from("ad_payments").select("campaign_id, status, amount_cop"),
     ]);
 
     // Estado de pago por campaña: aprobado > pendiente. Los cancelados y
     // rechazados no cuentan; si no queda ninguno vivo, la campaña no tiene link.
     const pay: Record<string, "paid" | "pending"> = {};
+    // Lo efectivamente COBRADO por campaña: solo pagos aprobados, sumados (una
+    // renovación son dos pagos). Es la base del reparto — el precio de lista no
+    // sirve, porque repartiría plata que quizá nunca entró.
+    const paid: Record<string, number> = {};
     for (const row of payRes.data || []) {
-      const r = row as { campaign_id: string | null; status: string };
+      const r = row as {
+        campaign_id: string | null;
+        status: string;
+        amount_cop: number | null;
+      };
       if (!r.campaign_id) continue;
-      if (r.status === "approved") pay[r.campaign_id] = "paid";
-      else if (r.status === "pending" && pay[r.campaign_id] !== "paid")
+      if (r.status === "approved") {
+        pay[r.campaign_id] = "paid";
+        paid[r.campaign_id] = (paid[r.campaign_id] ?? 0) + (r.amount_cop ?? 0);
+      } else if (r.status === "pending" && pay[r.campaign_id] !== "paid") {
         pay[r.campaign_id] = "pending";
+      }
     }
     setPayStatus(pay);
+    setPaidByCampaign(paid);
 
     if (campRes.error) {
       console.error("Error loading campaigns:", campRes.error);
@@ -1068,12 +1082,18 @@ function AdsContent() {
           ) : (
             <AdRevenueShare
               rows={byCampaignOrganizer}
-              campaignNames={Object.fromEntries(
-                campaigns.map((c) => [c.id, c.advertiser_name])
+              campaigns={Object.fromEntries(
+                campaigns.map((c) => [
+                  c.id,
+                  {
+                    name: c.advertiser_name,
+                    paidCop: paidByCampaign[c.id] ?? 0,
+                    starts: c.starts_at,
+                    ends: c.ends_at,
+                  },
+                ])
               )}
-              monthlyPrices={Object.fromEntries(
-                campaigns.map((c) => [c.id, c.monthly_price])
-              )}
+              activeCount={liveCount}
               periodLabel={DATE_RANGE_LABELS[dateRange]}
               periodMonth={periodMonthOf(dateRange)}
               coverage={personCoverage}

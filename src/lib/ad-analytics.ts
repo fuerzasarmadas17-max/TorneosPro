@@ -91,6 +91,56 @@ export function rangeBounds(range: DateRange): {
  *  entregaron audiencia. El otro 50% es de la app. */
 export const ORGANIZER_SHARE = 0.5;
 
+/**
+ * Cuánto de lo que pagó una campaña le corresponde a UN mes.
+ *
+ * Se divide lo cobrado entre el tiempo que la campaña estuvo al aire, y cada
+ * mes se lleva lo de su parte. Una campaña de $310.000 al aire del 15 de julio
+ * al 14 de agosto deja $170.000 en julio y $140.000 en agosto.
+ *
+ * Sin esto, esa campaña aparecería con $310.000 completos en julio y otros
+ * $310.000 en agosto: se repartiría el 50% de $620.000 cuando solo entraron
+ * $310.000, prometiéndole a los organizadores el doble de lo que hay.
+ *
+ * `paidCop` es lo COBRADO (suma de pagos aprobados), no el precio de lista
+ * (decisión 2026-07-29). Si el anunciante no pagó, no hay nada que dividir y
+ * todos los meses dan 0 — nunca se reparte plata que no entró.
+ *
+ * Se usa la proporción de tiempo y no un conteo de días para no tener que
+ * decidir qué hacer con los días parciales: una campaña que arranca a media
+ * tarde aporta esa media tarde.
+ *
+ * Redondea hacia abajo a propósito: entre dos meses puede perderse un peso, y
+ * que sea de la plataforma y no de un organizador.
+ */
+export function proratedRevenue(
+  paidCop: number,
+  startsAt: string,
+  endsAt: string,
+  /** Primer día del mes ("2026-07-01"), o `null` para no prorratear. */
+  periodMonth: string | null
+): number {
+  if (paidCop <= 0) return 0;
+
+  const start = Date.parse(startsAt);
+  const end = Date.parse(endsAt);
+  if (!(end > start)) return 0;
+
+  // Sin mes (histórico completo) no hay nada que recortar.
+  if (!periodMonth) return Math.floor(paidCop);
+
+  // Límites en hora local, igual que `rangeBounds`. Tienen que coincidir: es la
+  // misma ventana en la que se contaron las personas-día.
+  const [y, m] = periodMonth.split("-").map(Number);
+  const monthStart = new Date(y, m - 1, 1).getTime();
+  const monthEnd = new Date(y, m, 1).getTime();
+
+  const overlap = Math.min(end, monthEnd) - Math.max(start, monthStart);
+  if (overlap <= 0) return 0;
+
+  return Math.floor(paidCop * (overlap / (end - start)));
+}
+
 /** Lo que se le cobra a una campaña por el período que se está liquidando. */
 export interface CampaignRevenue {
   campaignId: string;
@@ -353,6 +403,13 @@ export interface SettlementInput {
     share: number;
     amount_cop: number;
   }[];
+}
+
+/** Lo que le habría tocado si clasificara. Para un organizador elegible es
+ *  igual a `totalCop`; para uno que no clasifica es lo que queda con la
+ *  plataforma por su audiencia. */
+export function wouldBeTotal(o: OrganizerPayout): number {
+  return o.slices.reduce((a, s) => a + s.wouldBeCop, 0);
 }
 
 export function toSettlementInputs(share: RevenueShare): SettlementInput[] {
