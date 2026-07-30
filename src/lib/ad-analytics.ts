@@ -242,6 +242,10 @@ export interface MonetizationConfig {
   min_matches_with_result: number;
   min_account_age_days: number;
   require_profile: boolean;
+  /** Exigir datos de pago. Arranca en `false`: la pantalla para llenarlos no
+   *  existe todavía, así que prenderlo dejaría a todos sin clasificar por un
+   *  motivo que nadie puede resolver. */
+  require_payout_info: boolean;
 }
 
 export interface MonetizationRow {
@@ -255,6 +259,7 @@ export interface MonetizationRow {
   tournaments_in_progress: number;
   account_age_days: number;
   profile_complete: boolean;
+  payout_info_complete: boolean;
   /** Claves de lo que le falta para el nivel 2. */
   missing: MissingKey[];
   /** 0 = ni ve la sección · 1 = la ve con su progreso · 2 = liquidable. */
@@ -268,6 +273,7 @@ export type MissingKey =
   | "active_days"
   | "account_age_days"
   | "profile"
+  | "payout_info"
   | "excluded";
 
 export const MISSING_LABELS: Record<MissingKey, string> = {
@@ -276,8 +282,27 @@ export const MISSING_LABELS: Record<MissingKey, string> = {
   active_days: "Audiencia en muy pocos días",
   account_age_days: "Cuenta muy nueva",
   profile: "Perfil sin nombre o logo",
+  payout_info: "Faltan los datos de pago",
   excluded: "Cuenta excluida del reparto",
 };
+
+/** Datos para transferirle a un organizador. SENSIBLE: cédula y cuenta. */
+export interface OrganizerPayoutInfo {
+  user_id: string;
+  full_name: string;
+  document_type: "CC" | "CE" | "NIT";
+  document_number: string;
+  bank: string;
+  account_type: "ahorros" | "corriente";
+  account_number: string;
+}
+
+/** Cuenta enmascarada para mostrar en pantalla: `****4321`. Nunca hay razón
+ *  para pintar un número de cuenta completo en una lista. */
+export function maskAccount(accountNumber: string): string {
+  const digits = accountNumber.replace(/\s/g, "");
+  return digits.length <= 4 ? digits : "****" + digits.slice(-4);
+}
 
 /** Motivo corto para la tabla: el primero que falta, y cuántos más. */
 export function missingLabel(missing: MissingKey[]): string {

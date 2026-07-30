@@ -210,6 +210,7 @@ Motivos de no clasificar, todos evaluados por el sistema:
 | Audiencia en muy pocos días | 8 |
 | Cuenta muy nueva | 30 días |
 | Perfil sin nombre o logo | — |
+| Faltan los datos de pago | **apagado** hasta que exista la pantalla |
 
 Los umbrales viven en la tabla `monetization_config`, así que se mueven con un
 `UPDATE` y no con un despliegue.
@@ -331,5 +332,8 @@ Si alguna de estas no cuadra, es un bug:
   puestos sin datos. Se recalibran en septiembre con agosto completo.
 - **La sección que ve el organizador.** Todo esto vive únicamente en el panel de
   admin; el organizador no ve nada todavía.
-- **Dónde transferirle.** No hay ningún campo con cédula, banco ni Nequi. Se
-  puede marcar un corte como "pagada" sin saber a dónde se mandó la plata.
+- **La pantalla para dar los datos de pago.** La tabla ya existe
+  (`organizer_payout_info`: nombre, cédula, banco, tipo de cuenta y número) y el
+  requisito también, pero **apagado**: sin pantalla para llenarlo, prenderlo
+  dejaría a todos sin clasificar. Se prende con un `UPDATE` cuando la sección se
+  despliegue.
