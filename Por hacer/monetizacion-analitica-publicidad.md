@@ -18,6 +18,10 @@ y cobre.
 Este documento cubre la parte técnica. El modelo comercial (planes, precios,
 requisitos para monetizar) se decide aparte.
 
+📖 **Para entender cómo se calcula el reparto sin entrar al detalle técnico, ver
+`como-funciona-el-reparto.md`** — la métrica, la cuenta paso a paso y un ejemplo
+completo, con tablas.
+
 ---
 
 ## La métrica: PERSONA-DÍA
