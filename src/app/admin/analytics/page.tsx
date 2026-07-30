@@ -17,6 +17,7 @@ import { ViewsChart } from "@/components/analytics/views-chart";
 import { DeviceBreakdown } from "@/components/analytics/device-breakdown";
 import { ReferrerList } from "@/components/analytics/referrer-list";
 import { useAdminAnalytics, OrganizerSummary } from "@/hooks/use-admin-analytics";
+import { personDaysOf } from "@/hooks/use-analytics";
 import { SponsorClicksPanel } from "@/components/analytics/sponsor-clicks-panel";
 import { Loader2, ChevronRight, ChevronDown } from "lucide-react";
 
@@ -175,7 +176,7 @@ function AnalyticsContent() {
 
       <AnalyticsCards
         uniquePersons={data.unique_persons ?? 0}
-        uniqueVisitors={data.unique_visitors}
+        personDays={personDaysOf(data.views_by_day)}
         totalViews={data.total_views}
         avgDurationMs={data.avg_duration_ms}
         previous={data.previous}

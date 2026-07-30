@@ -155,3 +155,19 @@ export function useOrganizerTournamentViews(
 
   return { data, isLoading };
 }
+
+/**
+ * Personas-día del período: pares (persona, día) distintos.
+ *
+ * Sale de sumar las personas únicas de cada día, y no es una aproximación:
+ * contar pares (persona, día) distintos es exactamente lo mismo que, para cada
+ * día, contar personas distintas y sumar. Por eso no hace falta un
+ * COUNT(DISTINCT) nuevo en la base — la serie diaria ya llega al cliente para
+ * las sparklines.
+ *
+ * Es la unidad con la que se le paga al organizador por publicidad. La de
+ * publicidad es un SUBCONJUNTO de esta: solo las que vieron un aviso.
+ */
+export function personDaysOf(viewsByDay?: ViewsByDay[]): number {
+  return (viewsByDay ?? []).reduce((a, d) => a + (d.unique_persons ?? 0), 0);
+}

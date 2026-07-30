@@ -39,6 +39,11 @@ interface Props {
    *  puede cerrar). */
   periodMonth: string | null;
   coverage: number;
+  /** Reporta hacia arriba lo que hay que transferir, para la tarjeta de
+   *  resumen del panel. La cifra se calcula acá porque acá viven los cobros
+   *  por campaña; duplicar el cálculo en la página sería tener dos versiones de
+   *  la misma cuenta de plata. */
+  onPayableChange?: (payableCop: number) => void;
 }
 
 /**
@@ -64,6 +69,7 @@ export function AdRevenueShare({
   periodLabel,
   periodMonth,
   coverage,
+  onPayableChange,
 }: Props) {
   /** Cobro por campaña, tal como está guardado (o editándose) para este mes. */
   const [revenue, setRevenue] = useState<Record<string, string>>({});
@@ -162,6 +168,16 @@ export function AdRevenueShare({
 
   const closed = settlements.length > 0;
   const closable = isMonthClosable(periodMonth);
+
+  // Con el mes cerrado la cifra de arriba tiene que ser la congelada, no el
+  // recálculo en vivo: si difieren, la que vale es la que se prometió.
+  const payable = closed
+    ? settlements.reduce((a, s) => a + s.amount_cop, 0)
+    : share.payableCop;
+
+  useEffect(() => {
+    onPayableChange?.(payable);
+  }, [payable, onPayableChange]);
 
   const handleClose = async () => {
     if (!periodMonth) return;

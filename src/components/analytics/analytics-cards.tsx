@@ -150,7 +150,14 @@ interface ViewsByDay {
 
 interface AnalyticsCardsProps {
   uniquePersons: number;
-  uniqueVisitors: number;
+  /** Personas-día: pares (persona, día) distintos del período. Es la unidad
+   *  con la que se le paga al organizador por publicidad, así que conviene que
+   *  la vea también acá y no tenga que traducir entre dos números.
+   *
+   *  Sale de sumar `views_by_day[].unique_persons`, y no es una aproximación:
+   *  contar pares (persona, día) distintos es exactamente lo mismo que, para
+   *  cada día, contar personas distintas y sumar. */
+  personDays: number;
   totalViews: number;
   avgDurationMs: number;
   /** Totales del período anterior, para mostrar deltas ▲/▼. */
@@ -163,13 +170,17 @@ interface AnalyticsCardsProps {
 
 export function AnalyticsCards({
   uniquePersons,
-  uniqueVisitors,
+  personDays,
   totalViews,
   avgDurationMs,
   previous,
   viewsByDay,
   compact = false,
 }: AnalyticsCardsProps) {
+  // "Cada persona volvió N días" — lo que de verdad dice si el torneo engancha.
+  const daysPerPerson =
+    uniquePersons > 0 ? (personDays / uniquePersons).toFixed(1) : null;
+
   return (
     <div className={cn("grid gap-3", compact ? "grid-cols-2 lg:grid-cols-4" : "gap-4 sm:grid-cols-2 lg:grid-cols-4")}>
       <MetricCard
@@ -183,14 +194,20 @@ export function AnalyticsCards({
         series={viewsByDay?.map((d) => d.unique_persons)}
         compact={compact}
       />
+      {/* Reemplazó a "Sesiones", que era el sustituto de "personas" en la época
+          en que no existía `visitor_id`. Ya no responde nada que el organizador
+          se pregunte: "tuve 2.049 sesiones" no le sirve, "cada persona volvió
+          4,7 días" sí. Y esta es además la unidad con la que se le paga.
+
+          Sin delta a propósito: el período anterior no viene en la serie diaria,
+          y comparar contra un pasado sin `visitor_id` daría "nuevo" por otro mes.
+          Cuando la comparación tenga sentido se agrega a las RPC. */}
       <MetricCard
         icon={Activity}
-        label="Sesiones"
-        value={uniqueVisitors.toLocaleString()}
-        hint="visitas en 30 min"
-        current={uniqueVisitors}
-        previous={previous?.unique_visitors}
-        series={viewsByDay?.map((d) => d.unique_visitors)}
+        label="Personas-día"
+        value={personDays.toLocaleString()}
+        hint={daysPerPerson ? `vuelven ${daysPerPerson} días c/u` : "por día"}
+        series={viewsByDay?.map((d) => d.unique_persons)}
         compact={compact}
       />
       <MetricCard

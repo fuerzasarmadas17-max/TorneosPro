@@ -27,6 +27,7 @@ import { ScorerLinksPanel } from "@/components/dashboard/scorer-links-panel";
 import { useAuth } from "@/context/auth-context";
 import { useTournaments } from "@/context/tournament-context";
 import {
+  personDaysOf,
   useOrganizerAnalytics,
   useOrganizerTournamentViews,
 } from "@/hooks/use-analytics";
@@ -194,7 +195,7 @@ function DashboardContent() {
                 <AnalyticsCards
                   compact
                   uniquePersons={organizerAnalytics.unique_persons ?? 0}
-                  uniqueVisitors={organizerAnalytics.unique_visitors}
+                  personDays={personDaysOf(organizerAnalytics.views_by_day)}
                   totalViews={organizerAnalytics.total_views}
                   avgDurationMs={organizerAnalytics.avg_duration_ms}
                   previous={organizerAnalytics.previous}

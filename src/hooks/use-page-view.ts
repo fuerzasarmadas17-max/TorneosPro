@@ -90,22 +90,39 @@ export function usePageView(
     // browser termina lo importante.
     const insertTimer = setTimeout(insertView, 200);
 
+    // La duración va por RPC y no por PATCH a la tabla. El PATCH nunca
+    // funcionó: `page_views` tiene RLS y no tiene policy de UPDATE, así que el
+    // update afectaba 0 filas sin dar error y el "Tiempo promedio" mostró 0s
+    // desde siempre. Ver la migración 20260729g.
+    //
+    // Se arregló con una RPC en vez de agregando la policy porque el privilegio
+    // de UPDATE sobre la tabla dejaría a cualquier anónimo cambiar `visitor_id`
+    // o `entity_id`, que alimentan el reparto de publicidad.
+    //
+    // Sigue siendo fetch crudo y no `supabase.rpc()` por el `keepalive`: esto se
+    // manda mientras la página se está cerrando.
     const updateDuration = () => {
       if (!viewIdRef.current) return;
       const duration = Date.now() - startTimeRef.current;
+      if (duration <= 0) return;
 
-      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/page_views?id=eq.${viewIdRef.current}`;
-      fetch(url, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""}`,
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify({ duration_ms: duration }),
-        keepalive: true,
-      }).catch(() => {});
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+      fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/record_view_duration`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: key,
+            Authorization: `Bearer ${key}`,
+          },
+          body: JSON.stringify({
+            p_view_id: viewIdRef.current,
+            p_duration_ms: duration,
+          }),
+          keepalive: true,
+        }
+      ).catch(() => {});
     };
 
     const handleVisibilityChange = () => {

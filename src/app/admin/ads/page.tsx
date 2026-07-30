@@ -50,7 +50,9 @@ import {
   CalendarRange,
   Users,
   BarChart3,
+  HandCoins,
 } from "lucide-react";
+import { formatCOP } from "@/lib/pricing";
 import { SPORTS } from "@/data/sports";
 import { SCOPES, DEPARTMENTS } from "@/data/colombia";
 import {
@@ -158,11 +160,13 @@ function ChipMulti({
 function StatCard({
   label,
   value,
+  hint,
   icon: Icon,
   accent,
 }: {
   label: string;
   value: string | number;
+  hint?: string;
   icon: React.ComponentType<{ className?: string }>;
   accent?: string;
 }) {
@@ -180,6 +184,9 @@ function StatCard({
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">{label}</p>
           <p className="text-xl font-bold leading-tight">{value}</p>
+          {hint && (
+            <p className="text-[11px] text-muted-foreground">{hint}</p>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -212,6 +219,9 @@ function AdsContent() {
   const [dateRange, setDateRange] = useState<DateRange>("current");
   /** Campaña cuyo desglose por torneo se está mirando. */
   const [detailFor, setDetailFor] = useState<CampaignRow | null>(null);
+  /** Lo que hay que transferir en el período. Lo reporta el reparto, que es
+   *  donde viven los cobros por campaña. */
+  const [payableCop, setPayableCop] = useState(0);
   const [tournaments, setTournaments] = useState<TournamentLite[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -760,20 +770,29 @@ function AdsContent() {
         <StatCard
           label="Impresiones"
           value={totalImpr.toLocaleString()}
+          hint={
+            totalImpr > 0
+              ? `${totalClicks.toLocaleString()} clics · CTR ${((totalClicks / totalImpr) * 100).toFixed(1)}%`
+              : undefined
+          }
           icon={Eye}
           accent="bg-blue-500/10 text-blue-600"
         />
+        {/* "con aviso" es deliberado: la analítica muestra personas-día de TODA
+            la audiencia, y esta es el subconjunto que vio publicidad. Sin el
+            calificativo son dos tarjetas con el mismo nombre y números
+            distintos, que es peor que no tener ninguna. */}
         <StatCard
-          label="Personas-día"
+          label="Personas-día con aviso"
           value={totalPersonDays.toLocaleString()}
           icon={Users}
           accent="bg-amber-500/10 text-amber-600"
         />
         <StatCard
-          label="Clics"
-          value={totalClicks.toLocaleString()}
-          icon={MousePointerClick}
-          accent="bg-violet-500/10 text-violet-600"
+          label="A transferir"
+          value={formatCOP(payableCop)}
+          icon={HandCoins}
+          accent="bg-emerald-500/10 text-emerald-600"
         />
       </div>
 
@@ -1015,6 +1034,7 @@ function AdsContent() {
           periodLabel={DATE_RANGE_LABELS[dateRange]}
           periodMonth={periodMonthOf(dateRange)}
           coverage={personCoverage}
+          onPayableChange={setPayableCop}
         />
       )}
 
