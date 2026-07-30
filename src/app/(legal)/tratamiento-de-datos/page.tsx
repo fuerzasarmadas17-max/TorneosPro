@@ -12,7 +12,7 @@ export default function TratamientoDatosPage() {
     <>
       <h1>Política de Tratamiento de Datos Personales</h1>
       <p className="text-sm">
-        Fecha de entrada en vigencia: 18 de julio de 2026 · Última actualización: 18
+        Fecha de entrada en vigencia: 18 de julio de 2026 · Última actualización: 30
         de julio de 2026
       </p>
 
@@ -83,8 +83,8 @@ export default function TratamientoDatosPage() {
       <h3>3.2. Datos de los que TorneosPro es solo Encargado</h3>
       <p>
         Son los <strong>datos de los jugadores</strong> que el organizador carga en la
-        plataforma (nombre, número de documento, EPS, fecha de nacimiento/edad, lugar
-        de residencia). Respecto de estos datos:
+        plataforma (nombre, número de documento, EPS, fecha de nacimiento/edad).
+        Respecto de estos datos:
       </p>
       <ul>
         <li>

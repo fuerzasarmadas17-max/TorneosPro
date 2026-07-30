@@ -11,7 +11,7 @@ export default function PrivacidadPage() {
   return (
     <>
       <h1>Política de Privacidad</h1>
-      <p className="!text-muted-foreground text-sm">Última actualización: 18 de julio de 2026</p>
+      <p className="!text-muted-foreground text-sm">Última actualización: 30 de julio de 2026</p>
 
       <p>
         Esta Política de Privacidad explica, en lenguaje claro, qué información
@@ -48,7 +48,7 @@ export default function PrivacidadPage() {
       <h3>1.2. Datos de jugadores que vos cargás</h3>
       <p>
         Como organizador, podés cargar datos de jugadores: <strong>nombre, número de
-        documento, EPS, fecha de nacimiento/edad y lugar de residencia</strong>.
+        documento, EPS y fecha de nacimiento/edad</strong>.
       </p>
       <p>
         Sobre estos datos, <strong>vos sos el Responsable</strong> y{" "}

@@ -20,6 +20,11 @@ import { TeamLogoPicker } from "@/components/logos/team-logo-picker";
 import { toast } from "sonner";
 import { Plus, Trash2, Users, Upload, ChevronDown, ChevronUp, ImagePlus } from "lucide-react";
 import * as XLSX from "xlsx";
+import {
+  formatDocumentNumber,
+  normalizeDocumentNumber,
+  parseDateToISO,
+} from "@/lib/player-format";
 
 interface TeamRosterDialogProps {
   team: Team;
@@ -48,7 +53,7 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
   const [logoUrl, setLogoUrl] = useState<string>(team.logoUrl || "");
   const [clubLogoId, setClubLogoId] = useState<string>(team.clubLogoId || "");
   const [playerEntries, setPlayerEntries] = useState<PlayerEntry[]>(
-    team.players.map((p) => ({ id: p.id || crypto.randomUUID(), name: p.name, age: p.age ? String(p.age) : "", documentNumber: p.documentNumber || "", eps: p.eps || "", birthDate: p.birthDate || "" }))
+    team.players.map((p) => ({ id: p.id || crypto.randomUUID(), name: p.name, age: p.age ? String(p.age) : "", documentNumber: normalizeDocumentNumber(p.documentNumber || ""), eps: p.eps || "", birthDate: p.birthDate || "" }))
   );
   const [expandedPlayers, setExpandedPlayers] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
@@ -116,48 +121,42 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
 
           if (!nombreCompleto) continue;
 
-          // Age: try Fecha de nacimiento first, then fallback to Edad
-          let edad = "";
+          // Fecha de nacimiento → siempre a ISO (YYYY-MM-DD), que es lo que
+          // guardamos y lo que entiende el <input type="date">. Dos fuentes:
+          //   - número: Excel guardó una fecha de verdad (serial).
+          //   - texto: la escribieron a mano, en día/mes/año como pide la
+          //     plantilla. `parseDateToISO` lo resuelve sin confundir el día
+          //     con el mes.
           const fechaNacRaw = row["Fecha de nacimiento"] || row["fecha de nacimiento"] || row["FECHA DE NACIMIENTO"];
-          if (fechaNacRaw) {
-            if (typeof fechaNacRaw === "number") {
-              // Excel date serial number
-              const parsed = XLSX.SSF.parse_date_code(fechaNacRaw);
-              if (parsed.y) {
-                edad = String(new Date().getFullYear() - parsed.y);
-              }
-            } else {
-              const parsed = new Date(String(fechaNacRaw));
-              if (!isNaN(parsed.getTime())) {
-                edad = String(new Date().getFullYear() - parsed.getFullYear());
-              }
+          let fechaNac = "";
+          if (typeof fechaNacRaw === "number") {
+            const parsed = XLSX.SSF.parse_date_code(fechaNacRaw);
+            if (parsed.y) {
+              fechaNac = `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
             }
+          } else if (fechaNacRaw) {
+            fechaNac = parseDateToISO(String(fechaNacRaw)) || "";
+          }
+
+          // Edad: se deriva de la fecha de nacimiento, y solo si no hay
+          // fecha se lee la columna "Edad". Por año, no por cumpleaños:
+          // misma convención que getAgeFromBirthDate.
+          let edad = "";
+          if (fechaNac) {
+            edad = String(new Date().getFullYear() - Number(fechaNac.slice(0, 4)));
           } else {
             const edadRaw = row["Edad"] || row["edad"] || row["EDAD"];
             edad = edadRaw ? String(edadRaw).trim() : "";
           }
 
-          // Document number
-          const documento = String(row["Número de documento"] || row["número de documento"] || row["NÚMERO DE DOCUMENTO"] || row["Numero de documento"] || row["numero de documento"] || row["NUMERO DE DOCUMENTO"] || row["Documento"] || row["documento"] || row["DOCUMENTO"] || row["No. Documento"] || row["No. documento"] || "").trim();
+          // Documento: se guarda sin puntos ni espacios, venga como venga
+          // en la planilla. Los puntos se ponen al mostrarlo.
+          const documento = normalizeDocumentNumber(
+            String(row["Número de documento"] || row["número de documento"] || row["NÚMERO DE DOCUMENTO"] || row["Numero de documento"] || row["numero de documento"] || row["NUMERO DE DOCUMENTO"] || row["Documento"] || row["documento"] || row["DOCUMENTO"] || row["No. Documento"] || row["No. documento"] || "")
+          );
 
           // EPS
           const epsVal = String(row["EPS"] || row["eps"] || row["Eps"] || "").trim();
-
-          // Birth date as string
-          let fechaNac = "";
-          if (fechaNacRaw) {
-            if (typeof fechaNacRaw === "number") {
-              const parsed = XLSX.SSF.parse_date_code(fechaNacRaw);
-              if (parsed.y) {
-                fechaNac = `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
-              }
-            } else {
-              const parsed = new Date(String(fechaNacRaw));
-              if (!isNaN(parsed.getTime())) {
-                fechaNac = parsed.toISOString().split("T")[0];
-              }
-            }
-          }
 
           imported.push({
             id: crypto.randomUUID(),
@@ -246,7 +245,7 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
       setLogoUrl(team.logoUrl || "");
       setClubLogoId(team.clubLogoId || "");
       setPlayerEntries(
-        team.players.map((p) => ({ id: p.id || crypto.randomUUID(), name: p.name, age: p.age ? String(p.age) : "", documentNumber: p.documentNumber || "", eps: p.eps || "", birthDate: p.birthDate || "" }))
+        team.players.map((p) => ({ id: p.id || crypto.randomUUID(), name: p.name, age: p.age ? String(p.age) : "", documentNumber: normalizeDocumentNumber(p.documentNumber || ""), eps: p.eps || "", birthDate: p.birthDate || "" }))
       );
       setExpandedPlayers(new Set());
     }
@@ -421,8 +420,12 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
                                 const updated = [...prev];
                                 updated[index] = { ...updated[index], birthDate: val };
                                 if (val) {
-                                  const birth = new Date(val);
-                                  updated[index].age = String(new Date().getFullYear() - birth.getFullYear());
+                                  // El valor del input siempre es ISO: el año
+                                  // son los 4 primeros caracteres. Evita que
+                                  // el huso horario corra la fecha un día.
+                                  updated[index].age = String(
+                                    new Date().getFullYear() - Number(val.slice(0, 4))
+                                  );
                                 }
                                 return updated;
                               });
@@ -445,8 +448,13 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
                           <Label className="text-xs text-muted-foreground">No. Documento</Label>
                           <Input
                             placeholder="Número de documento"
-                            value={entry.documentNumber}
-                            onChange={(e) => updateEntry(index, "documentNumber", e.target.value)}
+                            inputMode="numeric"
+                            // Se muestra con puntos de miles pero en el estado
+                            // (y por lo tanto en la base) va siempre sin ellos.
+                            value={formatDocumentNumber(entry.documentNumber)}
+                            onChange={(e) =>
+                              updateEntry(index, "documentNumber", normalizeDocumentNumber(e.target.value))
+                            }
                             className="h-8"
                           />
                         </div>

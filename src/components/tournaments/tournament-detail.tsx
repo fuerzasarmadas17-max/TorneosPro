@@ -96,7 +96,9 @@ const formatLabels: Record<string, string> = {
 const OPTIONAL_COLUMNS = [
   { key: "fechaNacimiento", label: "Fecha de nacimiento", width: 18 },
   { key: "documento", label: "Número de documento", width: 22 },
-  { key: "residencia", label: "Lugar de residencia", width: 22 },
+  // "Lugar de residencia" se quitó: la planilla la pedía pero el importador
+  // nunca la leía y no hay dónde guardarla, así que el equipo llenaba un
+  // dato que se perdía en silencio.
   { key: "eps", label: "EPS", width: 15 },
 ] as const;
 
@@ -131,13 +133,12 @@ function TemplateDownloadDialog() {
 
     // Fila de ejemplo (fila 3 visualmente). Sirve de referencia para
     // que el organizador vea el formato esperado — sobre todo la fecha
-    // de nacimiento en ISO YYYY-MM-DD (10 caracteres). El organizador
-    // la borra o la reemplaza por el primer jugador real.
+    // de nacimiento en día/mes/año, que es como se escribe acá. El
+    // organizador la borra o la reemplaza por el primer jugador real.
     const exampleValues: Record<string, string> = {
       "Nombre Completo": "Juan Pérez García",
-      "Fecha de nacimiento": "1995-06-15",
+      "Fecha de nacimiento": "15/06/1995",
       "Número de documento": "1234567890",
-      "Lugar de residencia": "Sincelejo",
       EPS: "Nueva EPS",
     };
     const exampleRow = allHeaders.map((h) => exampleValues[h] || "");
@@ -169,7 +170,8 @@ function TemplateDownloadDialog() {
     }
     ws["!cols"] = allHeaders.map((h, i) => ({
       // Primera columna (nombre) más ancha porque va el nombre completo.
-      // Fecha de nacimiento: 14 para que entren cómodos los 10 chars ISO.
+      // Fecha de nacimiento: 14 para que entren cómodos los 10 caracteres
+      // de dd/mm/yyyy.
       wch:
         i === 0
           ? 32
@@ -178,19 +180,19 @@ function TemplateDownloadDialog() {
             : extras.find((c) => c.label === h)?.width || 15,
     }));
 
-    // Aplica formato yyyy-mm-dd a las 20 filas de la columna de fecha
+    // Aplica formato dd/mm/yyyy a las 20 filas de la columna de fecha
     // de nacimiento. Si el organizador escribe la fecha como número o
-    // la pega de otra hoja, Excel respeta el formato visual de 10
-    // caracteres. La celda ejemplo ya viene con el string ISO.
+    // la pega de otra hoja, Excel la muestra en día/mes/año igual que la
+    // celda de ejemplo, que ya viene con ese texto.
     const dobIdx = allHeaders.indexOf("Fecha de nacimiento");
     if (dobIdx >= 0) {
       // Fila 0 = títulos, fila 1 = ejemplo, filas 2..20 = vacías.
       for (let r = 1; r <= 20; r++) {
         const ref = XLSX.utils.encode_cell({ c: dobIdx, r });
         if (ws[ref]) {
-          ws[ref].z = "yyyy-mm-dd";
+          ws[ref].z = "dd/mm/yyyy";
         } else {
-          ws[ref] = { t: "s", v: "", z: "yyyy-mm-dd" };
+          ws[ref] = { t: "s", v: "", z: "dd/mm/yyyy" };
         }
       }
     }
