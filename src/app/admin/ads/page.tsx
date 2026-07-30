@@ -55,6 +55,7 @@ import { SPORTS } from "@/data/sports";
 import { SCOPES, DEPARTMENTS } from "@/data/colombia";
 import {
   DATE_RANGE_LABELS,
+  periodMonthOf,
   rangeBounds,
   type AdAnalytics,
   type DateRange,
@@ -1012,6 +1013,7 @@ function AdsContent() {
             campaigns.map((c) => [c.id, c.monthly_price])
           )}
           periodLabel={DATE_RANGE_LABELS[dateRange]}
+          periodMonth={periodMonthOf(dateRange)}
           coverage={personCoverage}
         />
       )}

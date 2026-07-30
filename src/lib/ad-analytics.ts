@@ -317,3 +317,76 @@ export function computeRevenueShare(
     retainedCop,
   };
 }
+
+// ============================================================================
+// Corte mensual congelado
+// ============================================================================
+
+/** Primer día del mes de un rango, en formato DATE de Postgres. `null` para
+ *  rangos que no son un mes (el histórico completo no se puede cerrar). */
+export function periodMonthOf(range: DateRange): string | null {
+  if (range === "all") return null;
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() + (range === "previous" ? -1 : 0), 1);
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-01`;
+}
+
+/** ¿Ya terminó ese mes? Un mes en curso no se puede cerrar: las personas-día
+ *  seguirían subiendo después de congelar y el corte quedaría corto. */
+export function isMonthClosable(periodMonth: string | null): boolean {
+  if (!periodMonth) return false;
+  const now = new Date();
+  const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  return periodMonth < current;
+}
+
+/** Fila que se le manda a `close_ad_period`. Solo van los que cobran: el no
+ *  elegible no genera corte, su parte queda con la plataforma. */
+export interface SettlementInput {
+  organizer_id: string;
+  person_days: number;
+  amount_cop: number;
+  breakdown: {
+    campaign_id: string;
+    person_days: number;
+    share: number;
+    amount_cop: number;
+  }[];
+}
+
+export function toSettlementInputs(share: RevenueShare): SettlementInput[] {
+  return share.organizers
+    .filter((o) => o.eligible && o.totalCop > 0)
+    .map((o) => ({
+      organizer_id: o.organizerId,
+      person_days: o.personDaysAcrossCampaigns,
+      amount_cop: o.totalCop,
+      breakdown: o.slices.map((s) => ({
+        campaign_id: s.campaignId,
+        person_days: s.personDays,
+        share: s.share,
+        amount_cop: s.amountCop,
+      })),
+    }));
+}
+
+/** Un corte ya cerrado, como vive en `ad_settlements`. */
+export interface AdSettlement {
+  id: string;
+  period_month: string;
+  organizer_id: string;
+  person_days: number;
+  amount_cop: number;
+  breakdown: SettlementInput["breakdown"];
+  status: "issued" | "approved" | "paid" | "void";
+  paid_at: string | null;
+  closed_at: string;
+}
+
+export const SETTLEMENT_STATUS_LABELS: Record<AdSettlement["status"], string> = {
+  issued: "Emitida",
+  approved: "Aprobada",
+  paid: "Pagada",
+  void: "Anulada",
+};

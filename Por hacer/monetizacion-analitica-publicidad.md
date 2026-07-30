@@ -1,7 +1,8 @@
 # Plan: analítica de publicidad y reparto con organizadores
 
-**Estado:** pasos 0, 1 y 2 desplegados, con sus migraciones corridas. Falta el
-Paso 3, que depende de decisiones comerciales aún abiertas.
+**Estado:** pasos 0, 1 y 2 desplegados. Del Paso 3 está hecho el corte
+congelado y el estado de cobro (**falta correr `20260729f`**); falta la sección
+que ve el organizador y evaluar el umbral, que espera la medición de septiembre.
 **Última actualización:** 2026-07-29
 
 ---
@@ -262,21 +263,73 @@ premiar organizadores.
 
 ## Paso 3 — Sección "Monetizar" del organizador
 
-**Sin estimar.** Depende de decisiones comerciales aún abiertas.
+**Parcialmente hecho.** El corte congelado y el estado de cobro están listos y
+son la parte crítica. Falta lo que el organizador VE, que sigue dependiendo de
+decisiones comerciales.
+
+Lo que falta, concreto:
+
+- **Evaluar el umbral.** Hoy la elegibilidad solo aplica
+  `revenue_share_excluded`. Los requisitos de abajo están definidos pero no se
+  evalúan: sus números esperan la medición de septiembre. La estructura ya lo
+  soporta — es una función inyectable (`EligibilityFn`), no hay que rehacer nada.
+- **La sección en sí**, con su panel y el progreso hacia los requisitos.
+- **Policy de lectura para el organizador** en `ad_settlements`
+  (`organizer_id = auth.uid()`). A propósito no está: mostrarle cifras sin la
+  sección armada es filtrar plata a medias.
 
 Lo que se sabe que necesita:
 
 - **Panel:** campañas corriendo en sus torneos, personas-día aportadas, su
   participación, estimado del mes, acumulado histórico.
-- **Corte mensual congelado.** Crítico: si se calcula en vivo, el número que
-  el organizador vio el día 12 no será el que vea el admin el 20. Con plata de
-  por medio eso es una discusión asegurada. Guardar el corte cerrado
-  (personas-día, tarifa, monto) como fila inmutable, y que la cuenta de cobro
-  apunte a ese registro.
-- **Estado de la cuenta de cobro:** emitida / aprobada / pagada. Sin esto no
-  se sabe a quién ya se le pagó.
+- ✅ **Corte mensual congelado** y **estado de la cuenta de cobro** — hechos,
+  ver abajo.
 - El estimado del mes debe etiquetarse como **proyección**: mientras el fondo
   dependa de lo que se venda ese mes, ese número puede bajar.
+
+### Corte mensual congelado ✅ hecho
+
+Migración `20260729f_ad_settlements.sql`. Dos tablas:
+
+- **`ad_period_revenue`** — qué se le cobró a cada campaña ese mes. El panel
+  precarga `monthly_price` y guarda la corrección al salir del campo. Antes esa
+  corrección vivía en la memoria del componente y se perdía al recargar;
+  congelar sin esto habría tomado el precio de lista y perdido los ajustes (una
+  campaña que arrancó el día 20 cobra un tercio). Es además el lugar donde
+  después se conecta `ad_payments`.
+- **`ad_settlements`** — el corte cerrado por organizador y mes: personas-día,
+  monto, desglose por campaña en JSON, y estado emitida / aprobada / pagada /
+  anulada.
+
+**La inmutabilidad es un trigger, no una intención.** `ad_settlements_freeze`
+rechaza cualquier `UPDATE` que toque período, organizador, personas-día, monto,
+desglose o fecha de cierre. Solo se mueven `status`, `paid_at` y `notes`. Para
+corregir un corte hay que anularlo (`void`) y cerrar el mes de nuevo — así queda
+rastro en vez de que una cifra que el organizador ya vio cambie sin aviso.
+
+#### El cliente calcula, la base valida
+
+`close_ad_period(mes, filas)` no recalcula el reparto: lo recibe y lo verifica.
+
+La razón es evitar dos implementaciones de la misma matemática de plata. El
+reparto por residuo mayor ya vive en `lib/ad-analytics.ts`, probado contra el
+ejemplo de este plan y contra montos que descuadran con redondeo ingenuo.
+Reescribirlo en PL/pgSQL habría creado dos versiones que tendrían que coincidir
+para siempre.
+
+Para que "el cliente calcula" no signifique "el cliente manda lo que quiera", la
+función:
+
+- **re-deriva las personas-día** desde `analytics_events` y rechaza el cierre si
+  no coinciden con lo recibido (ataja también el panel con datos viejos),
+- **verifica que el total no exceda la bolsa** que sale de `ad_period_revenue`,
+- **rechaza cerrar un mes que todavía corre** — congelarlo antes dejaría el
+  corte por debajo de lo real,
+- **rechaza cerrar dos veces** el mismo mes si hay cortes no anulados.
+
+Solo se mandan los organizadores elegibles con monto mayor que cero. El no
+elegible no genera corte: su parte queda con la plataforma, y la función la
+devuelve como `retained_cop`.
 
 ### Requisitos para desbloquear (aprobados 2026-07-29)
 
@@ -474,6 +527,9 @@ venta al anunciante querría.
 | 2026-07-29 | El **denominador de cada campaña incluye a los no elegibles**; su parte se queda con la plataforma y no se redistribuye. |
 | 2026-07-29 | **Sin mínimo garantizado** por organizador: el reparto es puramente proporcional. |
 | 2026-07-29 | La cuenta de pruebas "Torneos Pro" queda **excluida** del reparto vía `users.revenue_share_excluded`. |
+| 2026-07-29 | El corte congelado lo **calcula el cliente y lo valida la base**, para no tener dos implementaciones de la matemática de plata. |
+| 2026-07-29 | Cerrar el mes es una **acción explícita del admin**, no automática por fecha, y solo se permite con el mes terminado. |
+| 2026-07-29 | Un corte no se edita: se **anula y se vuelve a cerrar**. La inmutabilidad la impone un trigger. |
 | 2026-07-29 | Los montos se reparten por **residuo mayor**, para que la suma cuadre al peso con el fondo. |
 | 2026-07-29 | El **fondo se escribe a mano** hasta que se decida de dónde sale (facturado vs. recaudado, y cómo prorratear campañas que cruzan meses). |
 | 2026-07-29 | Tope del modal en **7 por persona, torneo y día**, reemplazando el "sin tope" del 2026-07-03. Por torneo y no global: con cuota global el organizador que la persona abría primero se quedaba con todo el crédito de personas-día. |
