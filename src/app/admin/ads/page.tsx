@@ -21,6 +21,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/ui/tabs";
 import { supabase } from "@/lib/supabase";
 import {
   resizeImageForUpload,
@@ -828,215 +834,254 @@ function AdsContent() {
         </div>
       )}
 
-      {/* Campaign list */}
-      {loading ? (
-        <div className="space-y-2">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-24 animate-pulse rounded-xl bg-muted/50" />
-          ))}
-        </div>
-      ) : sortedCampaigns.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-              <Megaphone className="h-7 w-7 text-muted-foreground" />
+      {/* Dos pestañas y no una lista debajo de la otra: son dos trabajos
+          distintos —gestionar campañas y liquidarle a los organizadores— y
+          apilados obligaban a bajar mucho para llegar al reparto.
+
+          El filtro de período y las tarjetas quedan ARRIBA de las pestañas a
+          propósito: aplican a las dos, y moverlos adentro obligaría a
+          duplicarlos o a perder el contexto al cambiar de pestaña. */}
+      <Tabs defaultValue="campanas" className="gap-4">
+        <TabsList className="w-full">
+          <TabsTrigger value="campanas" className="flex-1">
+            <Megaphone className="h-4 w-4" />
+            Campañas
+            {!loading && ` (${campaigns.length})`}
+          </TabsTrigger>
+          <TabsTrigger value="reparto" className="flex-1">
+            <HandCoins className="h-4 w-4" />
+            Reparto
+            {payableCop > 0 && ` · ${formatCOP(payableCop)}`}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="campanas" className="space-y-3">
+          {loading ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="h-24 animate-pulse rounded-xl bg-muted/50"
+                />
+              ))}
             </div>
-            <div>
-              <p className="font-semibold">Aún no hay campañas</p>
-              <p className="text-sm text-muted-foreground">
-                Crea la primera para que aparezca en el modal del espectador.
-              </p>
-            </div>
-            <Button onClick={openCreate} variant="outline">
-              <Plus className="h-4 w-4 mr-2" />
-              Nueva campaña
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {sortedCampaigns.map((c) => {
-            const cnt = counts[c.id] || {
-              impressions: 0,
-              clicks: 0,
-              personDays: 0,
-              withPerson: 0,
-            };
-            const ctr =
-              cnt.impressions > 0
-                ? ((cnt.clicks / cnt.impressions) * 100).toFixed(1) + "%"
-                : "—";
-            return (
-              <Card key={c.id} className="overflow-hidden">
-                <CardContent className="flex flex-col gap-4 p-4 sm:flex-row">
-                  {/* Imagen */}
-                  <div className="relative h-20 w-32 flex-shrink-0 overflow-hidden rounded-lg border bg-white">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={c.image_url}
-                      alt={c.advertiser_name}
-                      loading="lazy"
-                      decoding="async"
-                      className="h-full w-full object-contain"
-                    />
-                  </div>
-
-                  {/* Info */}
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold truncate">
-                        {c.advertiser_name}
-                      </span>
-                      {statusBadge(c)}
-                      {paymentBadge(payStatus[c.id])}
-                      <Badge variant="secondary" className="gap-1 text-[11px]">
-                        {c.target_mode === "list" ? (
-                          <ListChecks className="h-3 w-3" />
-                        ) : (
-                          <Target className="h-3 w-3" />
-                        )}
-                        {c.target_mode === "list" ? "Lista" : "Regla"}
-                      </Badge>
-                    </div>
-
-                    {/* Targeting chips */}
-                    <div className="flex flex-wrap gap-1">
-                      {targetChips(c).map((chip, i) => (
-                        <span
-                          key={i}
-                          className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
-                        >
-                          {chip}
-                        </span>
-                      ))}
-                    </div>
-
-                    {/* Meta */}
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      <span>
-                        {new Date(c.starts_at).toLocaleDateString()} –{" "}
-                        {new Date(c.ends_at).toLocaleDateString()}
-                      </span>
-                      {c.monthly_price > 0 && (
-                        <span className="font-medium text-foreground">
-                          ${c.monthly_price.toLocaleString()}/mes
-                        </span>
-                      )}
-                      {c.contact && <span className="truncate">{c.contact}</span>}
-                    </div>
-                  </div>
-
-                  {/* Métricas + acciones */}
-                  <div className="flex items-center gap-4 sm:flex-col sm:items-end sm:justify-between">
-                    <div className="flex gap-4">
-                      <div className="text-center">
-                        <p className="flex items-center gap-1 text-sm font-semibold">
-                          <Eye className="h-3.5 w-3.5 text-blue-600" />
-                          {cnt.impressions.toLocaleString()}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">impr.</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="flex items-center gap-1 text-sm font-semibold">
-                          <Users className="h-3.5 w-3.5 text-amber-600" />
-                          {cnt.personDays.toLocaleString()}
-                        </p>
-                        <p
-                          className="text-[10px] text-muted-foreground"
-                          title="Personas distintas que la vieron cada día, sumadas en el período. No se suma entre campañas."
-                        >
-                          pers-día
-                        </p>
-                      </div>
-                      <div className="text-center">
-                        <p className="flex items-center gap-1 text-sm font-semibold">
-                          <MousePointerClick className="h-3.5 w-3.5 text-violet-600" />
-                          {cnt.clicks.toLocaleString()}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">clics</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-sm font-semibold">{ctr}</p>
-                        <p className="text-[10px] text-muted-foreground">CTR</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        title="Ver desglose por torneo y organizador"
-                        onClick={() => setDetailFor(c)}
-                      >
-                        <BarChart3 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        title={c.is_active ? "Pausar" : "Activar"}
-                        onClick={() => toggleActive(c)}
-                      >
-                        <Power
-                          className={
-                            "h-4 w-4 " +
-                            (c.is_active ? "text-green-600" : "text-muted-foreground")
-                          }
+          ) : sortedCampaigns.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+                  <Megaphone className="h-7 w-7 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="font-semibold">Aún no hay campañas</p>
+                  <p className="text-sm text-muted-foreground">
+                    Crea la primera para que aparezca en el modal del espectador.
+                  </p>
+                </div>
+                <Button onClick={openCreate} variant="outline">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nueva campaña
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {sortedCampaigns.map((c) => {
+                const cnt = counts[c.id] || {
+                  impressions: 0,
+                  clicks: 0,
+                  personDays: 0,
+                  withPerson: 0,
+                };
+                const ctr =
+                  cnt.impressions > 0
+                    ? ((cnt.clicks / cnt.impressions) * 100).toFixed(1) + "%"
+                    : "—";
+                return (
+                  <Card key={c.id} className="overflow-hidden">
+                    <CardContent className="flex flex-col gap-4 p-4 sm:flex-row">
+                      {/* Imagen */}
+                      <div className="relative h-20 w-32 flex-shrink-0 overflow-hidden rounded-lg border bg-white">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={c.image_url}
+                          alt={c.advertiser_name}
+                          loading="lazy"
+                          decoding="async"
+                          className="h-full w-full object-contain"
                         />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        title="Generar link de pago"
-                        disabled={linkLoadingId === c.id}
-                        onClick={() => generatePaymentLink(c)}
-                      >
-                        <CreditCard className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        title="Editar"
-                        onClick={() => openEdit(c)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        title="Eliminar"
-                        onClick={() => handleDelete(c)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+                      </div>
 
-      {/* ===== Reparto con organizadores ===== */}
-      {!metricsError && (
-        <AdRevenueShare
-          rows={byCampaignOrganizer}
-          campaignNames={Object.fromEntries(
-            campaigns.map((c) => [c.id, c.advertiser_name])
+                      {/* Info */}
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold truncate">
+                            {c.advertiser_name}
+                          </span>
+                          {statusBadge(c)}
+                          {paymentBadge(payStatus[c.id])}
+                          <Badge variant="secondary" className="gap-1 text-[11px]">
+                            {c.target_mode === "list" ? (
+                              <ListChecks className="h-3 w-3" />
+                            ) : (
+                              <Target className="h-3 w-3" />
+                            )}
+                            {c.target_mode === "list" ? "Lista" : "Regla"}
+                          </Badge>
+                        </div>
+
+                        {/* Targeting chips */}
+                        <div className="flex flex-wrap gap-1">
+                          {targetChips(c).map((chip, i) => (
+                            <span
+                              key={i}
+                              className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                            >
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
+
+                        {/* Meta */}
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                          <span>
+                            {new Date(c.starts_at).toLocaleDateString()} –{" "}
+                            {new Date(c.ends_at).toLocaleDateString()}
+                          </span>
+                          {c.monthly_price > 0 && (
+                            <span className="font-medium text-foreground">
+                              ${c.monthly_price.toLocaleString()}/mes
+                            </span>
+                          )}
+                          {c.contact && <span className="truncate">{c.contact}</span>}
+                        </div>
+                      </div>
+
+                      {/* Métricas + acciones */}
+                      <div className="flex items-center gap-4 sm:flex-col sm:items-end sm:justify-between">
+                        <div className="flex gap-4">
+                          <div className="text-center">
+                            <p className="flex items-center gap-1 text-sm font-semibold">
+                              <Eye className="h-3.5 w-3.5 text-blue-600" />
+                              {cnt.impressions.toLocaleString()}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">impr.</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="flex items-center gap-1 text-sm font-semibold">
+                              <Users className="h-3.5 w-3.5 text-amber-600" />
+                              {cnt.personDays.toLocaleString()}
+                            </p>
+                            <p
+                              className="text-[10px] text-muted-foreground"
+                              title="Personas distintas que la vieron cada día, sumadas en el período. No se suma entre campañas."
+                            >
+                              pers-día
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p className="flex items-center gap-1 text-sm font-semibold">
+                              <MousePointerClick className="h-3.5 w-3.5 text-violet-600" />
+                              {cnt.clicks.toLocaleString()}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">clics</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-sm font-semibold">{ctr}</p>
+                            <p className="text-[10px] text-muted-foreground">CTR</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="Ver desglose por torneo y organizador"
+                            onClick={() => setDetailFor(c)}
+                          >
+                            <BarChart3 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title={c.is_active ? "Pausar" : "Activar"}
+                            onClick={() => toggleActive(c)}
+                          >
+                            <Power
+                              className={
+                                "h-4 w-4 " +
+                                (c.is_active ? "text-green-600" : "text-muted-foreground")
+                              }
+                            />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="Generar link de pago"
+                            disabled={linkLoadingId === c.id}
+                            onClick={() => generatePaymentLink(c)}
+                          >
+                            <CreditCard className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="Editar"
+                            onClick={() => openEdit(c)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            title="Eliminar"
+                            onClick={() => handleDelete(c)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
           )}
-          monthlyPrices={Object.fromEntries(
-            campaigns.map((c) => [c.id, c.monthly_price])
+        </TabsContent>
+
+        {/* forceMount: sin esto Radix desmonta la pestaña inactiva, el reparto
+            no se calcularía hasta abrirla, y la tarjeta "A transferir" de
+            arriba —más el monto en la pestaña— mostrarían $0 aunque haya plata
+            pendiente. Un cero falso en una cifra de pago es justo lo que este
+            panel trata de evitar. */}
+        <TabsContent value="reparto" forceMount>
+          {metricsError ? (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                El reparto no se puede calcular sin las métricas. Mirá el aviso
+                de arriba.
+              </CardContent>
+            </Card>
+          ) : (
+            <AdRevenueShare
+              rows={byCampaignOrganizer}
+              campaignNames={Object.fromEntries(
+                campaigns.map((c) => [c.id, c.advertiser_name])
+              )}
+              monthlyPrices={Object.fromEntries(
+                campaigns.map((c) => [c.id, c.monthly_price])
+              )}
+              periodLabel={DATE_RANGE_LABELS[dateRange]}
+              periodMonth={periodMonthOf(dateRange)}
+              coverage={personCoverage}
+              onPayableChange={setPayableCop}
+            />
           )}
-          periodLabel={DATE_RANGE_LABELS[dateRange]}
-          periodMonth={periodMonthOf(dateRange)}
-          coverage={personCoverage}
-          onPayableChange={setPayableCop}
-        />
-      )}
+        </TabsContent>
+      </Tabs>
 
       {/* ===== Diálogo: desglose de una campaña ===== */}
       {detailFor && (
