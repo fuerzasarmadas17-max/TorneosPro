@@ -20,6 +20,8 @@ import { HandCoins, Users, Lock, Loader2 } from "lucide-react";
 import { formatCOP } from "@/lib/pricing";
 import {
   computeRevenueShare,
+  defaultEligibility,
+  eligibilityFrom,
   isMonthClosable,
   proratedRevenue,
   toSettlementInputs,
@@ -27,6 +29,7 @@ import {
   SETTLEMENT_STATUS_LABELS,
   type AdCampaignOrganizerRow,
   type AdSettlement,
+  type MonetizationStatus,
 } from "@/lib/ad-analytics";
 
 /** Lo que hace falta saber de cada campaña para repartir. */
@@ -85,6 +88,8 @@ export function AdRevenueShare({
 }: Props) {
   const [revenue, setRevenue] = useState<Record<string, string>>({});
   const [settlements, setSettlements] = useState<AdSettlement[]>([]);
+  /** Quién clasifica para monetizar. `null` = no se pudo cargar. */
+  const [monetization, setMonetization] = useState<MonetizationStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [closing, setClosing] = useState(false);
 
@@ -102,7 +107,7 @@ export function AdRevenueShare({
       return;
     }
     setLoading(true);
-    const [revRes, setRes] = await Promise.all([
+    const [revRes, setRes, monRes] = await Promise.all([
       supabase
         .from("ad_period_revenue")
         .select("campaign_id, amount_cop")
@@ -112,7 +117,15 @@ export function AdRevenueShare({
         .select("*")
         .eq("period_month", periodMonth)
         .neq("status", "void"),
+      supabase.rpc("get_monetization_status", { p_month: periodMonth }),
     ]);
+
+    if (monRes.error) {
+      console.error("get_monetization_status falló", monRes.error);
+      setMonetization(null);
+    } else {
+      setMonetization(monRes.data as MonetizationStatus | null);
+    }
 
     const saved: Record<string, string> = {};
     for (const r of (revRes.data ?? []) as {
@@ -167,10 +180,14 @@ export function AdRevenueShare({
     () =>
       computeRevenueShare(
         rows,
-        campaignIds.map((id) => ({ campaignId: id, amountCop: amountOf(id) }))
+        campaignIds.map((id) => ({ campaignId: id, amountCop: amountOf(id) })),
+        // Sin el estado de monetización se cae al fallback permisivo, y el aviso
+        // de abajo lo dice: es mejor que un fallo de red se vea como "no sé" y
+        // no como "nadie clasificó", que dejaría el reparto entero en cero.
+        monetization ? eligibilityFrom(monetization) : defaultEligibility
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, campaignIds, revenue, campaigns, periodMonth]
+    [rows, campaignIds, revenue, campaigns, periodMonth, monetization]
   );
 
   const nameOf = (id: string) => {
@@ -388,6 +405,17 @@ export function AdRevenueShare({
             <strong>No liquidar todavía.</strong> Solo el{" "}
             {Math.round(coverage * 100)}% de las impresiones del período tienen
             persona identificada, así que las personas-día están subestimadas.
+          </p>
+        )}
+
+        {/* Los requisitos no se pudieron consultar. Se avisa porque el fallback
+            es permisivo: sin este cartel, el panel mostraría a todos como
+            elegibles y no habría forma de saber que no se evaluó nada. */}
+        {!monetization && (
+          <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-xs text-destructive">
+            <strong>No se pudieron consultar los requisitos.</strong> Todos
+            aparecen como elegibles porque no se evaluó el umbral. No liquidar
+            así.
           </p>
         )}
 

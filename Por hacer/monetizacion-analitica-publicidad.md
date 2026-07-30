@@ -1,9 +1,10 @@
 # Plan: analítica de publicidad y reparto con organizadores
 
-**Estado:** pasos 0, 1 y 2 desplegados. Del Paso 3 está hecho el corte
-congelado y el estado de cobro (**falta correr `20260729f`**); falta la sección
-que ve el organizador y evaluar el umbral, que espera la medición de septiembre.
-**Última actualización:** 2026-07-29
+**Estado:** pasos 0, 1 y 2 desplegados, con sus migraciones corridas. Del Paso 3
+están hechos el corte congelado, el estado de cobro y la evaluación de los
+umbrales (**falta correr `20260730_monetization_status.sql`**). Falta calibrar
+los umbrales con agosto, la sección que ve el organizador, y dónde transferirle.
+**Última actualización:** 2026-07-30
 
 ---
 
@@ -64,7 +65,7 @@ el reparto es proporcional, un sesgo parejo se cancela. Comunicar siempre como
 
 ---
 
-## Paso 0 — visitor_id en los eventos ✅ hecho, sin desplegar
+## Paso 0 — visitor_id en los eventos ✅ desplegado
 
 `page_views` ya tenía `visitor_id` desde `20260720_analytics_visitor_id.sql`,
 pero `analytics_events` se quedó solo con `session_id` — que caduca a los 30
@@ -75,7 +76,7 @@ min, así que alguien entrando mañana, tarde y noche contaba como tres personas
   (uno por `event_type, created_at, visitor_id` para el corte mensual, otro
   incluyendo `tournament_id` para el desglose por organizador).
 - `trackEvent` (`lib/analytics.ts`) ahora manda `visitor_id`.
-- Migración **ya corrida en la base**. El código está en local sin commitear.
+- Migración corrida y código desplegado.
 
 **Por qué fue primero:** aplica solo hacia adelante. Las impresiones ya
 registradas no tienen persona y no se pueden reconstruir. Cada día sin
@@ -88,7 +89,7 @@ aviso.
 
 ---
 
-## Paso 1 — RPC de agregación + vista de admin ✅ hecho, sin desplegar
+## Paso 1 — RPC de agregación + vista de admin ✅ desplegado
 
 **Hecho:**
 - Migración `20260729b_get_ad_analytics.sql`: RPC `get_ad_analytics(p_from,
@@ -273,10 +274,19 @@ decisiones comerciales.
 
 Lo que falta, concreto:
 
-- **Evaluar el umbral.** Hoy la elegibilidad solo aplica
-  `revenue_share_excluded`. Los requisitos de abajo están definidos pero no se
-  evalúan: sus números esperan la medición de septiembre. La estructura ya lo
-  soporta — es una función inyectable (`EligibilityFn`), no hay que rehacer nada.
+- ✅ **Evaluar el umbral** — hecho. `get_monetization_status(mes)`
+  (`20260730_monetization_status.sql`) calcula los requisitos por organizador, con
+  los umbrales en la tabla `monetization_config` para poder moverlos con un
+  `UPDATE`. Sirve a los dos lados: el admin ve todos, un organizador ve solo el
+  suyo — así el panel y la futura sección del organizador usan la misma cuenta y
+  no puede haber dos versiones de "quién clasifica".
+
+  Si la consulta falla, el reparto cae a un fallback **permisivo** (todos
+  elegibles) y el panel lo avisa en rojo. Es deliberado: un fallo de red se debe
+  ver como "no sé", no como "nadie clasificó" —que dejaría el reparto en cero y
+  parecería un mes malo.
+
+  **Falta calibrar los números** (septiembre, con agosto completo).
 - **La sección en sí**, con su panel y el progreso hacia los requisitos.
 - **Policy de lectura para el organizador** en `ad_settlements`
   (`organizer_id = auth.uid()`). A propósito no está: mostrarle cifras sin la
@@ -357,8 +367,10 @@ no sabe por qué; con dos, el requisito se vuelve la explicación de qué le fal
 **Los umbrales van en configuración, no hardcodeados**, para poder moverlos sin
 desplegar.
 
-**Los números están sin validar contra datos reales.** La consulta está en
-`Por hacer/consultas/organizadores-vs-requisitos.sql`.
+**Los números están sin validar contra datos reales.** Ya se evalúan vía
+`get_monetization_status`; la consulta manual
+`Por hacer/consultas/organizadores-vs-requisitos.sql` queda solo como
+herramienta de diagnóstico suelta.
 
 ### Primera medición (2026-07-29): no concluyente
 

@@ -212,11 +212,97 @@ export type EligibilityFn = (
   row: AdCampaignOrganizerRow
 ) => { eligible: boolean; reason: string | null };
 
-/** Elegibilidad por defecto: cobra todo el que no esté excluido a mano. */
+/** Elegibilidad por defecto: cobra todo el que no esté excluido a mano.
+ *
+ *  Es el fallback para cuando no se pudo cargar el estado de monetización. Es
+ *  deliberadamente PERMISIVO, y por eso el panel avisa cuando está actuando: si
+ *  fuera restrictivo, un fallo de red se vería como "nadie clasificó" y el
+ *  reparto entero en cero. */
 export const defaultEligibility: EligibilityFn = (row) =>
   row.organizer_excluded
     ? { eligible: false, reason: "Cuenta excluida del reparto" }
     : { eligible: true, reason: null };
+
+// ============================================================================
+// Requisitos para monetizar
+// ============================================================================
+
+/** Lo que devuelve la RPC `get_monetization_status`. */
+export interface MonetizationStatus {
+  month: string;
+  config: MonetizationConfig;
+  organizers: MonetizationRow[];
+}
+
+export interface MonetizationConfig {
+  min_tournaments_in_progress: number;
+  min_teams: number;
+  min_person_days: number;
+  min_active_days: number;
+  min_matches_with_result: number;
+  min_account_age_days: number;
+  require_profile: boolean;
+}
+
+export interface MonetizationRow {
+  organizer_id: string;
+  organizer_name: string | null;
+  excluded: boolean;
+  person_days: number;
+  active_days: number;
+  matches_with_result: number;
+  max_teams: number;
+  tournaments_in_progress: number;
+  account_age_days: number;
+  profile_complete: boolean;
+  /** Claves de lo que le falta para el nivel 2. */
+  missing: MissingKey[];
+  /** 0 = ni ve la sección · 1 = la ve con su progreso · 2 = liquidable. */
+  level: 0 | 1 | 2;
+  eligible: boolean;
+}
+
+export type MissingKey =
+  | "matches_with_result"
+  | "person_days"
+  | "active_days"
+  | "account_age_days"
+  | "profile"
+  | "excluded";
+
+export const MISSING_LABELS: Record<MissingKey, string> = {
+  matches_with_result: "Pocos partidos con resultado",
+  person_days: "Audiencia insuficiente",
+  active_days: "Audiencia en muy pocos días",
+  account_age_days: "Cuenta muy nueva",
+  profile: "Perfil sin nombre o logo",
+  excluded: "Cuenta excluida del reparto",
+};
+
+/** Motivo corto para la tabla: el primero que falta, y cuántos más. */
+export function missingLabel(missing: MissingKey[]): string {
+  if (missing.length === 0) return "";
+  const first = MISSING_LABELS[missing[0]] ?? missing[0];
+  return missing.length > 1 ? `${first} (+${missing.length - 1})` : first;
+}
+
+/**
+ * Elegibilidad real, a partir del estado de monetización.
+ *
+ * Un organizador que no aparece en el estado no clasifica: si tiene audiencia de
+ * publicidad pero la RPC no lo devolvió, algo no cuadra y lo seguro es no
+ * pagarle hasta entender qué pasó.
+ */
+export function eligibilityFrom(status: MonetizationStatus): EligibilityFn {
+  const byId = new Map(status.organizers.map((o) => [o.organizer_id, o]));
+  return (row) => {
+    const o = byId.get(row.organizer_id);
+    if (!o) return { eligible: false, reason: "Sin datos de requisitos" };
+    return o.eligible
+      ? { eligible: true, reason: null }
+      : { eligible: false, reason: missingLabel(o.missing) || "No clasifica" };
+  };
+}
 
 /**
  * Reparte por RESIDUO MAYOR. Devuelve un monto entero por índice, cuya suma da

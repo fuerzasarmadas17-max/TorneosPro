@@ -200,12 +200,23 @@ queda con la plataforma.
 Es deliberado. Si el denominador fueran solo los que clasifican, ellos
 absorberían esa parte y cobrarían **más que su aporte real**.
 
-Motivos de no clasificar:
+Motivos de no clasificar, todos evaluados por el sistema:
 
-| Motivo | Estado |
+| Motivo | Umbral de arranque |
 |---|---|
-| Cuenta excluida (pruebas, demo, socio) | activo |
-| No llegó al umbral de monetización | **todavía no se evalúa** — espera la medición de agosto |
+| Cuenta excluida (pruebas, demo, socio) | — |
+| Pocos partidos con resultado en el mes | 10 |
+| Audiencia insuficiente (personas-día) | 300 |
+| Audiencia en muy pocos días | 8 |
+| Cuenta muy nueva | 30 días |
+| Perfil sin nombre o logo | — |
+
+Los umbrales viven en la tabla `monetization_config`, así que se mueven con un
+`UPDATE` y no con un despliegue.
+
+⚠️ **Los números no están calibrados.** Se pusieron sin mirar datos y la primera
+medición no fue concluyente. Se recalibran en septiembre con agosto completo.
+Mientras tanto es normal que casi nadie clasifique.
 
 ---
 
@@ -316,8 +327,9 @@ Si alguna de estas no cuadra, es un bug:
 
 ## 13. Lo que todavía no está activo
 
-- **El umbral de monetización.** Hoy solo se aplica la bandera de cuenta
-  excluida. Los requisitos están definidos pero sus números esperan la medición
-  de agosto.
+- **Los umbrales calibrados.** Los requisitos ya se evalúan, pero con números
+  puestos sin datos. Se recalibran en septiembre con agosto completo.
 - **La sección que ve el organizador.** Todo esto vive únicamente en el panel de
   admin; el organizador no ve nada todavía.
+- **Dónde transferirle.** No hay ningún campo con cédula, banco ni Nequi. Se
+  puede marcar un corte como "pagada" sin saber a dónde se mandó la plata.
