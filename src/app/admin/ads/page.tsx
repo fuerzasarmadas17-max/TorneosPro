@@ -1066,12 +1066,20 @@ function AdsContent() {
           )}
         </TabsContent>
 
-        {/* forceMount: sin esto Radix desmonta la pestaña inactiva, el reparto
-            no se calcularía hasta abrirla, y la tarjeta "A transferir" de
-            arriba —más el monto en la pestaña— mostrarían $0 aunque haya plata
-            pendiente. Un cero falso en una cifra de pago es justo lo que este
-            panel trata de evitar. */}
-        <TabsContent value="reparto" forceMount>
+        {/* forceMount para que el reparto se calcule aunque la pestaña esté
+            cerrada: si no, la tarjeta "A transferir" de arriba mostraría $0
+            hasta abrirla, y un cero falso en una cifra de pago es justo lo que
+            este panel trata de evitar.
+
+            Y `data-[state=inactive]:hidden` porque forceMount NO oculta: Radix
+            deja la visibilidad al CSS, así que sin esta clase el reparto se
+            renderiza debajo de la lista de campañas y las pestañas no sirven
+            de nada. */}
+        <TabsContent
+          value="reparto"
+          forceMount
+          className="data-[state=inactive]:hidden"
+        >
           {metricsError ? (
             <Card>
               <CardContent className="py-10 text-center text-sm text-muted-foreground">

@@ -457,8 +457,10 @@ export function AdRevenueShare({
             </Table>
           </div>
           <p className="text-xs text-muted-foreground">
-            El cobro se precarga del precio mensual y se guarda al salir del
-            campo. Corrígelo si la campaña estuvo al aire solo parte del mes.
+            El cobro sale de los pagos aprobados, ya prorrateado a los días que
+            la campaña estuvo al aire en el mes. Si cobraste por fuera
+            (efectivo, transferencia directa) escribilo a mano: se guarda al
+            salir del campo.
           </p>
         </section>
 
