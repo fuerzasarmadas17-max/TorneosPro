@@ -1,10 +1,34 @@
 # Plan: analítica de publicidad y reparto con organizadores
 
-**Estado:** pasos 0, 1 y 2 desplegados, con sus migraciones corridas. Del Paso 3
-están hechos el corte congelado, el estado de cobro y la evaluación de los
-umbrales (**falta correr `20260730_monetization_status.sql`**). Falta calibrar
-los umbrales con agosto, la sección que ve el organizador, y dónde transferirle.
+**Estado:** todo desplegado hasta la evaluación de umbrales. Falta la **sección
+que ve el organizador** (especificada abajo en el Paso 3) y **calibrar los
+umbrales** con agosto completo.
 **Última actualización:** 2026-07-30
+
+### Fechas que importan
+
+| Cuándo | Qué |
+|---|---|
+| **1 de agosto 2026** | Cerrar julio como **ensayo**. Ese camino nunca corrió de verdad; julio no sirve para pagar (2% de cobertura) pero ejercita el flujo completo. Después anular los cortes. |
+| **Septiembre 2026** | Calibrar `monetization_config` con agosto, el primer mes limpio. Los números actuales se pusieron sin datos. |
+
+### Todo lo desplegado
+
+| Migración | Qué agregó |
+|---|---|
+| `20260729` | `visitor_id` en `analytics_events` |
+| `20260729b` | `get_ad_analytics` — agrega en Postgres, no en el navegador |
+| `20260729c` | corte campaña × organizador y `by_organizer` |
+| `20260729d` | `is_authenticated` en `page_views` |
+| `20260729e` | reparto **por campaña** + `revenue_share_excluded` |
+| `20260729f` | corte congelado (`ad_settlements`) y estado de cobro |
+| `20260729g` | `record_view_duration` — arregla el tiempo promedio |
+| `20260730` | `get_monetization_status` + `monetization_config` |
+| `20260730b` | `organizer_payout_info` + requisito (apagado) |
+
+Más, sin migración: tope de 7 avisos por persona/torneo/día, panel en dos
+pestañas, reparto sobre lo **cobrado** y prorrateado, y personas-día en las
+tarjetas de analítica.
 
 ---
 
@@ -104,10 +128,9 @@ aviso.
   de personas-día, aviso de error de métricas y aviso de cobertura parcial
   mientras el histórico no tenga `visitor_id`.
 
-Queda pendiente de este paso solo el `by_organizer` calculado en la base;
-agrupar `by_tournament` por organizador en el cliente vuelve a ser una suma y
-cuenta doble a quien ve dos torneos del mismo organizador el mismo día. Va con
-el Paso 2.
+El corte por organizador quedó para el Paso 2: agruparlo en el cliente desde
+`by_tournament` vuelve a ser una suma y cuenta doble a quien ve dos torneos del
+mismo organizador el mismo día.
 
 <details>
 <summary>Notas de diseño del paso (por qué se hizo así)</summary>
@@ -268,38 +291,140 @@ premiar organizadores.
 
 ## Paso 3 — Sección "Monetizar" del organizador
 
-**Parcialmente hecho.** El corte congelado y el estado de cobro están listos y
-son la parte crítica. Falta lo que el organizador VE, que sigue dependiendo de
-decisiones comerciales.
+**La plomería está lista; falta la pantalla.**
 
-Lo que falta, concreto:
+### Hecho
 
-- ✅ **Evaluar el umbral** — hecho. `get_monetization_status(mes)`
-  (`20260730_monetization_status.sql`) calcula los requisitos por organizador, con
-  los umbrales en la tabla `monetization_config` para poder moverlos con un
-  `UPDATE`. Sirve a los dos lados: el admin ve todos, un organizador ve solo el
-  suyo — así el panel y la futura sección del organizador usan la misma cuenta y
-  no puede haber dos versiones de "quién clasifica".
+- ✅ **Corte mensual congelado y estado de cobro** (`20260729f`) — ver abajo.
+- ✅ **Evaluación de los umbrales.** `get_monetization_status(mes)`
+  (`20260730`, ampliada en `20260730b`) calcula los requisitos por organizador,
+  con los umbrales en `monetization_config` para poder moverlos con un `UPDATE`.
 
-  Si la consulta falla, el reparto cae a un fallback **permisivo** (todos
-  elegibles) y el panel lo avisa en rojo. Es deliberado: un fallo de red se debe
-  ver como "no sé", no como "nadie clasificó" —que dejaría el reparto en cero y
-  parecería un mes malo.
+  Sirve a los dos lados: el admin ve todos, un organizador ve solo el suyo. Así
+  el panel y esta sección usan **la misma cuenta** y no puede haber dos
+  versiones de "quién clasifica" que discrepen.
 
-  **Falta calibrar los números** (septiembre, con agosto completo).
-- **La sección en sí**, con su panel y el progreso hacia los requisitos.
-- **Policy de lectura para el organizador** en `ad_settlements`
-  (`organizer_id = auth.uid()`). A propósito no está: mostrarle cifras sin la
-  sección armada es filtrar plata a medias.
+  Si la consulta falla, el reparto cae a un fallback **permisivo** y el panel lo
+  avisa en rojo. Es deliberado: un fallo de red se debe ver como "no sé", no
+  como "nadie clasificó" —que dejaría el reparto en cero y parecería un mes malo.
+- ✅ **Datos de pago** (`20260730b`). `organizer_payout_info`: nombre completo,
+  tipo y número de documento, banco, tipo de cuenta y número. Tabla aparte del
+  perfil, que es público. El dueño escribe lo suyo; el admin **solo lee**.
 
-Lo que se sabe que necesita:
+### Falta
 
-- **Panel:** campañas corriendo en sus torneos, personas-día aportadas, su
-  participación, estimado del mes, acumulado histórico.
-- ✅ **Corte mensual congelado** y **estado de la cuenta de cobro** — hechos,
-  ver abajo.
-- El estimado del mes debe etiquetarse como **proyección**: mientras el fondo
-  dependa de lo que se venda ese mes, ese número puede bajar.
+| | Qué | Bloqueado por |
+|---|---|---|
+| 1 | Calibrar los umbrales | agosto completo → septiembre |
+| 2 | RPC de los cortes del organizador | nada, se puede hacer ya |
+| 3 | Policy de lectura en `ad_settlements` | va con la 2 |
+| 4 | Términos y condiciones del programa | decisión + redacción |
+| 5 | La pantalla | las anteriores |
+| 6 | Prender `require_payout_info` | que exista la pantalla |
+
+**Por qué la policy de lectura no está todavía:** mostrarle cifras al
+organizador sin la sección armada es filtrar plata a medias. Se agrega junto con
+la pantalla, no antes.
+
+---
+
+### El flujo del organizador
+
+Tres etapas, en orden. **No se puede saltar ninguna.**
+
+#### Etapa 1 — Antes de ver nada: datos y términos
+
+Al entrar por primera vez a "Monetizar" no ve cifras. Ve un formulario:
+
+1. **Datos para transferirle** — nombre completo, cédula, banco, tipo de cuenta
+   y número. Van a `organizer_payout_info`.
+2. **Aceptar términos y condiciones** del programa.
+
+**Por qué los datos van primero y no al final:** si le mostramos "ganaste
+$240.000" y después le pedimos la cédula, el dato de pago se vuelve un trámite
+molesto que puede dejar a medias — y quedan cortes emitidos que no se pueden
+pagar. Pidiéndolo antes, todo corte que se emite es cobrable.
+
+**Por qué los términos son bloqueantes:** hay plata de por medio. Tiene que
+haber aceptado por escrito cómo se calcula, cuándo se paga y que el estimado del
+mes puede bajar, ANTES de ver un número que va a interpretar como una promesa.
+
+Hace falta guardar **cuándo** aceptó y **qué versión** — si los términos cambian,
+se vuelve a pedir. Eso es una tabla o un par de columnas todavía por definir.
+
+#### Etapa 2 — Qué le falta para clasificar este mes
+
+Una vez con los datos y los términos, ve su progreso. Sale entero de
+`get_monetization_status`, que ya devuelve los umbrales junto a sus números:
+
+| Requisito | Cómo se ve |
+|---|---|
+| Personas-día | `180 / 300` con barra |
+| Días con audiencia | `6 / 8` |
+| Partidos con resultado | `14 / 10` ✓ |
+| Equipos | `18 / 6` ✓ |
+| Antigüedad de la cuenta | `45 / 30 días` ✓ |
+| Perfil con nombre y logo | ✓ |
+
+Lo importante es que **sea accionable**: no "no clasificás", sino "te faltan 120
+personas-día y 2 días con audiencia". El requisito deja de ser un muro y pasa a
+ser una explicación.
+
+Si ya clasifica, esta vista se muestra igual pero toda en verde: sirve para que
+sepa que sigue cumpliendo y no se sorprenda el mes que deje de hacerlo.
+
+#### Etapa 3 — Cuánto ganó, y por qué
+
+Dos pestañas.
+
+**Pestaña "Este mes"** — cuánto lleva ganado **por campaña**, y al lado la
+audiencia que lo generó:
+
+| Campaña | Personas-día que aportó | Su % | Ganado |
+|---|---:|---:|---:|
+| Ferretería | 300 | 60% | $120.000 |
+| Panadería | 800 | 80% | $120.000 |
+| | | | **$240.000** |
+
+Y cada campaña se puede abrir para ver **en qué torneos** salió y cuánta
+audiencia puso cada uno. Eso es lo que responde "¿de dónde salió este número?"
+sin que tenga que preguntarnos.
+
+⚠️ **Etiquetar como PROYECCIÓN.** Mientras el mes corra, el número puede **bajar**:
+si otro organizador suma audiencia a la misma campaña, el porcentaje propio baja.
+Decirlo antes de que pase, no después.
+
+**Pestaña "Histórico"** — los cortes ya cerrados, uno por mes:
+
+| Mes | Personas-día | Monto | Estado |
+|---|---:|---:|---|
+| Julio 2026 | 1.240 | $240.000 | Pagada |
+| Junio 2026 | 980 | $185.000 | Pagada |
+| | | **$425.000** | acumulado |
+
+Estos salen de `ad_settlements` y son **congelados**: el número que vio el día
+que se cerró el mes es el que sigue viendo. Cada uno abre a su desglose por
+campaña, que ya está guardado en `breakdown`.
+
+Acá el estado sí importa: **Emitida / Aprobada / Pagada** le dice si ya le
+transferimos o si está en camino.
+
+---
+
+### Lo que hace falta construir para eso
+
+- **RPC `get_my_ad_earnings(mes)`** — el organizador no puede leer
+  `analytics_events` (es admin-only), así que necesita su propia función que le
+  devuelva sus personas-día por campaña y por torneo, y su participación. No
+  puede reusar `get_ad_analytics`.
+- **Policy de lectura en `ad_settlements`** (`organizer_id = auth.uid()`), solo
+  para cortes no anulados.
+- **Mostrar el desglose por campaña.** Ya se calcula y ya se guarda en
+  `ad_settlements.breakdown`, pero hoy no se pinta en ninguna parte — se quitó al
+  simplificar el panel de admin. Hace falta en los dos lados.
+- **Guardar la aceptación de términos** con fecha y versión.
+- **Cómo se entera de que tiene plata.** No hay email transaccional ni push. Al
+  arranque puede vivir solo dentro de la app, pero es una decisión.
 
 ### Corte mensual congelado ✅ hecho
 
@@ -546,6 +671,11 @@ venta al anunciante querría.
 | 2026-07-29 | El corte congelado lo **calcula el cliente y lo valida la base**, para no tener dos implementaciones de la matemática de plata. |
 | 2026-07-29 | Cerrar el mes es una **acción explícita del admin**, no automática por fecha, y solo se permite con el mes terminado. |
 | 2026-07-29 | Un corte no se edita: se **anula y se vuelve a cerrar**. La inmutabilidad la impone un trigger. |
+| 2026-07-29 | La base del reparto es **lo cobrado** (pagos aprobados), no lo facturado, y se prorratea entre los meses que la campaña estuvo al aire. |
+| 2026-07-30 | **Sin mínimo garantizado** ni techo por organizador: el reparto es puramente proporcional. |
+| 2026-07-30 | Los umbrales viven en **`monetization_config`**, no en el código, para moverlos sin desplegar. |
+| 2026-07-30 | Datos de pago: **nombre completo, cédula, banco, tipo de cuenta y número**, provistos por el organizador y obligatorios para clasificar. |
+| 2026-07-30 | En la sección del organizador, **datos de pago y términos van ANTES** de mostrarle cualquier cifra. |
 | 2026-07-29 | Los montos se reparten por **residuo mayor**, para que la suma cuadre al peso con el fondo. |
 | 2026-07-29 | El **fondo se escribe a mano** hasta que se decida de dónde sale (facturado vs. recaudado, y cómo prorratear campañas que cruzan meses). |
 | 2026-07-29 | Tope del modal en **7 por persona, torneo y día**, reemplazando el "sin tope" del 2026-07-03. Por torneo y no global: con cuota global el organizador que la persona abría primero se quedaba con todo el crédito de personas-día. |
