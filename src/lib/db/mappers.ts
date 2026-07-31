@@ -159,6 +159,11 @@ export function mapTournament(row: Record<string, unknown>): Tournament {
     tier: (row.tier as TournamentTier) ?? undefined,
     couponId: (row.coupon_id as string) ?? undefined,
     phaseConfigs: (row.phase_configs as PhaseConfig[]) ?? undefined,
+    // `?? false` y no `?? undefined`: mientras la migración no se haya
+    // corrido, la columna no viene en el row y esto lo deja en false — la
+    // portada simplemente no muestra la sección, sin romperse.
+    featured: (row.featured as boolean) ?? false,
+    cardImage: (row.card_image as string) ?? undefined,
     visibleTabs: (row.visible_tabs as string[]) ?? undefined,
     disqualifiedTeamIds: (row.disqualified_team_ids as string[]) ?? undefined,
     scope: (row.scope as TournamentScope) ?? undefined,
@@ -275,6 +280,10 @@ export function toDbTournament(t: Partial<Tournament>): Record<string, unknown> 
   if (t.scope !== undefined) db.scope = t.scope;
   if (t.department !== undefined) db.department = t.department;
   if (t.municipality !== undefined) db.municipality = t.municipality;
+  if (t.cardImage !== undefined) db.card_image = t.cardImage;
+  // `featured` NO se escribe desde acá a propósito: solo lo cambia el admin
+  // por /api/admin/tournaments/[id]/featured, y la base tiene un trigger que
+  // rechaza el resto. Ver 20260731_tournament_featured.sql.
   return db;
 }
 

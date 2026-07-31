@@ -374,6 +374,20 @@ export interface Tournament {
   scope?: TournamentScope;
   department?: string;
   municipality?: string;
+  /** Clave de la foto de la tarjeta, elegida por el organizador entre las de
+   *  su deporte. Es una clave, no una URL: se resuelve contra
+   *  `sport-images.ts` y un valor desconocido cae al degradado. Sin valor,
+   *  la foto la asigna el reparto automático por deporte.
+   *  Admite `null` (y no solo `undefined`) para poder BORRAR una elección
+   *  previa: `toDbTournament` ignora los `undefined`, así que volver a
+   *  "Automática" tiene que viajar como null. Mismo patrón que
+   *  `championPhotoUrl`. */
+  cardImage?: string | null;
+  /** Destacado en la portada. Lo marca el admin a mano — es una decisión
+   *  editorial, no se calcula. La base tiene un trigger que impide que un
+   *  organizador se destaque solo (ver 20260731_tournament_featured.sql).
+   *  Si hay varios marcados, la portada los rota en un carrusel. */
+  featured?: boolean;
 }
 
 export interface TournamentFilters {
