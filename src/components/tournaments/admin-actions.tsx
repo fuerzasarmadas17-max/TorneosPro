@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { FastForward, Loader2, Trash2 } from "lucide-react";
+import { FastForward, Loader2, Star, Trash2 } from "lucide-react";
 import { Tournament } from "@/types";
 import { useTournaments } from "@/context/tournament-context";
 import { supabase } from "@/lib/supabase";
@@ -43,6 +43,51 @@ export function AdminActions({ tournament }: AdminActionsProps) {
   // Delete dialog
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Destacar en la portada
+  const [featured, setFeatured] = useState(!!tournament.featured);
+  const [featuring, setFeaturing] = useState(false);
+
+  const handleToggleFeatured = async () => {
+    const next = !featured;
+    setFeaturing(true);
+    // Optimista: el interruptor responde de una y se revierte si falla.
+    setFeatured(next);
+    try {
+      const res = await fetch(
+        `/api/admin/tournaments/${tournament.id}/featured`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(await authHeader()),
+          },
+          body: JSON.stringify({ featured: next }),
+        }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setFeatured(!next);
+        toast.error(data?.error || "No se pudo cambiar el destacado");
+        return;
+      }
+      await refetch();
+      toast.success(
+        next
+          ? "Destacado en la portada"
+          : "Ya no aparece destacado en la portada"
+      );
+      // La portada se sirve con revalidate de 60s, así que el cambio puede
+      // tardar hasta un minuto en verse ahí.
+      router.refresh();
+    } catch (err) {
+      console.error("featured toggle error:", err);
+      setFeatured(!next);
+      toast.error("No se pudo cambiar el destacado");
+    } finally {
+      setFeaturing(false);
+    }
+  };
 
   const closeAdvance = () => {
     if (advancing) return;
@@ -130,6 +175,22 @@ export function AdminActions({ tournament }: AdminActionsProps) {
         >
           <FastForward className="h-4 w-4 mr-2" />
           Avanzar
+        </Button>
+        <Button
+          variant={featured ? "default" : "outline"}
+          size="sm"
+          onClick={handleToggleFeatured}
+          disabled={featuring}
+          aria-pressed={featured}
+        >
+          {featuring ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Star
+              className={`h-4 w-4 mr-2 ${featured ? "fill-current" : ""}`}
+            />
+          )}
+          {featured ? "Destacado en la portada" : "Destacar en la portada"}
         </Button>
         <Button
           variant="outline"
