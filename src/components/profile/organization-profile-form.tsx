@@ -128,7 +128,10 @@ export function OrganizationProfileForm() {
 
     setUploadingLogo(true);
     const { blob, ext } = await resizeImageForUpload(file, {
+      // PNG y no WebP: se inlinea en la tarjeta OG y Satori no decodifica
+      // WebP (ver `format` en lib/images.ts).
       maxDim: IMAGE_SIZES.orgLogo,
+      format: "png",
     });
     const path = `logos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 

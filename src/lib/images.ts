@@ -23,6 +23,20 @@ export interface ResizeOptions {
   maxDim: number;
   /** Calidad de encoding WebP/JPEG (0-1). */
   quality?: number;
+  /**
+   * Formato de salida. Por defecto WebP, que pesa menos y mantiene
+   * transparencia.
+   *
+   * **Usar `"png"` para toda imagen que vaya a aparecer en una tarjeta de
+   * OpenGraph** — hoy los logos de patrocinadores y el logo del organizador.
+   * Satori, el motor que genera esas tarjetas, NO decodifica WebP: lanza una
+   * excepción y la ruta entera devuelve 500, dejando al torneo sin
+   * previsualización en WhatsApp por culpa del logo de un patrocinador.
+   *
+   * El resto (logos de club, fotos de campeón, banners de publicidad) no
+   * entra en ninguna tarjeta OG y sigue en WebP.
+   */
+  format?: "webp" | "png";
 }
 
 export interface ResizedImage {
@@ -80,8 +94,10 @@ function encode(
 
 export async function resizeImageForUpload(
   file: File,
-  { maxDim, quality = 0.85 }: ResizeOptions
+  { maxDim, quality = 0.85, format = "webp" }: ResizeOptions
 ): Promise<ResizedImage> {
+  // Los SVG salen derecho: Satori los dibuja, así que no rompen las tarjetas
+  // OG y rasterizarlos solo los empeoraría.
   if (typeof window === "undefined" || isVector(file)) return originalOf(file);
 
   let source: ImageBitmap | HTMLImageElement;
@@ -113,7 +129,10 @@ export async function resizeImageForUpload(
     // WebP mantiene transparencia (los logos suelen tener fondo alpha) y pesa
     // menos que PNG. Safari lo soporta desde la 14; si toBlob lo ignora,
     // devuelve otro mime y lo respetamos.
-    let mime = "image/webp";
+    //
+    // Con `format: "png"` se va directo a PNG: acá el objetivo no es el peso
+    // sino que Satori pueda dibujarlo en la tarjeta OG.
+    let mime = format === "png" ? "image/png" : "image/webp";
     let blob = await encode(canvas, mime, quality);
     if (!blob || blob.type !== mime) {
       mime = "image/png";
@@ -123,7 +142,16 @@ export async function resizeImageForUpload(
 
     // Si reencodar no ganó nada y tampoco hubo que escalar, el original ya
     // estaba bien: no lo tocamos.
-    if (scale === 1 && blob.size >= file.size) return originalOf(file);
+    //
+    // Con `format: "png"` esta salida se desactiva salvo que el original ya
+    // sea un formato que Satori dibuje. Si no, subir un .webp de 20 KB
+    // devolvería el original —porque el PNG reencodado pesa más— y volvería a
+    // romper la tarjeta OG, que es justo lo que este modo viene a evitar.
+    const originalSirveParaOg =
+      format !== "png" || /image\/(png|jpe?g|gif)/i.test(file.type);
+    if (scale === 1 && blob.size >= file.size && originalSirveParaOg) {
+      return originalOf(file);
+    }
 
     return { blob, ext: extFor(blob.type, "webp") };
   } finally {
