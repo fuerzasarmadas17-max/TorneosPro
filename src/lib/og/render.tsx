@@ -25,9 +25,24 @@ const BG =
   "radial-gradient(1100px 420px at 0% 0%, #14304a 0%, transparent 60%), linear-gradient(135deg, #0b1220 0%, #0f1b2e 100%)";
 
 /**
+ * Formatos que Satori —el motor detrás de `ImageResponse`— sabe dibujar.
+ *
+ * WEBP NO ESTÁ, y esa ausencia es la razón de este filtro: Satori no lo
+ * decodifica y lanza una excepción, que tumba la ruta entera con un 500. El
+ * resultado es que el torneo se comparte por WhatsApp SIN previsualización,
+ * por culpa del logo de un patrocinador.
+ *
+ * Se detectó con dos torneos reales: "Masculino Aprendiz 2.0" (3 logos webp
+ * de 6) y "Sincelejo Cup" (1 de 5) daban 500, mientras que los que solo
+ * tenían png/jpeg daban 200. Un solo webp alcanza para romperlo.
+ */
+const FORMATOS_SOPORTADOS = /^image\/(png|jpe?g|gif|svg\+xml)$/i;
+
+/**
  * Descarga una imagen remota y la inlinea como data URI. Devuelve null
- * ante cualquier fallo (404, no-imagen, timeout, demasiado grande) para
- * que un logo roto NUNCA rompa la tarjeta OG completa.
+ * ante cualquier fallo (404, no-imagen, formato no soportado, timeout,
+ * demasiado grande) para que un logo roto NUNCA rompa la tarjeta OG
+ * completa.
  */
 export async function toDataUri(url?: string | null): Promise<string | null> {
   if (!url || !/^https?:\/\//.test(url)) return null;
@@ -36,6 +51,8 @@ export async function toDataUri(url?: string | null): Promise<string | null> {
     if (!res.ok) return null;
     const type = res.headers.get("content-type") || "image/png";
     if (!type.startsWith("image/")) return null;
+    // Mejor una tarjeta a la que le falta un logo que ninguna tarjeta.
+    if (!FORMATOS_SOPORTADOS.test(type.split(";")[0].trim())) return null;
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length === 0 || buf.length > 3_000_000) return null;
     return `data:${type};base64,${buf.toString("base64")}`;
