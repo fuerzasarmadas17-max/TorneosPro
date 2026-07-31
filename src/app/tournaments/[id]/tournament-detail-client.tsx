@@ -116,6 +116,7 @@ export function TournamentDetailClient({
         canEditSponsors={canEditSponsors}
         orgSponsors={user?.organizationProfile?.sponsors}
         isAuthenticated={isAuthenticated}
+        organizer={initialData.organizer}
       />
     </div>
   );

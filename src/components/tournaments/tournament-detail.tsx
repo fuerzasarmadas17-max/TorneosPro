@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BracketView } from "@/components/brackets/bracket-view";
@@ -36,7 +37,10 @@ import {
 import { useTournaments } from "@/context/tournament-context";
 import { useAuth } from "@/context/auth-context";
 import { AdminActions } from "@/components/tournaments/admin-actions";
+import { CardImagePicker } from "@/components/tournaments/card-image-picker";
 import { getSportInfo } from "@/data/sports";
+import { Breadcrumb } from "@/components/ui/breadcrumb";
+import type { TournamentOrganizer } from "@/lib/db/tournaments-server";
 import { getDepartmentLabel, getMunicipalityLabel } from "@/data/colombia";
 import { getSportCategory, Tournament, Sponsor, Match } from "@/types";
 import { supabase } from "@/lib/supabase";
@@ -81,10 +85,12 @@ const statusLabels: Record<string, string> = {
   completed: "Completado",
 };
 
+// Mismos dos tonos que en `tournament-card.tsx`: legibles sobre el
+// blanco hueso y sobre el marino del modo oscuro.
 const statusColors: Record<string, string> = {
-  upcoming: "bg-blue-500/10 text-blue-500",
-  "in-progress": "bg-green-500/10 text-green-500",
-  completed: "bg-zinc-500/10 text-zinc-500",
+  upcoming: "bg-blue-500/10 text-blue-700 dark:text-blue-400",
+  "in-progress": "bg-green-500/10 text-green-700 dark:text-green-400",
+  completed: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
 };
 
 const formatLabels: Record<string, string> = {
@@ -561,6 +567,9 @@ interface TournamentDetailProps {
   canEditSponsors?: boolean;
   orgSponsors?: Sponsor[];
   isAuthenticated?: boolean;
+  /** Quien organiza: da el escudo del encabezado y el link a su perfil.
+   *  Llega resuelto desde el SSR (`fetchTournamentForPage`). */
+  organizer?: TournamentOrganizer;
 }
 
 export function TournamentDetail({
@@ -569,6 +578,7 @@ export function TournamentDetail({
   canEditSponsors,
   orgSponsors,
   isAuthenticated = false,
+  organizer,
 }: TournamentDetailProps) {
   const { updateTournamentProps, updatePlayoffConfig, applyExternalMatchUpdate } = useTournaments();
   const { user } = useAuth();
@@ -807,11 +817,62 @@ export function TournamentDetail({
   // auto-muestra. Ver biblioteca-de-logos: "cada torneo elige cuáles".
   const allSponsors = tournament.sponsors || [];
 
+  // Cuánto achicar el título para que entre en UNA sola línea. Se decide por
+  // el largo del nombre y no midiendo el ancho real: medir obligaría a
+  // renderizar, medir y volver a renderizar, con el parpadeo que eso trae.
+  // Los cortes salen de que en negrita cada carácter ocupa ~0,5 del tamaño de
+  // fuente, contra los ~600px que deja libres el escudo a la izquierda y los
+  // botones a la derecha.
+  const titleSize =
+    tournament.name.length <= 22
+      ? "text-3xl sm:text-4xl lg:text-5xl"
+      : tournament.name.length <= 34
+        ? "text-2xl sm:text-3xl lg:text-4xl"
+        : tournament.name.length <= 48
+          ? "text-xl sm:text-2xl lg:text-3xl"
+          : "text-lg sm:text-xl lg:text-2xl";
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-       <div className="space-y-2 min-w-0 flex-1">
+      <Breadcrumb
+        items={[
+          { label: "Torneos", href: "/tournaments" },
+          {
+            label: sport?.label ?? "Torneo",
+            href: `/tournaments?sport=${tournament.sport}`,
+          },
+          { label: tournament.name },
+        ]}
+      />
+
+      {/* Header con fondo liso, sin la banda de foto del deporte. El mockup
+          la dibuja, pero por ahora se prefiere el fondo plano: con la foto
+          detrás, los chips y los metadatos competían con la imagen.
+          La foto elegida sigue viéndose en la tarjeta del torneo. */}
+      <div className="flex items-start justify-between gap-3 overflow-hidden rounded-xl border bg-card p-4 sm:p-6">
+       <div className="flex min-w-0 flex-1 gap-4">
+        {/* Escudo: el logo del organizador si lo cargó; si no, el emoji del
+            deporte sobre su color, que es lo que ya usa la tarjeta. */}
+        {/* ~160px medido sobre el mockup. Fondo blanco fijo a propósito: es
+            una caja para un logo ajeno, y un logo con fondo transparente
+            sobre superficie oscura se ve roto — el mismo criterio que las
+            cajas de patrocinadores. */}
+        <div className="hidden size-32 shrink-0 place-items-center overflow-hidden rounded-xl border bg-white sm:grid lg:size-40">
+          {organizer?.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={organizer.logoUrl}
+              alt=""
+              className="size-full object-contain p-3"
+            />
+          ) : (
+            <span className="text-5xl" aria-hidden>
+              {sport?.emoji}
+            </span>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">
             {sport?.emoji} {sport?.label}
@@ -832,19 +893,45 @@ export function TournamentDetail({
             </Badge>
           )}
         </div>
-        <h1 className="text-3xl font-bold">{tournament.name}</h1>
+        {/* `sm:whitespace-nowrap`: de tablet para arriba el título va en una
+            sola línea, con el tamaño que salga de `titleSize`. En celular se
+            deja envolver — forzar una línea ahí obligaría a una letra
+            ilegible. */}
+        <h1 className={`font-bold sm:whitespace-nowrap ${titleSize}`}>
+          {tournament.name}
+        </h1>
         {tournament.description && (
           <p className="text-muted-foreground">{tournament.description}</p>
         )}
-        <div className="flex gap-4 text-sm text-muted-foreground">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
           <span>{tournament.teamIds.length} equipos</span>
           <span>Inicio: {tournament.startDate}</span>
           {tournament.endDate && <span>Fin: {tournament.endDate}</span>}
+          {/* El mockup pone "Modalidad: Masculino" acá, pero ese campo no
+              existe: en los datos reales la modalidad vive dentro del nombre
+              ("Masculino Aprendiz 2.0"). Va el organizador en su lugar —
+              información que sí tenemos y que le sirve más al visitante. */}
+          {organizer && (
+            <span>
+              Organizador:{" "}
+              {organizer.slug ? (
+                <Link
+                  href={`/${organizer.slug}`}
+                  className="font-medium text-primary hover:underline"
+                >
+                  {organizer.name}
+                </Link>
+              ) : (
+                <span className="font-medium">{organizer.name}</span>
+              )}
+            </span>
+          )}
         </div>
         {isAdmin && <AdminActions tournament={tournament} />}
+        </div>
        </div>
 
-       <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+       <div className="relative flex shrink-0 flex-col gap-2 sm:flex-row">
          {/* Pieza J: persistent champion-photo action for the organizer.
              Visible only once the tournament is completed. When there's no
              photo yet, the celebration modal opens in its default "upload"
@@ -1269,7 +1356,7 @@ function ConfigurationDialog({
   configurableTabs: { key: string; label: string }[];
   visibleTabs?: string[];
   onUpdate: (
-    updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "visibleTabs" | "phaseConfigs">>
+    updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "visibleTabs" | "phaseConfigs" | "cardImage">>
   ) => void;
   /** Persist per-group cupos: updates both the matching phaseConfig and the
    *  playoff_configs row when the edited phase is the last one. */
@@ -1288,6 +1375,9 @@ function ConfigurationDialog({
   const [endDate, setEndDate] = useState(tournament.endDate ?? "");
   const [visibilityDraft, setVisibilityDraft] = useState<string[]>(visibleTabs ?? []);
   const [bestOf, setBestOf] = useState<3 | 5>(tournament.bestOf ?? 3);
+  const [cardImage, setCardImage] = useState<string | null | undefined>(
+    tournament.cardImage
+  );
 
   // Per-group cupos draft, keyed by phase number → groupId → count (as string
   // for input bindings). Seeded from the saved perGroup map when present, or
@@ -1368,6 +1458,10 @@ function ConfigurationDialog({
       if (trimmedDesc !== (tournament.description ?? "")) updates.description = trimmedDesc || undefined;
       if (startDate && startDate !== tournament.startDate) updates.startDate = startDate;
       if (endDate !== (tournament.endDate ?? "")) updates.endDate = endDate || undefined;
+      // `cardImage` se compara contra undefined en los dos lados: volver a
+      // "Automática" tiene que poder BORRAR una elección previa, y para eso
+      // el update debe viajar aunque el valor nuevo sea undefined.
+      if (cardImage !== tournament.cardImage) updates.cardImage = cardImage ?? null;
       if (Object.keys(updates).length > 0) onUpdate(updates);
     } else if (section === "visibility") {
       onUpdate({ visibleTabs: visibilityDraft });
@@ -1544,6 +1638,18 @@ function ConfigurationDialog({
                       onChange={(e) => setEndDate(e.target.value)}
                     />
                   </div>
+                </div>
+                <div className="space-y-1.5 border-t pt-3">
+                  <Label>Foto de la tarjeta</Label>
+                  <p className="text-xs text-muted-foreground">
+                    La imagen con la que tu torneo aparece en la portada y en
+                    el listado. Elegí la que corresponda a tu categoría.
+                  </p>
+                  <CardImagePicker
+                    sport={tournament.sport}
+                    value={cardImage}
+                    onChange={setCardImage}
+                  />
                 </div>
               </div>
             )}

@@ -141,8 +141,8 @@ export function StandingsTable({ tournament }: StandingsTableProps) {
                 <TableRow key={entry.teamId}>
                   <TableCell className="font-medium">{index + 1}</TableCell>
                   <TableCell className="font-medium">
-                    <span className="flex items-center gap-2">
-                      <TeamMark team={team} size={20} />
+                    <span className="flex items-center gap-2.5 text-[15px] font-semibold">
+                      <TeamMark team={team} size={28} />
                       {team?.name || entry.teamId}
                       {tournament.disqualifiedTeamIds?.includes(entry.teamId) && (
                         <span className="text-[10px] font-semibold text-destructive">DQ</span>
