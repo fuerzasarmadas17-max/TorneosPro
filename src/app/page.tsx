@@ -1,185 +1,100 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { SPORTS } from "@/data/sports";
-import { VideoBackground } from "@/components/landing/video-background";
-import {
-  TIER_PRICES,
-  TIER_LABELS,
-  TIER_TEAM_RANGES,
-  FREE_TIER_LIMITS,
-  formatCOP,
-} from "@/lib/pricing";
-import { TournamentTier } from "@/types";
+import { ArrowRight, Trophy } from "lucide-react";
 import { PageViewTracker } from "@/components/analytics/page-view-tracker";
+import { LandingHero } from "@/components/landing/landing-hero";
+import { LandingFilters } from "@/components/landing/landing-filters";
+import { ValuesStrip } from "@/components/landing/values-strip";
+import { FeaturedTournament } from "@/components/landing/featured-tournament";
+import { TournamentCard } from "@/components/tournaments/tournament-card";
+import {
+  fetchFeaturedTournaments,
+  fetchLandingTournaments,
+} from "@/lib/db/tournaments-server";
+import { buildSportImageMap } from "@/data/sport-images";
 
-export default function HomePage() {
+/**
+ * Igual que el detalle del torneo: caché de 60 segundos. La portada la
+ * abren muchos visitantes distintos con el mismo contenido, así que solo el
+ * primero de cada minuto paga la consulta; el resto recibe el HTML ya
+ * armado. Corto suficiente para que un torneo nuevo aparezca enseguida.
+ */
+export const revalidate = 60;
+
+export default async function HomePage() {
+  // En paralelo: son dos consultas independientes y no hay razón para que
+  // una espere a la otra.
+  const [items, featured] = await Promise.all([
+    fetchLandingTournaments(12),
+    fetchFeaturedTournaments(),
+  ]);
+
+  // Un solo mapa para los dos bloques, así un torneo que está destacado Y en
+  // la grilla muestra la misma foto en ambos lados.
+  const images = buildSportImageMap([
+    ...items.map((i) => i.tournament),
+    ...featured,
+  ]);
+
+  const featuredItems = featured.map((tournament) => ({
+    tournament,
+    image: images.get(tournament.id) ?? null,
+  }));
+
   return (
     <div className="flex flex-col">
       <PageViewTracker />
-      {/* Hero */}
-      <section className="relative flex flex-col items-center justify-center gap-6 py-32 px-4 text-center min-h-[70vh]">
-        <VideoBackground />
-        <h1 className="relative z-10 text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl text-white drop-shadow-lg">
-          Organiza tus torneos
-          <br />
-          <span className="underline decoration-white/40 underline-offset-8">deportivos</span>
-        </h1>
-        <p className="relative z-10 max-w-[600px] text-lg text-white/80">
-          Crea torneos de eliminacion directa o liga, gestiona equipos, registra
-          resultados y sigue el progreso en tiempo real.
-        </p>
-        <div className="relative z-10 flex gap-4">
-          <Button size="lg" asChild>
-            <Link href="/tournaments">Explorar Torneos</Link>
-          </Button>
-          <Button size="lg" variant="outline" className="bg-white/10 text-white border-white/40 hover:bg-white/20 backdrop-blur-sm" asChild>
-            <Link href="/tournaments/create">Crear Torneo</Link>
-          </Button>
-        </div>
-      </section>
 
-      {/* Sports Grid */}
-      <section className="container mx-auto px-4 py-16">
-        <h2 className="text-3xl font-bold text-center mb-3">
-          Multiples Deportes
-        </h2>
-        <p className="text-center text-muted-foreground mb-10">
-          Crea torneos para cualquiera de estos deportes
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          {SPORTS.map((sport) => (
+      <LandingHero />
+
+      <div className="container mx-auto space-y-10 px-4 pb-16">
+        {/* La barra monta sobre el hero, como en el mockup. */}
+        <div className="-mt-8 relative z-10">
+          <LandingFilters />
+        </div>
+
+        {/* Si el admin no marcó ninguno, esto no renderiza nada. */}
+        <FeaturedTournament items={featuredItems} />
+
+        <section>
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <h2 className="flex items-center gap-2 text-lg font-bold tracking-wide uppercase">
+              <Trophy className="size-5 text-primary" aria-hidden />
+              Todos los torneos
+            </h2>
             <Link
-              key={sport.key}
-              href={`/tournaments?sport=${sport.key}`}
+              href="/tournaments"
+              className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-primary hover:underline"
             >
-              <Card className="group hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
-                <CardContent className="flex flex-col items-center justify-center p-8 gap-3">
-                  <span className="text-6xl group-hover:scale-110 transition-transform duration-200">
-                    {sport.emoji}
-                  </span>
-                  <span className="text-base font-semibold">{sport.label}</span>
-                </CardContent>
-              </Card>
+              Ver todos los torneos
+              <ArrowRight className="size-4" aria-hidden />
             </Link>
-          ))}
-        </div>
-      </section>
+          </div>
 
-      {/* Features */}
-      <section className="container mx-auto px-4 py-16">
-        <h2 className="text-2xl font-bold text-center mb-8">
-          Todo lo que necesitas
-        </h2>
-        <div className="grid md:grid-cols-3 gap-6">
-          <Card>
-            <CardContent className="p-6">
-              <h3 className="font-semibold text-lg mb-2">
-                Eliminacion y Liga
-              </h3>
-              <p className="text-muted-foreground text-sm">
-                Soporta brackets de eliminacion directa y ligas round-robin con
-                tabla de posiciones automatica.
+          {items.length === 0 ? (
+            <div className="rounded-xl border py-12 text-center">
+              <p className="text-muted-foreground">
+                Todavía no hay torneos publicados.
               </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-6">
-              <h3 className="font-semibold text-lg mb-2">
-                Gestion de Equipos
-              </h3>
-              <p className="text-muted-foreground text-sm">
-                Crea equipos, agrega jugadores y organiza tus torneos de forma
-                simple y rapida.
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-6">
-              <h3 className="font-semibold text-lg mb-2">
-                Resultados en Vivo
-              </h3>
-              <p className="text-muted-foreground text-sm">
-                Registra resultados de partidos y ve como se actualizan los
-                brackets y las clasificaciones al instante.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
+              {items.map(({ tournament, organizer }, i) => (
+                <TournamentCard
+                  key={tournament.id}
+                  tournament={tournament}
+                  organizer={organizer}
+                  image={images.get(tournament.id)}
+                  // Solo la primera fila sin lazy load: son las que compiten
+                  // por el LCP.
+                  priority={i < 6}
+                />
+              ))}
+            </div>
+          )}
+        </section>
 
-      {/* Pricing */}
-      <section className="container mx-auto px-4 py-16">
-        <h2 className="text-3xl font-bold text-center mb-3">
-          Planes y Precios
-        </h2>
-        <p className="text-center text-muted-foreground mb-10">
-          Pago unico por torneo · Duracion ilimitada
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {/* Free */}
-          <Card className="border-2">
-            <CardContent className="p-6 space-y-4">
-              <div>
-                <p className="font-semibold text-lg">Gratis</p>
-                <p className="text-2xl font-bold mt-1">$0</p>
-              </div>
-              <Badge variant="outline" className="text-xs">
-                Hasta {FREE_TIER_LIMITS.maxTeams} equipos
-              </Badge>
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li>Solo eliminacion directa</li>
-                <li>Sin estadisticas</li>
-                <li>Max 1 torneo activo</li>
-              </ul>
-            </CardContent>
-          </Card>
-
-          {/* Paid tiers */}
-          {(Object.keys(TIER_PRICES) as TournamentTier[]).map((tier) => {
-            const range = TIER_TEAM_RANGES[tier];
-            return (
-              <Card
-                key={tier}
-                className={
-                  tier === "pro"
-                    ? "border-2 border-primary"
-                    : "border-2"
-                }
-              >
-                <CardContent className="p-6 space-y-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-lg">{TIER_LABELS[tier]}</p>
-                      {tier === "pro" && (
-                        <Badge className="text-xs">Popular</Badge>
-                      )}
-                    </div>
-                    <p className="text-2xl font-bold mt-1">
-                      {formatCOP(TIER_PRICES[tier])}
-                    </p>
-                  </div>
-                  <Badge variant="outline" className="text-xs">
-                    {range.min}-{range.max ?? "+"} equipos
-                  </Badge>
-                  <ul className="text-sm text-muted-foreground space-y-1">
-                    <li>Todos los formatos</li>
-                    <li>Estadísticas avanzadas</li>
-                    <li>Fase de grupos</li>
-                    <li>Duracion ilimitada</li>
-                  </ul>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-        <div className="text-center mt-8">
-          <Button variant="outline" asChild>
-            <Link href="/pricing">Ver todos los detalles</Link>
-          </Button>
-        </div>
-      </section>
+        <ValuesStrip />
+      </div>
     </div>
   );
 }
