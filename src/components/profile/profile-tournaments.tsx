@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { Tournament, Sport, TournamentStatus } from "@/types";
 import { TournamentCard } from "@/components/tournaments/tournament-card";
+import { buildSportImageMap } from "@/data/sport-images";
 import { ProfileTournamentFilters } from "./profile-tournament-filters";
 
 interface Filters {
@@ -40,6 +41,10 @@ export function ProfileTournaments({
       return true;
     });
   }, [tournaments, filters]);
+
+  // Sobre la lista completa y no la filtrada: así el filtro no le cambia la
+  // foto a un torneo (el reparto se calcula sobre los ids ordenados).
+  const images = useMemo(() => buildSportImageMap(tournaments), [tournaments]);
 
   const stats = {
     total: tournaments.length,
@@ -97,11 +102,17 @@ export function ProfileTournaments({
         </div>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredTournaments.map((tournament) => (
+          {filteredTournaments.map((tournament, i) => (
             <TournamentCard
               key={tournament.id}
               tournament={tournament}
               href={`/${slug}/${tournament.id}`}
+              // Acá todos los torneos son del mismo organizador — el dueño
+              // del perfil — así que sale de las props y no hace falta
+              // consultar nada.
+              organizer={{ name: organizationName, slug }}
+              image={images.get(tournament.id)}
+              priority={i < 3}
             />
           ))}
         </div>

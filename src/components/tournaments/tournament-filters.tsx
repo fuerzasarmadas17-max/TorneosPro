@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { SlidersHorizontal } from "lucide-react";
+import { Search, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -146,18 +146,28 @@ export function TournamentFilters() {
   );
 
   return (
+    // Pastilla ancha con todo adentro, como el mockup y como la barra de la
+    // portada (`landing-filters.tsx`), en vez de controles sueltos sobre el
+    // fondo.
     <div
-      className={`flex flex-col sm:flex-row sm:flex-wrap gap-3 transition-opacity ${isPending ? "opacity-60" : ""}`}
+      className={`flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm sm:flex-row sm:flex-wrap sm:items-center transition-opacity ${isPending ? "opacity-60" : ""}`}
     >
       {/* Barra de búsqueda: siempre visible. En mobile comparte fila con el
           botón de filtros. */}
-      <div className="flex gap-3">
-        <Input
-          placeholder="Buscar torneo..."
-          value={currentSearch}
-          onChange={(e) => updateFilter("search", e.target.value)}
-          className="flex-1 sm:max-w-[200px]"
-        />
+      <div className="flex flex-1 gap-3">
+        <div className="relative flex-1">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            placeholder="Buscar torneo, equipo o deporte..."
+            aria-label="Buscar torneo, equipo o deporte"
+            value={currentSearch}
+            onChange={(e) => updateFilter("search", e.target.value)}
+            className="w-full border-0 pl-9 shadow-none focus-visible:ring-0"
+          />
+        </div>
         {/* Botón de filtros: solo en mobile. Abre el modal centrado con los selects. */}
         <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
           <DialogTrigger asChild>

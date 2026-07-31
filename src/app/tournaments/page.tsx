@@ -44,12 +44,16 @@ function TournamentsContent() {
         </p>
       </div>
       <TournamentFilters />
+      {/* `maxColumns={6}`: misma grilla que la portada. La tarjeta está
+          diseñada para ~245px de ancho, y a 3 columnas en pantalla ancha
+          quedaría de ~410px con la banda de foto estirada. El dashboard y el
+          perfil se quedan en 3 porque su contenedor es más angosto. */}
       {isLoading ? (
         <div className="text-center py-12">
           <p className="text-muted-foreground text-lg">Cargando torneos...</p>
         </div>
       ) : (
-        <TournamentList tournaments={tournaments} />
+        <TournamentList tournaments={tournaments} maxColumns={6} />
       )}
     </div>
   );
