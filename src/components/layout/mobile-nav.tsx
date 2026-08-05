@@ -27,7 +27,9 @@ const NAV = [
  * Existe porque en 375px no entran a la vez el logotipo, los dos links del
  * nav, "Iniciar Sesión" y "Registrarse": sumaban ~493px y empujaban el ancho
  * del documento, con el scroll horizontal que eso trae. Acá el header se
- * queda con hamburguesa + logo + "Registrarse", y todo lo demás vive adentro.
+ * queda con hamburguesa + logo + "Iniciar Sesión", y todo lo demás vive
+ * adentro — incluido "Registrarse", que es la única puerta a crear cuenta
+ * desde el celular.
  */
 export function MobileNav() {
   const [open, setOpen] = useState(false);

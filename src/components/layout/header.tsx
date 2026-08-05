@@ -95,13 +95,18 @@ export function Header() {
           ) : (
             <>
               <span className="hidden h-6 w-px bg-border md:block" aria-hidden />
-              {/* En celular solo queda "Registrarse": "Iniciar Sesión" está
-                  dentro de la hamburguesa, así que nadie se queda sin poder
-                  entrar. */}
+              {/* En celular entra un solo botón (en 375px los dos empujan el
+                  ancho, ver mobile-nav.tsx) y ese es "Iniciar Sesión": la
+                  mayoría de quienes abren la app ya tienen cuenta. Quien
+                  todavía no la tiene encuentra "Registrarse" dentro de la
+                  hamburguesa, junto con el resto del menú. */}
+              <Button size="sm" className="md:hidden" asChild>
+                <Link href="/login">Iniciar Sesión</Link>
+              </Button>
               <Button variant="ghost" size="sm" className="hidden md:flex" asChild>
                 <Link href="/login">Iniciar Sesión</Link>
               </Button>
-              <Button size="sm" asChild>
+              <Button size="sm" className="hidden md:flex" asChild>
                 <Link href="/register">Registrarse</Link>
               </Button>
             </>
