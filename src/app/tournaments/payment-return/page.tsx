@@ -6,7 +6,6 @@ import Link from "next/link";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { AuthGuard } from "@/components/auth-guard";
 
 type State = "verifying" | "approved" | "failed" | "timeout";
 
@@ -149,12 +148,23 @@ function PaymentReturnContent() {
   );
 }
 
+/**
+ * NO ENVOLVER ESTA PÁGINA EN <AuthGuard>.
+ *
+ * Confirmar el pago no requiere sesión: `/api/payments/confirm` busca el pago
+ * por `reference` con la service key y no valida usuario. Con el guard puesto,
+ * quien volvía de Wompi sin sesión (webview de Nequi/banco, o la restauración
+ * de sesión tardando de más) se iba a /login ANTES de que el componente se
+ * montara — el polling nunca corría y el torneo pagado no se creaba nunca.
+ * El pago se pierde en silencio y solo se recupera a mano contra la base.
+ *
+ * El torneo al que redirigimos es público, así que el flujo cierra igual sin
+ * sesión: la persona ve su torneo y entra a su cuenta cuando quiera.
+ */
 export default function PaymentReturnPage() {
   return (
-    <AuthGuard>
-      <Suspense fallback={null}>
-        <PaymentReturnContent />
-      </Suspense>
-    </AuthGuard>
+    <Suspense fallback={null}>
+      <PaymentReturnContent />
+    </Suspense>
   );
 }

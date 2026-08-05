@@ -150,12 +150,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Kick off session restoration (triggers INITIAL_SESSION event above)
     supabase.auth.getSession();
 
-    // Safety: if auth never resolves (network hang, Supabase down), stop loading after 4s
-    const safetyTimer = setTimeout(() => {
-      setIsLoading(false);
+    // Safety: if auth never resolves (network hang, Supabase down), stop
+    // loading after 4s.
+    //
+    // Antes esto bajaba `isLoading` a ciegas, y una restauración LENTA quedaba
+    // indistinguible de "no hay sesión": AuthGuard leía `!isLoading &&
+    // !isAuthenticated` y mandaba a /login a alguien que sí estaba logueado.
+    // Con red mala (volviendo de la app del banco, por ejemplo) 4s se pasan
+    // fácil. Antes de darnos por vencidos le preguntamos a Supabase una vez
+    // más: si la sesión existe, entramos autenticado con los datos básicos y
+    // `loadUserData` completa el resto cuando llegue.
+    let timedOut = false;
+    const safetyTimer = setTimeout(async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const sessionUser = data.session?.user;
+        if (
+          !timedOut &&
+          sessionUser &&
+          loadedUserIdRef.current !== sessionUser.id
+        ) {
+          setAuthState({
+            user: {
+              id: sessionUser.id,
+              name:
+                sessionUser.user_metadata?.name || sessionUser.email || "",
+              email: sessionUser.email || "",
+              isActive: true,
+              createdTournamentIds: [],
+            },
+            isAuthenticated: true,
+          });
+        }
+      } catch {
+        // Sin respuesta de Supabase: caemos al comportamiento de siempre.
+      }
+      if (!timedOut) setIsLoading(false);
     }, 4000);
 
     return () => {
+      timedOut = true;
       subscription.unsubscribe();
       clearTimeout(safetyTimer);
     };

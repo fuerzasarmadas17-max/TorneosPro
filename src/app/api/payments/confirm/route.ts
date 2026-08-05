@@ -115,6 +115,20 @@ export async function POST(request: NextRequest) {
           .eq("id", payment.id);
         return NextResponse.json({ status: mapped });
       }
+
+      // Estado no terminal (PENDING: transferencias, PSE, Nequi sin confirmar
+      // todavía). Nuestro `status` sigue en pending, pero guardamos el rastro
+      // de Wompi igual. Sin esto un pago que falla queda SIN un solo dato de
+      // la transacción, y averiguar qué le pasó obliga a buscarlo a mano en el
+      // panel de Wompi.
+      await supabaseAdmin
+        .from("payments")
+        .update({
+          wompi_transaction_id: txn.id,
+          wompi_status: txn.status,
+          payment_method: txn.payment_method_type,
+        })
+        .eq("id", payment.id);
     }
 
     // Still pending — caller should keep polling (webhook may arrive).
