@@ -614,6 +614,69 @@ function nextPowerOf2(n: number): number {
   return p;
 }
 
+/**
+ * Empty playoff skeleton: the round-1 slots plus every later round, already
+ * linked through `nextMatchId`. Teams are assigned later — either by the
+ * matchup builder or by `fillPlayoffBracket`.
+ *
+ * `matchCounterStart` continues the tournament's global match numbering so the
+ * bracket doesn't collide with the group-stage matches.
+ */
+export function generateEmptyPlayoffBracket(
+  tournamentId: string,
+  totalAdvancing: number,
+  matchCounterStart: number
+): Match[] {
+  const bracketSize = nextPowerOf2(totalAdvancing);
+  if (bracketSize < 2) return [];
+
+  const numRounds = Math.log2(bracketSize);
+  const bracket: Match[] = [];
+  let matchCounter = matchCounterStart;
+
+  const emptyMatch = (round: number): Match => {
+    const match: Match = {
+      id: `${tournamentId}-m-${matchCounter}`,
+      tournamentId,
+      round,
+      matchNumber: matchCounter,
+      homeTeamId: null,
+      awayTeamId: null,
+      homeScore: null,
+      awayScore: null,
+      winnerId: null,
+      status: "unscheduled",
+      nextMatchId: null,
+      phase: "playoff",
+    };
+    matchCounter++;
+    return match;
+  };
+
+  // Round 1 of playoffs
+  for (let i = 0; i < bracketSize / 2; i++) {
+    bracket.push(emptyMatch(1));
+  }
+
+  // Subsequent playoff rounds with nextMatchId linking
+  let prevRoundStart = 0;
+  let prevRoundSize = bracketSize / 2;
+
+  for (let round = 2; round <= numRounds; round++) {
+    const currentRoundSize = prevRoundSize / 2;
+    for (let i = 0; i < currentRoundSize; i++) {
+      const match = emptyMatch(round);
+      bracket.push(match);
+      bracket[prevRoundStart + i * 2].nextMatchId = match.id;
+      bracket[prevRoundStart + i * 2 + 1].nextMatchId = match.id;
+    }
+    prevRoundStart += prevRoundSize;
+    prevRoundSize = currentRoundSize;
+  }
+
+  return bracket;
+}
+
 export function generateGroupPlayoffMatches(
   groups: TournamentGroup[],
   playoffConfig: PlayoffConfig,
@@ -635,63 +698,13 @@ export function generateGroupPlayoffMatches(
   }
 
   // Phase 2: Playoff bracket sized to next power of 2
-  const bracketSize = nextPowerOf2(playoffConfig.totalAdvancing);
-  const numRounds = Math.log2(bracketSize);
-  const playoffStartIdx = allMatches.length;
-
-  // Round 1 of playoffs
-  for (let i = 0; i < bracketSize / 2; i++) {
-    allMatches.push({
-      id: `${tournamentId}-m-${matchCounter}`,
+  allMatches.push(
+    ...generateEmptyPlayoffBracket(
       tournamentId,
-      round: 1,
-      matchNumber: matchCounter,
-      homeTeamId: null,
-      awayTeamId: null,
-      homeScore: null,
-      awayScore: null,
-      winnerId: null,
-      status: "unscheduled",
-      nextMatchId: null,
-      phase: "playoff",
-    });
-    matchCounter++;
-  }
-
-  // Subsequent playoff rounds with nextMatchId linking
-  let prevRoundStart = playoffStartIdx;
-  let prevRoundSize = bracketSize / 2;
-
-  for (let round = 2; round <= numRounds; round++) {
-    const currentRoundSize = prevRoundSize / 2;
-
-    for (let i = 0; i < currentRoundSize; i++) {
-      const matchId = `${tournamentId}-m-${matchCounter}`;
-      allMatches.push({
-        id: matchId,
-        tournamentId,
-        round,
-        matchNumber: matchCounter,
-        homeTeamId: null,
-        awayTeamId: null,
-        homeScore: null,
-        awayScore: null,
-        winnerId: null,
-        status: "unscheduled",
-        nextMatchId: null,
-        phase: "playoff",
-      });
-
-      const feederIdx1 = prevRoundStart + i * 2;
-      const feederIdx2 = prevRoundStart + i * 2 + 1;
-      allMatches[feederIdx1].nextMatchId = matchId;
-      allMatches[feederIdx2].nextMatchId = matchId;
-
-      matchCounter++;
-    }
-    prevRoundStart += prevRoundSize;
-    prevRoundSize = currentRoundSize;
-  }
+      playoffConfig.totalAdvancing,
+      matchCounter
+    )
+  );
 
   return allMatches;
 }
@@ -826,56 +839,13 @@ export function generateMultiPhaseMatches(
   }
 
   // Create empty playoff bracket (filled when last group phase completes)
-  const bracketSize = nextPowerOf2(playoffConfig.totalAdvancing);
-  const numRounds = Math.log2(bracketSize);
-
-  for (let i = 0; i < bracketSize / 2; i++) {
-    allMatches.push({
-      id: `${tournamentId}-m-${matchCounter}`,
+  allMatches.push(
+    ...generateEmptyPlayoffBracket(
       tournamentId,
-      round: 1,
-      matchNumber: matchCounter,
-      homeTeamId: null,
-      awayTeamId: null,
-      homeScore: null,
-      awayScore: null,
-      winnerId: null,
-      status: "unscheduled",
-      nextMatchId: null,
-      phase: "playoff",
-    });
-    matchCounter++;
-  }
-
-  const playoffStartIdx = allMatches.length - bracketSize / 2;
-  let prevRoundStart = playoffStartIdx;
-  let prevRoundSize = bracketSize / 2;
-
-  for (let round = 2; round <= numRounds; round++) {
-    const currentRoundSize = prevRoundSize / 2;
-    for (let i = 0; i < currentRoundSize; i++) {
-      const matchId = `${tournamentId}-m-${matchCounter}`;
-      allMatches.push({
-        id: matchId,
-        tournamentId,
-        round,
-        matchNumber: matchCounter,
-        homeTeamId: null,
-        awayTeamId: null,
-        homeScore: null,
-        awayScore: null,
-        winnerId: null,
-        status: "unscheduled",
-        nextMatchId: null,
-        phase: "playoff",
-      });
-      allMatches[prevRoundStart + i * 2].nextMatchId = matchId;
-      allMatches[prevRoundStart + i * 2 + 1].nextMatchId = matchId;
-      matchCounter++;
-    }
-    prevRoundStart += prevRoundSize;
-    prevRoundSize = currentRoundSize;
-  }
+      playoffConfig.totalAdvancing,
+      matchCounter
+    )
+  );
 
   return allMatches;
 }

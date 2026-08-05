@@ -18,11 +18,13 @@ interface PlayoffBracketViewProps {
 }
 
 export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewProps) {
-  const { updatePlayoffConfig, generatePlayoffFixture } = useTournaments();
+  const { updatePlayoffConfig, generatePlayoffFixture, createPlayoffBracket } =
+    useTournaments();
   const [editing, setEditing] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [finalConfigOpen, setFinalConfigOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [creatingBracket, setCreatingBracket] = useState(false);
   const [advanceCount, setAdvanceCount] = useState(
     String(tournament.playoffConfig?.totalAdvancing || "")
   );
@@ -43,9 +45,15 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
   // every round-1 match has no teams; "configured" once at least one slot has
   // been filled (the user can save partial work and come back).
   const round1Matches = playoffTournament.matches.filter((m) => m.round === 1);
+  // Tournaments whose calendar was built by hand (jornada por jornada) never
+  // got the empty bracket that "Generar Aleatorio" creates, so they have zero
+  // playoff matches. Without this they fell through to State C and rendered an
+  // empty bracket with no way forward — the organizer creates it on demand.
+  const bracketMissing = playoffTournament.matches.length === 0;
   const bracketUnconfigured =
-    round1Matches.length > 0 &&
-    round1Matches.every((m) => !m.homeTeamId && !m.awayTeamId);
+    bracketMissing ||
+    (round1Matches.length > 0 &&
+      round1Matches.every((m) => !m.homeTeamId && !m.awayTeamId));
   const bracketConfigured =
     round1Matches.length > 0 &&
     round1Matches.some((m) => m.homeTeamId || m.awayTeamId);
@@ -77,6 +85,25 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
     await updatePlayoffConfig(tournament.id, base, value, perGroup);
     toast.success(`Playoffs actualizados: ${value} equipos clasifican`);
     setEditing(false);
+  };
+
+  // Opens the matchup builder. When the bracket rows don't exist yet they're
+  // created first — the builder needs round-1 slots to render.
+  const handleOpenBuilder = async () => {
+    if (!bracketMissing) {
+      setBuilderOpen(true);
+      return;
+    }
+    setCreatingBracket(true);
+    const ok = await createPlayoffBracket(tournament.id);
+    setCreatingBracket(false);
+    if (!ok) {
+      toast.error(
+        "Primero definí cuántos equipos clasifican a playoffs"
+      );
+      return;
+    }
+    setBuilderOpen(true);
   };
 
   const handleGenerateFixture = async () => {
@@ -170,8 +197,8 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
             </p>
           </div>
           {canEdit ? (
-            <Button onClick={() => setBuilderOpen(true)}>
-              Crear enfrentamientos
+            <Button onClick={handleOpenBuilder} disabled={creatingBracket}>
+              {creatingBracket ? "Preparando..." : "Crear enfrentamientos"}
             </Button>
           ) : (
             <p className="text-xs text-muted-foreground">
@@ -179,7 +206,11 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
             </p>
           )}
         </div>
+        {/* Keyed on the slot count so the builder remounts once the bracket
+            is created — its smart-default seeding runs on mount and would
+            otherwise see zero slots. */}
         <BracketMatchupBuilder
+          key={`builder-${round1Matches.length}`}
           open={builderOpen}
           onOpenChange={setBuilderOpen}
           tournament={tournament}

@@ -14,6 +14,7 @@ import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, Volleyb
 import {
   generateRoundRobinCircle,
   generateAdditionalGroupRounds,
+  generateEmptyPlayoffBracket,
   getFinalSeriesChampion,
 } from "@/data/helpers";
 import { fetchTournaments, fetchTournamentsWithMatches, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, deleteTournament as dbDeleteTournament, addTournamentTeams, removeTeamFromTournament as dbRemoveTeamFromTournament, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup, assignTeamsToPhaseGroups as dbAssignTeamsToPhaseGroups, assignTeamsToBracketSlots as dbAssignTeamsToBracketSlots, updateGroupName as dbUpdateGroupName } from "@/lib/db/tournaments";
@@ -83,6 +84,13 @@ interface TournamentContextType {
     format: NonNullable<Tournament["playoffFinalFormat"]>,
     schedules?: { date?: string; time?: string; venue?: string }[]
   ) => Promise<boolean>;
+  /** Create the empty playoff bracket (round-1 slots + later rounds, linked
+   *  by nextMatchId) for a tournament that never got one — e.g. a fixture
+   *  built by hand jornada por jornada instead of through "Generar
+   *  Aleatorio". Sized from `playoffConfig.totalAdvancing`. No-op (returns
+   *  true) when the bracket already exists; false when there's no playoff
+   *  config to size it with. */
+  createPlayoffBracket: (tournamentId: string) => Promise<boolean>;
   /** Finalize the playoff bracket: for single-leg just flips the
    *  `playoffFixtureGenerated` flag; for double-leg also rebuilds the bracket
    *  matches to include ida + vuelta legs (preserving round-1 team
@@ -935,6 +943,49 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const createPlayoffBracket = useCallback(
+    async (tournamentId: string): Promise<boolean> => {
+      const t = tournamentsRef.current.find((x) => x.id === tournamentId);
+      if (!t) return false;
+
+      // Already has a bracket — nothing to do.
+      if (t.matches.some((m) => m.phase === "playoff")) return true;
+      if (!t.playoffConfig?.totalAdvancing) return false;
+
+      // Numbering picks up after the highest existing matchNumber so the
+      // bracket doesn't collide with the group-stage matches.
+      const counterStart =
+        Math.max(0, ...t.matches.map((m) => m.matchNumber)) + 1;
+      const skeleton = generateEmptyPlayoffBracket(
+        tournamentId,
+        t.playoffConfig.totalAdvancing,
+        counterStart
+      );
+      if (skeleton.length === 0) return false;
+
+      const idMapping = await insertMatchesForPhase(skeleton, tournamentId);
+      if (Object.keys(idMapping).length !== skeleton.length) return false;
+
+      // Remap BOTH the ids and the nextMatchId chain — the local ids are
+      // temporary placeholders, the DB assigned real UUIDs.
+      const persisted = skeleton.map((m) => ({
+        ...m,
+        id: idMapping[m.id] ?? m.id,
+        nextMatchId: m.nextMatchId ? idMapping[m.nextMatchId] ?? null : null,
+      }));
+
+      setTournaments((prev) =>
+        prev.map((x) =>
+          x.id === tournamentId
+            ? { ...x, matches: [...x.matches, ...persisted] }
+            : x
+        )
+      );
+      return true;
+    },
+    []
+  );
+
   const generatePlayoffFixture = useCallback(
     async (tournamentId: string): Promise<boolean> => {
       const t = tournamentsRef.current.find((x) => x.id === tournamentId);
@@ -1211,59 +1262,20 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       // Triggered on any phase (single-phase or multi-phase fase 1) — the
       // bracket size is fixed by playoffConfig.totalAdvancing at tournament
       // creation, so creating it early is safe.
+      // Single source of truth for the skeleton — the same helper the wizard's
+      // "Generar Aleatorio" path and PlayoffBracketView's on-demand fallback
+      // use. It sizes the bracket with nextPowerOf2 (5 -> 8, 8 -> 8, 9 -> 16)
+      // so byes can go to the top seeds when totalAdvancing isn't a power of
+      // two.
       const bracketExists = tournament.matches.some((m) => m.phase === "playoff");
       if (!bracketExists && tournament.playoffConfig?.totalAdvancing) {
-        // nextPowerOf2: 5 -> 8, 8 -> 8, 9 -> 16. Sets the bracket round-1
-        // size so byes can be assigned to top seeds when totalAdvancing isn't
-        // already a power of two.
-        let bracketSize = 1;
-        while (bracketSize < tournament.playoffConfig.totalAdvancing) bracketSize *= 2;
-        const numRounds = Math.log2(bracketSize);
-        const startIdx = allNew.length;
-        for (let i = 0; i < bracketSize / 2; i++) {
-          allNew.push({
-            id: `${tournamentId}-m-${counter}`,
+        allNew.push(
+          ...generateEmptyPlayoffBracket(
             tournamentId,
-            round: 1,
-            matchNumber: counter,
-            homeTeamId: null,
-            awayTeamId: null,
-            homeScore: null,
-            awayScore: null,
-            winnerId: null,
-            status: "unscheduled",
-            nextMatchId: null,
-            phase: "playoff",
-          });
-          counter++;
-        }
-        let prevRoundStart = startIdx;
-        let prevRoundSize = bracketSize / 2;
-        for (let round = 2; round <= numRounds; round++) {
-          const currentRoundSize = prevRoundSize / 2;
-          for (let i = 0; i < currentRoundSize; i++) {
-            const matchId = `${tournamentId}-m-${counter}`;
-            allNew.push({
-              id: matchId,
-              tournamentId,
-              round,
-              matchNumber: counter,
-              homeTeamId: null,
-              awayTeamId: null,
-              homeScore: null,
-              awayScore: null,
-              winnerId: null,
-              status: "unscheduled",
-              nextMatchId: null,
-              phase: "playoff",
-            });
-            allNew[prevRoundStart + i * 2].nextMatchId = matchId;
-            allNew[prevRoundStart + i * 2 + 1].nextMatchId = matchId;
-            counter++;
-          }
-          prevRoundStart += prevRoundSize;
-          prevRoundSize = currentRoundSize;
-        }
+            tournament.playoffConfig.totalAdvancing,
+            counter
+          )
+        );
       }
 
       if (allNew.length === 0) return false;
@@ -1830,6 +1842,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       renameGroup,
       configurePhaseGroups,
       configurePlayoffFinal,
+      createPlayoffBracket,
       generatePlayoffFixture,
       configureBracketSlots,
       generatePhaseMatches,
@@ -1867,6 +1880,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       renameGroup,
       configurePhaseGroups,
       configurePlayoffFinal,
+      createPlayoffBracket,
       generatePlayoffFixture,
       configureBracketSlots,
       generatePhaseMatches,
