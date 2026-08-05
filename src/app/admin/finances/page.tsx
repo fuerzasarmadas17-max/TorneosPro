@@ -28,7 +28,9 @@ import {
   Search,
   X,
   Megaphone,
+  RefreshCw,
 } from "lucide-react";
+import { toast } from "sonner";
 
 const TIER_ORDER: TournamentTier[] = ["basico", "medio", "pro", "premium"];
 
@@ -164,6 +166,57 @@ function FinancesContent() {
         );
       });
   }, []);
+  // "La escoba": revisa contra Wompi los pagos que quedaron en pending y
+  // resuelve los que en realidad ya estaban aprobados. Es la tercera red,
+  // detrás del navegador del cliente y del webhook — la que atrapa lo que a
+  // esas dos se les escapa (ver src/lib/payments/sweep.ts).
+  const [barriendo, setBarriendo] = useState(false);
+  const barrerPagos = async () => {
+    setBarriendo(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const res = await fetch("/api/admin/payments/sweep", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ diasAtras: 30 }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data?.error || "No pudimos revisar los pagos");
+        return;
+      }
+
+      const torneos = data.torneosCreados?.length ?? 0;
+      const pub = data.publicidadAprobada?.length ?? 0;
+
+      if (torneos === 0 && pub === 0) {
+        toast.success(
+          `Revisados ${data.revisados} pagos. No había ninguno cobrado sin resolver.`
+        );
+      } else {
+        const partes = [];
+        if (torneos > 0) partes.push(`${torneos} torneo(s) recuperado(s)`);
+        if (pub > 0) partes.push(`${pub} pago(s) de publicidad aprobado(s)`);
+        toast.success(`${partes.join(" y ")}. Recargá para verlos.`);
+      }
+
+      if (data.errores?.length > 0) {
+        toast.warning(`${data.errores.length} pago(s) necesitan revisión manual`);
+        console.warn("Escoba — pagos con problemas:", data.errores);
+      }
+    } catch {
+      toast.error("No pudimos revisar los pagos");
+    } finally {
+      setBarriendo(false);
+    }
+  };
+
   const adRevenue = adPayments
     .filter((p) => p.status === "approved")
     .reduce((s, p) => s + p.amount_cop, 0);
@@ -405,14 +458,28 @@ function FinancesContent() {
   return (
     <div className="container mx-auto max-w-5xl px-4 py-8 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Wallet className="h-7 w-7" />
-          Finanzas
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Resumen financiero de la plataforma
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Wallet className="h-7 w-7" />
+            Finanzas
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Resumen financiero de la plataforma
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={barrerPagos}
+          disabled={barriendo}
+          className="shrink-0"
+          title="Revisa contra Wompi los pagos que quedaron pendientes y crea los torneos que se hayan cobrado"
+        >
+          <RefreshCw
+            className={`h-4 w-4 mr-2 ${barriendo ? "animate-spin" : ""}`}
+          />
+          {barriendo ? "Revisando..." : "Revisar pagos pendientes"}
+        </Button>
       </div>
 
       {/* Filtros */}
