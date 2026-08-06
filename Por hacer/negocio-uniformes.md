@@ -1,6 +1,11 @@
 # Negocio de uniformes — Empresa Z
 
 > Documento de trabajo. Julio 2026.
+>
+> **Revisado el 2026-08-06: sigue vigente y sin ejecutar.** No toca código —
+> nada de esto vive en el repo. El próximo paso de la sección 9 (visitar 3
+> talleres y salir con la escala de precios escrita) sigue siendo lo único
+> que importa, y sin el precio del taller a ≤28k no arranca nada.
 
 ---
 

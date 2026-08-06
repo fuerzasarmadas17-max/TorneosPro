@@ -1,5 +1,19 @@
 # Propuesta de alianza — MAJOR × Torneos Pro
 
+> **Estado al 2026-08-06: ✅ la propuesta YA SE ENVIÓ.** Lo que queda vivo de
+> este documento es el seguimiento: si contestaron, si hubo llamada, y las
+> notas internas de la sección C que había que cerrar **antes de firmar** —
+> hasta cuándo dura la exclusividad (nota 1), cuántos organizadores como
+> máximo (nota 3) y qué se va a medir (nota 5). La nota 2 ya quedó cerrada
+> como "exclusividad por categoría".
+>
+> Si la alianza no prospera, este archivo se puede borrar. Si prospera, los
+> textos de las secciones A y B sirven de molde para la próxima marca.
+>
+> ⚠️ El bloque SQL del final **no pertenece a este documento** — es la
+> consulta de diagnóstico de nombres sin jugador de plantilla, del trabajo de
+> `flujo-b-reconciliacion.md`. Quedó pegada por error.
+
 ---
 
 ## A) Mensaje corto (para que el intermediario lo reenvíe)

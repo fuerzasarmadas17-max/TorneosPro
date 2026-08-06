@@ -1,6 +1,29 @@
 # Cobrar un torneo de cortesía después de que el cliente paga
 
-**Estado:** solución definida, pendiente de ejecutar.
+**Estado al 2026-08-06:**
+
+- ✅ **El caso de Duván está resuelto.** Los dos updates SQL se corrieron.
+- 🔴 **Ya se volvió costumbre.** Hay más organizadores a los que se les pone
+  el torneo gratis mientras pagan, y cada uno queda con la misma deuda
+  técnica: en Finanzas figura en $0 y sus equipos extra le salen gratis para
+  siempre. **Esto ya no es un caso aislado, es el proceso comercial de
+  arranque** — así que la "versión limpia" de la sección *Si se vuelve
+  costumbre* pasó de "por si acaso" a **lo que hay que construir**.
+- ❌ Esa versión limpia **no existe todavía**: falta
+  `/api/payments/tournament-link`, la página `/pagar/torneo/[id]` (solo está
+  `/pagar/publicidad/[id]`), la rama `data.type === "due"` en `fulfill.ts`
+  (solo está la de `upgrade`) y el botón de cobro en Finanzas. (Ojo:
+  `/api/payments/link-tournament`, que sí existe, es otra cosa — solo le
+  pega un `tournament_id` a una fila de `payments`.)
+- El **pendiente relacionado** del final (qué significa `price`) sigue igual,
+  y **empeora con cada torneo fiado**: mientras más cortesías haya, más filas
+  con `price` significando cosas distintas.
+
+**Riesgo mientras tanto:** los dos updates hay que acordarse de correrlos por
+cada cobro. El que se olvide queda invisible — nadie va a notar un torneo que
+figura en $0, porque así es justamente como se ve un torneo de cortesía
+legítimo. Ver la consulta de *Auditar los torneos fiados*, más abajo.
+
 **Fecha:** 2026-07-22.
 **Origen:** caso real — se creó un torneo con cupón de cortesía porque el
 organizador no tenía cómo pagarlo ese día, y quedó en pagar dos días después.
@@ -95,6 +118,55 @@ cobraría el **precio completo del tier nuevo** en vez de la diferencia.
   suelta el cupón antes, Finanzas muestra un ingreso que todavía no existe.
 - `amount_cop` debe coincidir con `tournaments.price`, si no los dos reportes dan
   números distintos.
+
+## Registro de casos resueltos
+
+Llevar la cuenta acá sirve para dos cosas: saber cuándo el volumen justifica
+construir la versión automática, y tener el rastro de qué se tocó a mano si
+algún número no cuadra después.
+
+| Fecha | Torneo | Monto | Notas |
+|---|---|---:|---|
+| 2026-07-22 | (el de Duván) | — | El caso original. Los dos updates corridos. |
+| 2026-08-06 | Copa Elite El Cortijo | $70.000 | `reference = MANUAL-ELCORTIJO-20260806`. Cupón `KPFC2KU4` soltado. `plan` ya estaba en `paid`, no hubo que tocarlo. |
+
+Las referencias van con el prefijo `MANUAL-` a propósito: así se distinguen de
+las de Wompi en cualquier consulta (`where reference like 'MANUAL-%'`).
+
+## Auditar los torneos fiados
+
+Corré esto cada tanto en el editor SQL de Supabase. Lista todos los torneos
+que todavía cuelgan de un cupón, con cuánta plata les entró de verdad:
+
+```sql
+select
+  t.name                       as torneo,
+  t.price                      as precio_lista,
+  t.plan,
+  c.code                       as cupon,
+  c.type                       as tipo_cupon,
+  t.created_at::date           as creado,
+  coalesce(sum(p.amount_cop) filter (where p.status = 'approved'), 0)
+                               as cobrado,
+  count(p.id) filter (where p.status = 'approved')
+                               as pagos_aprobados
+from tournaments t
+join coupons c   on c.id = t.coupon_id
+left join payments p on p.tournament_id = t.id
+group by t.id, t.name, t.price, t.plan, c.code, c.type, t.created_at
+order by t.created_at desc;
+```
+
+**Cómo leerla:**
+
+| Lo que ves | Qué significa |
+|---|---|
+| `cobrado = 0` | Cortesía de verdad, o fiado que **todavía no paga**. Sin decidir. |
+| `cobrado > 0` **y sigue con cupón** | 🔴 **Ya pagó y falta soltarle el cupón.** Corré el `UPDATE` del paso 3. |
+| `plan = 'free'` | ⚠️ Ojo antes de soltar el cupón: hay que ponerlo en `'paid'` primero, o el siguiente upgrade le cobra el tier completo en vez de la diferencia (ver el paso 3). |
+
+Un torneo cobrado no aparece nunca más acá una vez soltado el cupón — la
+lista se vacía sola a medida que se van resolviendo.
 
 ## Si se vuelve costumbre
 

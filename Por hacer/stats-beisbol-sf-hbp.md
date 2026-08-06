@@ -1,6 +1,8 @@
 # Agregar sacrifice fly (SF) y hit by pitch (HBP) al béisbol
 
-**Estado:** planeado, no implementado.
+**Estado:** planeado, no implementado. **Verificado el 2026-08-06: nada de
+esto se hizo** — `sacrifice_fly` y `hit_by_pitch` no aparecen ni en `src/`
+ni en `supabase/`. El plan de abajo sigue siendo válido tal cual.
 **Fecha:** 2026-06-14.
 
 ## Contexto

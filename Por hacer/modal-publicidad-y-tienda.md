@@ -1,7 +1,17 @@
 # Plan: modal de publicidad configurable + tienda contextual (torneospro.co)
 
-**Estado:** idea / planeación. No implementado todavía.
-**Última actualización:** 2026-07-03
+**Última actualización:** 2026-07-03.
+**Estado verificado el 2026-08-06 — ya no es todo idea:**
+
+| Pieza | Estado |
+|---|---|
+| **Pieza 2 — el modal de publicidad** | ✅ **HECHA Y DESPLEGADA.** `ad_campaigns` (migración `20260703`), `ad-modal.tsx` solo para anónimos, panel en `/admin/ads`, targeting por deporte/estado/alcance/geografía, rotación ponderada, conteo de impresiones y clics, `ad_payments` para el cobro, y el tope de 7 avisos por persona/torneo/día (`lib/ad-frequency.ts`) que reemplazó al "en cada carga, sin tope" de este documento. Encima de eso se construyó todo el reparto con organizadores — ver `monetizacion-analitica-publicidad.md`. |
+| **Pieza 1 — los 6 espacios según pague 100/50/0** | ❌ **NO se hizo.** Hoy `maxSponsors={6}` es fijo para todos (`tournament-detail.tsx:1092`), sin importar cómo pagó, y no existen el relleno con la imagen de TorneosPro ni el upsell de 3 en 3. |
+| **La tienda (Parte 2)** | ❌ no se hizo, sigue siendo exploración. |
+
+Lo que queda vivo de este documento es la **Pieza 1**, la tienda y las
+decisiones comerciales pendientes. La parte del "cómo construir el modal" se
+conserva como registro de por qué quedó como quedó.
 
 ---
 
@@ -188,10 +198,22 @@ rotación ponderada; se elige una imagen y se registra `ad_impression`.
 2. **Campañas** — crear/editar (imagen, link, targeting regla/lista, peso,
    vigencia, precio, pagado, activa/pausada) + lista con pulso en vivo
    (impresiones/clics del mes, aviso de "vence pronto").
-3. **Inventario por torneo** — vista inversa: qué torneos tienen campañas, con
-   qué ocupación (share de cada anunciante), dónde hay hueco para vender y
-   dónde ofrecer exclusividad. Clave porque la audiencia está concentrada en
-   1–2 torneos.
+3. ✅ **Inventario por torneo** — **HECHO el 2026-08-06** (pestaña "Inventario"
+   en `/admin/ads`). Vista inversa: qué torneos tienen campañas, con qué
+   ocupación (share de cada anunciante) y dónde hay hueco para vender. Trae
+   además la vista por campaña —dónde sale cada una y cuándo vence— que era la
+   ceguera real: el panel mostraba la REGLA de segmentación, no los torneos, y
+   con reglas dinámicas no había forma de saber dónde estaba saliendo nada.
+
+   El emparejamiento vive en `src/lib/ads/targeting.ts`, **compartido con
+   `/api/ads/resolve`**: el panel usa exactamente la misma lógica que decide lo
+   que ve el espectador, así que no pueden divergir. El cruce está en
+   `src/lib/ads/inventory.ts` y la pantalla en `components/ads/ad-inventory.tsx`.
+
+   Falta la columna de **audiencia por torneo** para priorizar los huecos por
+   lo que valen. Necesita una consulta nueva: tiene que salir de `page_views`,
+   no de impresiones — un torneo sin campaña no tiene impresiones y quedaría
+   en cero justo cuando es el hueco que más interesa.
 4. **Reportes** — por anunciante, mensual, idealmente imagen para WhatsApp:
    "apareció en X, N impresiones, M clics". Es lo que justifica renovar.
 
@@ -286,9 +308,10 @@ torneo).
 
 ## Pendiente de construir (cuando se priorice)
 
-- [ ] Modal/banner configurable desde admin (target: torneos y perfiles).
-- [ ] Conteo de clics e impresiones por anuncio.
-- [ ] Panel admin para crear/activar/desactivar campañas.
+- [x] Modal/banner configurable desde admin (target: torneos y perfiles). ✅ 2026-07
+- [x] Conteo de clics e impresiones por anuncio. ✅ 2026-07
+- [x] Panel admin para crear/activar/desactivar campañas. ✅ `/admin/ads`
+- [ ] Los 6 espacios de patrocinador según pague 100/50/0 (Pieza 1).
 - [ ] (Después) flujo de cotización a pedido / proveedor.
 
 ## Qué productos venderle a organizadores de torneos

@@ -6,6 +6,13 @@ Para el detalle técnico y las decisiones, ver
 
 **Última actualización:** 2026-07-30
 
+> ℹ️ **Esto no es un pendiente, es documentación de algo que ya funciona.**
+> Describe el reparto tal como está desplegado hoy (revisado el 2026-08-06).
+> Lo único que sigue abierto es lo que dice la sección 13 al final. Se queda
+> en esta carpeta por comodidad, pero es material de referencia — cuando la
+> sección del organizador esté lista, este archivo se convierte en la base
+> de lo que se le explica a él.
+
 ---
 
 ## 1. La métrica: persona-día

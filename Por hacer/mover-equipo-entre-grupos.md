@@ -1,6 +1,10 @@
 # No se puede mover un equipo de grupo sin perder el fixture
 
-**Estado:** identificado, no implementado.
+**Estado:** identificado, no implementado. **Verificado el 2026-08-06: sigue
+sin implementarse** — no existe ninguna acción de "mover equipo de grupo",
+tampoco el guardarraíl del diálogo de eliminar, y `bulkUpsertMatches`
+(`src/lib/db/matches.ts:60`) **sigue sin llamadores**: la mina enterrada
+continúa ahí. El procedimiento manual por SQL sigue siendo el camino.
 **Fecha:** 2026-07-14.
 **Origen:** caso real en producción — "Torneo regional de beisbol interclubes (Pre-Infantil)"
 (`0f16db8a-3450-4b5c-a12a-6557855d3c7c`). Se resolvió a mano con SQL.

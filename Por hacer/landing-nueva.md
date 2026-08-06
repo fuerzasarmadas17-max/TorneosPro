@@ -1,23 +1,27 @@
 # Plan: migrar la landing y los torneos al diseño nuevo
 
-> **Estado al 31 de julio de 2026.** Escrito el 30 de julio.
+> **Estado verificado contra el código el 6 de agosto de 2026.** Escrito el 30 de julio.
+>
+> **Casi todo está hecho y commiteado** (commits `a8054f1` → `48bdd58`). Lo
+> que sigue abierto es la Etapa 8 a medias y el material de fotos.
 >
 > | Etapa | Estado |
 > |---|---|
-> | 0 — Assets | 🟡 el **logo** salió de `imagenes/` (ya en `public/logo/`) y las **5 fotos del hero** están hechas. Faltan las **fotos de las tarjetas** (ver `fotos-de-tarjetas.md`) y la tipografía display |
-> | 1 — Tema + modo oscuro | ✅ hecho |
-> | 2 — Header y footer | ✅ hecho (+ menú hamburguesa en celular, que no estaba previsto) |
-> | 3 — Imágenes por deporte | ✅ hecho (la mecánica; las fotos son la Etapa 0) |
-> | 3b — Hero rotativo | ✅ hecho — 5 fotos rotando cada 7 s |
-> | 4 — Tarjeta de torneo | ✅ hecho |
-> | 5 — Torneo destacado | ✅ hecho y **migración corrida**; el candado del trigger quedó verificado |
-> | Extra — foto elegible por el organizador | ✅ código hecho y **migración corrida**; falta el material (`fotos-de-tarjetas.md`) |
-> | 6 — La landing | ✅ hecho |
+> | 0 — Assets | 🟡 logo en `public/logo/` y 5 fotos de hero en `public/hero/` ✅. Faltan las **fotos de las tarjetas** (`public/sports/` está vacío, ver `fotos-de-tarjetas.md`) y la tipografía display |
+> | 1 — Tema + modo oscuro | ✅ hecho y commiteado (`a8054f1`) |
+> | 2 — Header y footer | ✅ hecho (`c5ec759`), + menú hamburguesa que no estaba previsto |
+> | 3 — Imágenes por deporte | ✅ la mecánica está (`src/data/sport-images.ts`); las fotos son la Etapa 0 |
+> | 3b — Hero rotativo | ✅ hecho — `hero-carousel.tsx`, 5 fotos |
+> | 4 — Tarjeta de torneo | ✅ hecho, incluida la consulta única de organizadores (`useOrganizers`) |
+> | 5 — Torneo destacado | ✅ hecho y migración corrida; API admin + trigger verificados |
+> | Extra — foto elegible por el organizador | ✅ código hecho y migración corrida; falta el material |
+> | 6 — La landing | ✅ hecho (`bc66782`) |
 > | 7 — Alinear `/tournaments` | ✅ hecho |
-> | 8 — Pantalla del torneo | 🟡 encabezado, migas de pan y tablas agrandadas. Faltan: pestañas con subrayado dorado, medallas en los puestos 1-2-3, tarjeta "La competencia continúa" y restilar patrocinadores |
+> | 8 — Pantalla del torneo | 🟡 **lo único que falta de código.** Encabezado, migas de pan y tablas: ✅ (`48bdd58`). Faltan: medallas en los puestos 1-2-3, pestañas con subrayado dorado (hoy usan el `after:bg-foreground` de shadcn), tarjeta "La competencia continúa" y restilar patrocinadores |
 >
-> Nada de esto está desplegado todavía: está en local, sin commit. Las dos
-> migraciones **sí** están corridas en Supabase (que es la base de producción).
+> Ya no aplica el aviso de "sin commit": todo está en `main`. Las dos
+> migraciones (`20260731_tournament_featured.sql` y
+> `20260731b_tournament_card_image.sql`) están corridas en producción.
 
 ## Contexto
 

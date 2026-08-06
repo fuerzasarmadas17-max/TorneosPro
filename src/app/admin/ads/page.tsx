@@ -70,6 +70,15 @@ import {
 } from "@/lib/ad-analytics";
 import { AdRevenueShare } from "@/components/ads/ad-revenue-share";
 import { AdCampaignDetail } from "@/components/ads/ad-campaign-detail";
+import { AdInventory } from "@/components/ads/ad-inventory";
+import { useOrganizers } from "@/hooks/use-organizers";
+import { AdCampaignFilters } from "@/components/ads/ad-campaign-filters";
+import {
+  campaignFilterCounts,
+  filterCampaigns,
+  EMPTY_CAMPAIGN_FILTER,
+  type CampaignFilterValue,
+} from "@/lib/ads/campaign-filter";
 
 /**
  * Panel admin de Publicidad (Pieza 2 de Por hacer/modal-publicidad-y-tienda.md).
@@ -111,9 +120,19 @@ interface CampaignRow {
   created_at: string;
 }
 
+/** Los torneos se traen con sus atributos de targeting (no solo id y nombre)
+ *  porque el inventario resuelve las reglas de las campañas contra ellos. Son
+ *  los mismos cinco campos que lee `/api/ads/resolve`. */
 interface TournamentLite {
   id: string;
   name: string;
+  sport: string | null;
+  status: string | null;
+  scope: string | null;
+  department: string | null;
+  municipality: string | null;
+  /** Para filtrar la línea de tiempo por organizador. No entra al targeting. */
+  createdBy: string | null;
 }
 
 interface Counts {
@@ -253,6 +272,16 @@ function AdsContent() {
   const [uploading, setUploading] = useState(false);
   const [creating, setCreating] = useState(false);
 
+  /** Nombres de organizador para el filtro de la línea de tiempo. Una sola
+   *  consulta por lote, no una por torneo. */
+  const organizers = useOrganizers(
+    useMemo(() => tournaments.map((t) => t.createdBy ?? undefined), [tournaments])
+  );
+
+  const [campaignFilter, setCampaignFilter] = useState<CampaignFilterValue>(
+    EMPTY_CAMPAIGN_FILTER
+  );
+
   const [payStatus, setPayStatus] = useState<Record<string, "paid" | "pending">>({});
   /** COP cobrados (pagos aprobados) por campaña. */
   const [paidByCampaign, setPaidByCampaign] = useState<Record<string, number>>({});
@@ -275,7 +304,9 @@ function AdsContent() {
       }),
       supabase
         .from("tournaments")
-        .select("id, name")
+        .select(
+          "id, name, sport, status, scope, department, municipality, created_by"
+        )
         .order("created_at", { ascending: false }),
       supabase.from("ad_payments").select("campaign_id, status, amount_cop"),
     ]);
@@ -359,7 +390,24 @@ function AdsContent() {
     setByCampaignOrganizer(analytics?.by_campaign_organizer ?? []);
     setDetail(analytics?.detail ?? []);
 
-    setTournaments((tournRes.data as TournamentLite[]) || []);
+    // `created_by` → `createdBy` acá y no en el componente: el resto del panel
+    // ya trabaja con las filas crudas de Supabase, así que la conversión vive
+    // en el único punto donde entran.
+    setTournaments(
+      (tournRes.data || []).map((r) => {
+        const row = r as Record<string, unknown>;
+        return {
+          id: row.id as string,
+          name: row.name as string,
+          sport: (row.sport as string | null) ?? null,
+          status: (row.status as string | null) ?? null,
+          scope: (row.scope as string | null) ?? null,
+          department: (row.department as string | null) ?? null,
+          municipality: (row.municipality as string | null) ?? null,
+          createdBy: (row.created_by as string | null) ?? null,
+        };
+      })
+    );
     setLoading(false);
     // Cambiar el rango re-consulta: el filtro de fechas lo aplica la RPC, no
     // el cliente (que ya no tiene los eventos crudos).
@@ -672,6 +720,18 @@ function AdsContent() {
     [campaigns]
   );
 
+  // Filtros de la lista. Con pocas campañas sobra la lista sola, pero el panel
+  // está pensado para cuando sean decenas: ahí lo que importa es llegar rápido
+  // a las que hay que atender (vencen, no pagaron).
+  const campaignCounts = useMemo(
+    () => campaignFilterCounts(campaigns, payStatus),
+    [campaigns, payStatus]
+  );
+  const visibleCampaigns = useMemo(
+    () => filterCampaigns(sortedCampaigns, campaignFilter, payStatus),
+    [sortedCampaigns, campaignFilter, payStatus]
+  );
+
   /** Chips que resumen el targeting de una campaña. */
   const targetChips = (c: CampaignRow): string[] => {
     if (c.target_mode === "list") {
@@ -862,6 +922,10 @@ function AdsContent() {
             Campañas
             {!loading && ` (${campaigns.length})`}
           </TabsTrigger>
+          <TabsTrigger value="inventario" className="flex-1">
+            <ListChecks className="h-4 w-4" />
+            Inventario
+          </TabsTrigger>
           <TabsTrigger value="reparto" className="flex-1">
             <HandCoins className="h-4 w-4" />
             Reparto
@@ -879,7 +943,7 @@ function AdsContent() {
                 />
               ))}
             </div>
-          ) : sortedCampaigns.length === 0 ? (
+          ) : campaigns.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
@@ -899,7 +963,20 @@ function AdsContent() {
             </Card>
           ) : (
             <div className="space-y-3">
-              {sortedCampaigns.map((c) => {
+              <AdCampaignFilters
+                value={campaignFilter}
+                onChange={setCampaignFilter}
+                counts={campaignCounts}
+                shown={visibleCampaigns.length}
+              />
+              {visibleCampaigns.length === 0 && (
+                <Card>
+                  <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                    Ninguna campaña coincide con el filtro.
+                  </CardContent>
+                </Card>
+              )}
+              {visibleCampaigns.map((c) => {
                 const cnt = counts[c.id] || {
                   impressions: 0,
                   clicks: 0,
@@ -1064,6 +1141,20 @@ function AdsContent() {
               })}
             </div>
           )}
+        </TabsContent>
+
+        {/* El inventario NO lleva forceMount: no alimenta ninguna tarjeta de
+            arriba, así que calcularlo con la pestaña cerrada sería trabajo
+            tirado. Se monta al abrirla. */}
+        <TabsContent value="inventario">
+          <AdInventory
+            campaigns={campaigns}
+            tournaments={tournaments}
+            listMap={listMap}
+            organizers={organizers}
+            payStatus={payStatus}
+            loading={loading}
+          />
         </TabsContent>
 
         {/* forceMount para que el reparto se calcule aunque la pestaña esté

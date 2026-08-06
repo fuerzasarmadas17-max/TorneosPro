@@ -1,5 +1,13 @@
 # Wompi: dos apps compartiendo una sola cuenta
 
+> **Revisión del 2026-08-06.** Lo que ya se hizo desde que se escribió:
+> **la escoba está construida y desplegada** (`src/lib/payments/sweep.ts`,
+> `/api/admin/payments/sweep` y el botón en Finanzas, commit `28ed747`), así
+> que la sección "Lo que quedó pendiente" de más abajo ya solo aplica a los
+> **torneos en borrador**. Sigue abierta toda la **PARTE 2** (migrar la finca
+> a su propia cuenta de Wompi): mientras no se haga, la finca no recibe
+> eventos.
+>
 > Escrito el 2026-08-04, después de perder un pago real de $70.000.
 > **Este documento tiene dos partes.** La primera explica la situación actual y
 > por qué se hizo el cambio. La segunda son las instrucciones para cuando se
@@ -217,11 +225,11 @@ Un pago aprobado puede llegar a crear el torneo por dos vías, y las dos termina
 
 ## Lo que quedó pendiente
 
-**La escoba.** Un repaso automático que agarre los pagos en `pending`, le pregunte a Wompi si se aprobaron y active los que sí. Es la tercera red, la que atrapa lo que se les escapa al navegador y al webhook.
+**~~La escoba~~ ✅ HECHA (2026-08-06, commit `28ed747`).** Un repaso que agarra los pagos en `pending`, le pregunta a Wompi si se aprobaron y activa los que sí. Es la tercera red, la que atrapa lo que se les escapa al navegador y al webhook.
 
-Necesita la **llave privada** de Wompi (`prv_prod_…`) cargada en Vercel: se comprobó que buscar una transacción por referencia con la llave pública devuelve `401 INVALID_ACCESS_TOKEN`. Con la llave pública solo se puede consultar por id de transacción, que es justo lo que no tenemos cuando un pago se pierde.
+Vive en `src/lib/payments/sweep.ts`, se dispara desde `/api/admin/payments/sweep` y tiene botón en la página de Finanzas. Necesita la **llave privada** de Wompi (`prv_prod_…`) cargada en Vercel: se comprobó que buscar una transacción por referencia con la llave pública devuelve `401 INVALID_ACCESS_TOKEN`.
 
-Ojo con el plan de Vercel: en el gratuito las tareas programadas corren una vez al día. Si es ese el caso, la alternativa es disparar el chequeo cuando el organizador entra a su dashboard.
+Quedó como acción manual del admin, no como tarea programada. Si más adelante se quiere automática, ojo con el plan de Vercel: en el gratuito las tareas programadas corren una vez al día, y la alternativa es dispararla cuando el organizador entra a su dashboard.
 
 **Torneos en borrador.** Idea del dueño, y encaja con lo anterior: crear el torneo apenas se le da a "pagar", en estado no pagado —invisible para espectadores, bloqueado para el organizador, con botones de "ir a pagar" y "eliminar"—, y que el pago solo lo active.
 

@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
+import {
+  campaignMatchesTournament,
+  campaignWeight,
+  type TournamentTargeting,
+} from "@/lib/ads/targeting";
 
 /**
  * GET /api/ads/resolve?tournamentId=<uuid>
@@ -29,34 +34,12 @@ interface CampaignRow {
   target_municipalities: string[];
 }
 
-interface TournamentTargeting {
-  sport: string | null;
-  status: string | null;
-  scope: string | null;
-  department: string | null;
-  municipality: string | null;
-}
-
-/** Un criterio de regla pega si está vacío (comodín) o contiene el valor del
- *  torneo. Si el torneo no tiene el dato (ej. nacional sin departamento), un
- *  filtro no vacío NO lo incluye — a propósito. */
-function ruleMatches(c: CampaignRow, t: TournamentTargeting): boolean {
-  const has = (arr: string[], val: string | null) =>
-    arr.length === 0 || (val != null && arr.includes(val));
-  return (
-    has(c.target_sports, t.sport) &&
-    has(c.target_statuses, t.status) &&
-    has(c.target_scopes, t.scope) &&
-    has(c.target_departments, t.department) &&
-    has(c.target_municipalities, t.municipality)
-  );
-}
-
 /** Pick ponderado: probabilidad de cada campaña = su peso / suma de pesos.
- *  Peso = monthly_price, con piso 1 para que una promo a $0 igual rote. */
+ *  El peso sale de `campaignWeight` (lib/ads/targeting) para que el share que
+ *  muestra el inventario del admin sea el mismo con el que se sortea acá. */
 function weightedPick(pool: CampaignRow[]): CampaignRow | null {
   if (pool.length === 0) return null;
-  const weights = pool.map((c) => Math.max(c.monthly_price, 1));
+  const weights = pool.map((c) => campaignWeight(c.monthly_price));
   const total = weights.reduce((a, b) => a + b, 0);
   let r = Math.random() * total;
   for (let i = 0; i < pool.length; i++) {
@@ -121,7 +104,7 @@ export async function GET(request: NextRequest) {
   };
 
   const pool = campaigns.filter((c) =>
-    c.target_mode === "list" ? listedIds.has(c.id) : ruleMatches(c, t)
+    campaignMatchesTournament(c, t, listedIds.has(c.id))
   );
 
   const chosen = weightedPick(pool);

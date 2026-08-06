@@ -5,12 +5,50 @@ que ve el organizador** (especificada abajo en el Paso 3) y **calibrar los
 umbrales** con agosto completo.
 **Última actualización:** 2026-07-30
 
+> **Revisado el 2026-08-06.** Confirmado contra el código: los Pasos 0, 1 y 2
+> están hechos, las 9 migraciones existen y el tope de frecuencia también.
+> **Del Paso 3 sigue sin construirse todo lo del lado del organizador**: no
+> existe `get_my_ad_earnings`, ni la policy de lectura en `ad_settlements`, ni
+> pantalla de datos de pago, ni sección "Monetizar" — `organizer_payout_info`
+> solo aparece mencionado en la migración, sin UI. El documento queda tal cual
+> porque es la especificación de lo que falta.
+>
+> 🔴 **El ensayo del 1 de agosto NO se corrió.** Verificado el 2026-08-06:
+> `ad_settlements` está vacía, sin una sola fila. **El camino de cierre sigue
+> sin ejecutarse ni una vez** — que era justo lo que el ensayo venía a evitar.
+> Ver *Estado del ensayo* más abajo.
+
 ### Fechas que importan
 
 | Cuándo | Qué |
 |---|---|
-| **1 de agosto 2026** | Cerrar julio como **ensayo**. Ese camino nunca corrió de verdad; julio no sirve para pagar (2% de cobertura) pero ejercita el flujo completo. Después anular los cortes. |
-| **Septiembre 2026** | Calibrar `monetization_config` con agosto, el primer mes limpio. Los números actuales se pusieron sin datos. |
+| ~~1 de agosto 2026~~ | Cerrar julio como **ensayo**. ❌ **No se hizo.** Ver abajo. |
+| **Septiembre 2026** | Calibrar `monetization_config` con agosto, el primer mes limpio. Los números actuales se pusieron sin datos. **Y cerrar agosto — que ahora sería el primer cierre real, sin ensayo previo, salvo que se haga el de julio antes.** |
+
+### Estado del ensayo (2026-08-06)
+
+`ad_settlements` está **vacía**: `close_ad_period` nunca se ejecutó. La fecha
+del 1 de agosto pasó sin que se corriera.
+
+**El ensayo sigue valiendo la pena, y se puede hacer con julio cuando sea** —
+`close_ad_period` acepta cualquier mes ya terminado, no solo el recién pasado.
+No es una ventana que se cerró.
+
+Cómo: `/admin/ads` → pestaña **Reparto** → período **"Mes pasado"** → botón
+**"Cerrar el mes"**. Después anular lo que haya quedado (`status = 'void'`).
+
+**Qué esperar:** probablemente **cero cortes**. `visitor_id` en
+`analytics_events` existe desde el 29 de julio, así que julio tiene ~2 días de
+dato contra un umbral de 300 personas-día — no va a clasificar nadie, y solo se
+mandan los organizadores elegibles con monto mayor que cero. Eso **no lo hace
+inútil**: ejercita las cuatro validaciones de la función (mes terminado, no
+cerrar dos veces, la bolsa como techo, y las personas-día re-derivadas contra
+las que manda el panel). Si algo de eso está roto, es mucho mejor descubrirlo
+ahora que en septiembre con plata real de por medio.
+
+⚠️ **Si el cierre sí genera cortes, anularlos el mismo día.** Un corte en
+`issued` que quede olvidado le aparece al organizador como plata que se le debe
+el día que se prenda su sección.
 
 ### Todo lo desplegado
 
@@ -311,20 +349,41 @@ premiar organizadores.
   tipo y número de documento, banco, tipo de cuenta y número. Tabla aparte del
   perfil, que es público. El dueño escribe lo suyo; el admin **solo lee**.
 
-### Falta
+### Falta — el orden de trabajo (definido 2026-08-06)
 
-| | Qué | Bloqueado por |
-|---|---|---|
-| 1 | Calibrar los umbrales | agosto completo → septiembre |
-| 2 | RPC de los cortes del organizador | nada, se puede hacer ya |
-| 3 | Policy de lectura en `ad_settlements` | va con la 2 |
-| 4 | Términos y condiciones del programa | decisión + redacción |
-| 5 | La pantalla | las anteriores |
-| 6 | Prender `require_payout_info` | que exista la pantalla |
+El criterio del orden: **primero lo que no depende de nadie ni de ninguna
+fecha, y dentro de eso, lo que desbloquea a lo demás.** Los pasos 1 a 3 son la
+plomería que se puede hacer hoy mismo; el 4 y el 5 son decisiones tuyas que hay
+que tomar antes de que el organizador vea una cifra; el 6 es la pantalla, que
+necesita todo lo anterior; el 7 y el 8 vienen después de que exista.
 
-**Por qué la policy de lectura no está todavía:** mostrarle cifras al
-organizador sin la sección armada es filtrar plata a medias. Se agrega junto con
-la pantalla, no antes.
+| # | Qué | Depende de | Se puede hacer ya |
+|---|---|---|---|
+| **1** | **RPC `get_my_ad_earnings(mes)`** — le devuelve al organizador sus personas-día por campaña y por torneo, y su participación. No puede reusar `get_ad_analytics`, que es admin-only. | nada | ✅ sí |
+| **2** | **Policy de lectura en `ad_settlements`** (`organizer_id = auth.uid()`, solo cortes no anulados). | va junto con la 1 | ✅ sí |
+| **3** | **Pintar el desglose por campaña.** Ya se calcula y ya se guarda en `ad_settlements.breakdown`, pero hoy no se muestra en ningún lado — se quitó al simplificar el panel de admin. Hace falta en los dos lados. | nada | ✅ sí |
+| **4** | **Términos y condiciones del programa** — cómo se calcula, cuándo se paga, y que el estimado del mes puede bajar. Más las columnas para guardar **cuándo** aceptó y **qué versión**. | decisión + redacción tuya | 🟡 depende de vos |
+| **5** | **Decidir cómo se entera de que tiene plata.** No hay correo transaccional ni notificaciones de ningún tipo en la app. Al arranque puede vivir solo adentro, pero hay que decidirlo. | decisión tuya | 🟡 depende de vos |
+| **6** | **La pantalla "Monetizar"** — las tres etapas del flujo de más abajo: datos y términos → qué le falta para clasificar → cuánto ganó y por qué. | 1, 2, 3, 4 | ❌ |
+| **7** | **Prender `require_payout_info`** (un `UPDATE` en `monetization_config`). | que exista la pantalla (6) | ❌ |
+| **8** | **Calibrar los umbrales** con agosto completo. | agosto cerrado → septiembre | ❌ hasta septiembre |
+
+**En paralelo, cuando quieras:** el **ensayo de cierre** con julio (ver
+*Estado del ensayo* arriba). No bloquea nada de esta lista, pero conviene
+hacerlo antes de septiembre, que es el primer cierre que cuenta.
+
+**Por qué la policy de lectura (2) no se hizo antes:** mostrarle cifras al
+organizador sin la sección armada es filtrar plata a medias. Ahora entra
+temprano a propósito — es plomería sin UI, no expone nada mientras la pantalla
+no exista, y se puede probar sola.
+
+⚠️ **Un requisito previo a todo esto que no es código:** el reparto sale de lo
+**cobrado** (`ad_payments` aprobados), no del precio de lista. Si los pagos de
+publicidad quedaron atascados en `pending` —pasó con los de julio, cuando el
+webhook apuntaba a la app de la finca— la bolsa da **cero** y no hay nada que
+repartir por más audiencia que haya. Se rescata con la escoba
+(`/api/admin/payments/sweep`, botón en Finanzas), que barre `payments` y
+`ad_payments`. Conviene verificarlo antes de prometerle plata a nadie.
 
 ---
 

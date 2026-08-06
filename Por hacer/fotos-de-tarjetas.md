@@ -1,8 +1,14 @@
 # Fotos de las tarjetas de torneo — qué falta y cómo generarlo
 
-> Estado al 31 de julio de 2026. **El mecanismo está hecho y funcionando;
-> falta solo el material.** Las del hero de la portada ya están listas y no
-> hacen falta más.
+> **Verificado el 6 de agosto de 2026: sigue igual.** El mecanismo está hecho
+> y desplegado (`src/data/sport-images.ts` + el selector del organizador);
+> **falta solo el material**: `public/sports/` está vacío y las 11 listas de
+> `SPORT_IMAGES` también, así que hoy todas las tarjetas caen al degradado.
+> Las 5 fotos del hero de la portada ya están en `public/hero/` y no hacen
+> falta más.
+>
+> (Nota menor: el comentario de `sport-images.ts` apunta a
+> `Por hacer/fotos-por-deporte.md`, que no existe — el archivo es este.)
 
 ## Qué es esto
 

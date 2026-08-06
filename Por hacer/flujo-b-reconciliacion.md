@@ -1,6 +1,10 @@
 # Flujo B — Reconciliación de jugadores por similitud (PENDIENTE)
 
-Última actualización: 2026-07-25
+Última actualización: 2026-07-25.
+**Revisado el 2026-08-06: sigue pendiente y el resto sigue en pie.** No hay
+ninguna función de similitud de nombres en `src/` (ni Levenshtein, ni
+Jaro-Winkler, ni nada parecido); `src/lib/name-utils.ts` solo tiene la
+normalización. Todo lo listado como "ya hecho y en prod" se confirmó.
 
 ## Contexto
 
