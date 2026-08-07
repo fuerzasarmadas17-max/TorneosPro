@@ -627,7 +627,14 @@ function BusinessContent() {
                   Con la mayoría de los meses en cero, un gráfico sin números se
                   lee como si no tuviera datos: las barras vacías son una línea
                   de 2px y las que sí tienen no dicen cuánto. */}
-              <div className="flex h-36 items-end gap-1.5">
+              {/* SIN `items-end`: con esa clase cada columna se dimensiona por
+                  su contenido, y entonces el `height: X%` de la barra no tiene
+                  contra qué calcularse y colapsa a cero — el gráfico se veía
+                  solo con las etiquetas de los meses. Estirando las columnas a
+                  los 144px del contenedor, el porcentaje vuelve a tener
+                  referencia; `justify-end` en cada columna es lo que apoya la
+                  barra en la base. */}
+              <div className="flex h-36 gap-1.5">
                 {m.monthly.map((mm, i) => (
                   <div
                     key={i}

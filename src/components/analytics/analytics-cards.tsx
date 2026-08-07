@@ -3,6 +3,7 @@
 import { Eye, Users, Clock, Activity, ArrowUp, ArrowDown, type LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { ANALYTICS_SERIES } from "@/lib/analytics-colors";
 import { formatDuration } from "@/lib/analytics";
 import type { PeriodTotals } from "@/hooks/use-analytics";
 
@@ -58,10 +59,15 @@ function MetricCard({
   current,
   previous,
   series,
+  seriesColor,
   compact = false,
 }: {
   icon: LucideIcon;
   label: string;
+  /** Color de la serie a la que corresponde esta métrica en el gráfico de
+   *  abajo. Un punto del mismo color en el título es lo que deja mirar una
+   *  línea y saber de qué KPI es, sin volver a la leyenda. */
+  seriesColor?: { light: string; dark: string };
   value: string;
   hint?: string;
   accent?: keyof typeof accentBox;
@@ -84,7 +90,16 @@ function MetricCard({
           >
             <Icon className={compact ? "size-3.5" : "size-4"} />
           </div>
-          <p className={cn("text-muted-foreground", compact ? "text-xs" : "text-sm")}>{label}</p>
+          <p className={cn("flex items-center gap-1.5 text-muted-foreground", compact ? "text-xs" : "text-sm")}>
+            {seriesColor && (
+              <span
+                className="h-2 w-2 flex-shrink-0 rounded-full"
+                style={{ background: `light-dark(${seriesColor.light}, ${seriesColor.dark})` }}
+                aria-hidden
+              />
+            )}
+            {label}
+          </p>
         </div>
         <div className="flex items-end justify-between gap-2">
           <div className="min-w-0">
@@ -205,6 +220,7 @@ export function AnalyticsCards({
       <MetricCard
         icon={Activity}
         label="Personas-día"
+        seriesColor={ANALYTICS_SERIES.personasDia}
         value={personDays.toLocaleString()}
         hint={daysPerPerson ? `vuelven ${daysPerPerson} días c/u` : "por día"}
         series={viewsByDay?.map((d) => d.unique_persons)}
@@ -213,6 +229,7 @@ export function AnalyticsCards({
       <MetricCard
         icon={Eye}
         label="Visitas"
+        seriesColor={ANALYTICS_SERIES.visitas}
         value={totalViews.toLocaleString()}
         hint="cargas de página"
         current={totalViews}

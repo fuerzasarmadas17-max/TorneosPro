@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { ChevronRight, ChevronDown, MousePointerClick } from "lucide-react";
 import {
   useSponsorClicks,
@@ -86,8 +87,14 @@ function TournamentRow({ t }: { t: SponsorClicksTournament }) {
   );
 }
 
+/** Cuántas filas se muestran de entrada. Igual que el ranking de organizadores. */
+const TOP_N = 7;
+/** Cuántas se agregan con cada "ver más". */
+const PAGE_N = 10;
+
 export function SponsorClicksPanel({ days }: { days: number }) {
   const { data, totalClicks, isLoading } = useSponsorClicks(days);
+  const [shown, setShown] = useState(TOP_N);
 
   return (
     <Card>
@@ -109,7 +116,35 @@ export function SponsorClicksPanel({ days }: { days: number }) {
             Aun no hay clics en patrocinadores en este periodo.
           </p>
         ) : (
-          data.map((t) => <TournamentRow key={t.tournament_id} t={t} />)
+          <>
+            {/* Mismo criterio que el ranking de organizadores: arrancan los 7
+                con más clics del período, y el resto se pide de a 10. La lista
+                completa crece con cada torneo y deja de responder la pregunta
+                que se le hace: "¿dónde le están haciendo clic a los
+                patrocinadores?". */}
+            <div
+              className={
+                shown > TOP_N
+                  ? "max-h-96 space-y-2 overflow-y-auto pr-1"
+                  : "space-y-2"
+              }
+            >
+              {data.slice(0, shown).map((t) => (
+                <TournamentRow key={t.tournament_id} t={t} />
+              ))}
+            </div>
+            {data.length > shown && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-xs"
+                onClick={() => setShown((v) => v + PAGE_N)}
+              >
+                Ver {Math.min(PAGE_N, data.length - shown)} más · quedan{" "}
+                {data.length - shown}
+              </Button>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

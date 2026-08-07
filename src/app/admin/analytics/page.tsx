@@ -21,6 +21,11 @@ import { personDaysOf } from "@/hooks/use-analytics";
 import { SponsorClicksPanel } from "@/components/analytics/sponsor-clicks-panel";
 import { Loader2, ChevronRight, ChevronDown } from "lucide-react";
 
+/** Cuántas filas se muestran de entrada en los rankings de esta pantalla. */
+const TOP_N = 7;
+/** Cuántas se agregan con cada "ver más". */
+const PAGE_N = 10;
+
 const dayOptions = [7, 30, 90] as const;
 
 function OrganizerRow({ org }: { org: OrganizerSummary }) {
@@ -93,6 +98,12 @@ function AnalyticsContent() {
   const [days, setDays] = useState<number>(30);
   const [customInput, setCustomInput] = useState("");
   const { data, organizers, isLoading } = useAdminAnalytics(days);
+
+  // Los organizadores ya vienen ordenados por total desde la consulta; acá solo
+  // se recorta. Se recalcula con cada cambio de período, así que el top refleja
+  // el filtro elegido y no un ranking histórico fijo.
+  const [orgShown, setOrgShown] = useState(TOP_N);
+  const topOrganizers = organizers.slice(0, orgShown);
 
   const applyCustom = () => {
     const n = parseInt(customInput, 10);
@@ -183,6 +194,8 @@ function AnalyticsContent() {
         viewsByDay={data.views_by_day}
       />
 
+      <ViewsChart data={data.views_by_day} />
+
       {/* Organizador + clics en patrocinadores: lado a lado en desktop */}
       <div className="grid gap-4 lg:grid-cols-2 items-start">
         <Card>
@@ -193,9 +206,35 @@ function AnalyticsContent() {
             {organizers.length === 0 ? (
               <p className="text-sm text-muted-foreground">Sin datos de organizadores</p>
             ) : (
-              organizers.map((org) => (
-                <OrganizerRow key={org.user_id} org={org} />
-              ))
+              <>
+                {/* Arrancan los 7 con más visitas del período. Con decenas de
+                    organizadores la lista completa deja de responder lo que se
+                    le pregunta —quién está arriba— y pasa a ser scroll. El
+                    resto se pide de a 10, y a partir de ahí la lista scrollea
+                    sola para no empujar todo lo que hay debajo. */}
+                <div
+                  className={
+                    orgShown > TOP_N
+                      ? "max-h-96 space-y-2 overflow-y-auto pr-1"
+                      : "space-y-2"
+                  }
+                >
+                  {topOrganizers.map((org) => (
+                    <OrganizerRow key={org.user_id} org={org} />
+                  ))}
+                </div>
+                {organizers.length > orgShown && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs"
+                    onClick={() => setOrgShown((v) => v + PAGE_N)}
+                  >
+                    Ver {Math.min(PAGE_N, organizers.length - orgShown)} más ·
+                    quedan {organizers.length - orgShown}
+                  </Button>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -203,8 +242,6 @@ function AnalyticsContent() {
         {/* Clics en patrocinadores (interacciones, no solo visitas) */}
         <SponsorClicksPanel days={days} />
       </div>
-
-      <ViewsChart data={data.views_by_day} />
 
       <div className="grid gap-4 md:grid-cols-2">
         <DeviceBreakdown data={data.device_breakdown} />

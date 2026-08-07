@@ -2,11 +2,14 @@
 
 import { useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ANALYTICS_SERIES } from "@/lib/analytics-colors";
 
 interface ViewsByDay {
   date: string;
   views: number;
   unique_visitors: number;
+  /** Personas distintas de ESE día. Sumadas dan el KPI de personas-día. */
+  unique_persons?: number;
 }
 
 interface ViewsChartProps {
@@ -68,9 +71,14 @@ export function ViewsChart({ data }: ViewsChartProps) {
     PAD.l + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
   const y = (v: number) => PAD.t + plotH * (1 - v / maxViews);
 
+  // Se grafican las dos métricas que también son KPI y que SÍ tienen valor
+  // diario. "Personas" (distintas de todo el período) no lo tiene: por día
+  // sería idéntica a personas-día, porque personas-día son pares (persona,día).
+  const personasDia = (d: ViewsByDay) => d.unique_persons ?? d.unique_visitors;
+
   const viewsPts = data.map((d, i) => [x(i), y(d.views)] as [number, number]);
   const uniqPts = data.map(
-    (d, i) => [x(i), y(d.unique_visitors)] as [number, number]
+    (d, i) => [x(i), y(personasDia(d))] as [number, number]
   );
   const viewsLine = smoothPath(viewsPts);
   const uniqLine = smoothPath(uniqPts);
@@ -98,10 +106,18 @@ export function ViewsChart({ data }: ViewsChartProps) {
           <span>Visitas por Dia</span>
           <div className="flex items-center gap-4 text-xs font-normal text-muted-foreground">
             <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-primary" /> Visitas
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ background: `light-dark(${ANALYTICS_SERIES.visitas.light}, ${ANALYTICS_SERIES.visitas.dark})` }}
+              />
+              Visitas
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-muted-foreground/50" /> Unicos
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ background: `light-dark(${ANALYTICS_SERIES.personasDia.light}, ${ANALYTICS_SERIES.personasDia.dark})` }}
+              />
+              Personas-día
             </span>
             <span className="tabular-nums">{totalViews} total</span>
           </div>
@@ -154,25 +170,28 @@ export function ViewsChart({ data }: ViewsChartProps) {
             ))}
 
             {/* Area + lineas */}
-            <path d={areaPath} fill="url(#viewsArea)" className="text-primary" />
+            <path
+              d={areaPath}
+              fill="url(#viewsArea)"
+              style={{ color: `light-dark(${ANALYTICS_SERIES.visitas.light}, ${ANALYTICS_SERIES.visitas.dark})` }}
+            />
+            {/* Las dos líneas van del mismo grosor y sin guiones: la identidad
+                la carga el color más la leyenda, no el estilo del trazo. */}
             <path
               d={uniqLine}
               fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              strokeDasharray="4 4"
+              strokeWidth={2}
               strokeLinejoin="round"
               strokeLinecap="round"
-              className="text-muted-foreground/60"
+              style={{ stroke: `light-dark(${ANALYTICS_SERIES.personasDia.light}, ${ANALYTICS_SERIES.personasDia.dark})` }}
             />
             <path
               d={viewsLine}
               fill="none"
-              stroke="currentColor"
-              strokeWidth={2.5}
+              strokeWidth={2}
               strokeLinejoin="round"
               strokeLinecap="round"
-              className="text-primary"
+              style={{ stroke: `light-dark(${ANALYTICS_SERIES.visitas.light}, ${ANALYTICS_SERIES.visitas.dark})` }}
             />
 
             {/* Hover: guia vertical + punto */}
@@ -189,10 +208,18 @@ export function ViewsChart({ data }: ViewsChartProps) {
                 />
                 <circle
                   cx={x(hover)}
+                  cy={y(personasDia(data[hover]))}
+                  r={4.5}
+                  style={{ fill: `light-dark(${ANALYTICS_SERIES.personasDia.light}, ${ANALYTICS_SERIES.personasDia.dark})` }}
+                  className="stroke-card"
+                  strokeWidth={2}
+                />
+                <circle
+                  cx={x(hover)}
                   cy={y(data[hover].views)}
                   r={4.5}
-                  className="fill-primary"
-                  stroke="white"
+                  style={{ fill: `light-dark(${ANALYTICS_SERIES.visitas.light}, ${ANALYTICS_SERIES.visitas.dark})` }}
+                  className="stroke-card"
                   strokeWidth={2}
                 />
               </g>
@@ -225,9 +252,21 @@ export function ViewsChart({ data }: ViewsChartProps) {
               <div className="text-xs font-medium">
                 {fmtDate(data[hover].date)}
               </div>
-              <div className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
-                {data[hover].views} visitas · {data[hover].unique_visitors}{" "}
-                unicos
+              <div className="flex flex-col gap-0.5 whitespace-nowrap text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5 tabular-nums">
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: `light-dark(${ANALYTICS_SERIES.visitas.light}, ${ANALYTICS_SERIES.visitas.dark})` }}
+                  />
+                  {data[hover].views} visitas
+                </span>
+                <span className="flex items-center gap-1.5 tabular-nums">
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: `light-dark(${ANALYTICS_SERIES.personasDia.light}, ${ANALYTICS_SERIES.personasDia.dark})` }}
+                  />
+                  {personasDia(data[hover])} personas
+                </span>
               </div>
             </div>
           )}
