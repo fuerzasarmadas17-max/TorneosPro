@@ -12,7 +12,11 @@ import { getUserBySlug } from "@/data/users";
 import { useTournaments } from "@/context/tournament-context";
 import { usePageView } from "@/hooks/use-page-view";
 import { fetchTeamsByIds } from "@/lib/db/teams";
-import { fetchMatchEventsByMatchIds } from "@/lib/db/tournaments";
+import {
+  fetchMatchEventsByMatchIds,
+  fetchTournamentById,
+} from "@/lib/db/tournaments";
+import { supabase } from "@/lib/supabase";
 import { mapMatchEvent } from "@/lib/db/mappers";
 import type { Tournament } from "@/types";
 
@@ -37,9 +41,25 @@ export default function ProfileTournamentPage() {
     });
   }, [params.slug]);
 
-  // El torneo viene de `getTournamentById` (cargado por loadTournaments,
-  // público para todos). PERO en la vista pública anónima faltan dos
-  // cosas que el SSR de /tournaments/[id] sí siembra:
+  // El visitante ANÓNIMO no tiene la lista global en memoria: `loadTournaments`
+  // corre solo para autenticados (bajar todos los torneos del sistema para
+  // mostrar uno no se paga). Así que si el torneo no está en contexto, se trae
+  // por id y se siembra. Para el organizador logueado esto no hace nada: su
+  // lista ya lo tiene y el `if` corta.
+  const [fetched, setFetched] = useState<Tournament | null>(null);
+  const fetchedRef = useRef<string | null>(null);
+  const inContext = getTournamentById(params.tournamentId);
+  useEffect(() => {
+    if (inContext) return;
+    if (fetchedRef.current === params.tournamentId) return;
+    fetchedRef.current = params.tournamentId;
+    fetchTournamentById(params.tournamentId, supabase, false).then((t) => {
+      if (t) setFetched(t);
+    });
+  }, [inContext, params.tournamentId]);
+
+  // El torneo sale del contexto o de esa consulta. PERO en la vista pública
+  // anónima faltan dos cosas que el SSR de /tournaments/[id] sí siembra:
   //   1. Los EQUIPOS: loadTeams() solo corre para autenticados, así que
   //      el `teams[]` global está vacío y las tablas muestran el UUID.
   //   2. Los match_events: el SELECT de la lista los omite (evita el 504),
@@ -47,7 +67,7 @@ export default function ProfileTournamentPage() {
   // Replicamos el patrón probado de tournament-detail-client: traemos los
   // equipos por IDs (consulta liviana, NO fetchAllTeams) + los eventos, y
   // sembramos al contexto. Una vez por torneo.
-  const tournamentForSeed = getTournamentById(params.tournamentId);
+  const tournamentForSeed = inContext ?? fetched ?? undefined;
   const seededRef = useRef<string | null>(null);
   useEffect(() => {
     if (!tournamentForSeed) return;
@@ -103,7 +123,7 @@ export default function ProfileTournamentPage() {
     notFound();
   }
 
-  const tournament = getTournamentById(params.tournamentId);
+  const tournament = getTournamentById(params.tournamentId) ?? fetched;
 
   if (!tournament || tournament.createdBy !== user.id) {
     return (

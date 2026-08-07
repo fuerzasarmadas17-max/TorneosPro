@@ -20,11 +20,17 @@ import { buildSportImageMap } from "@/data/sport-images";
  */
 export const revalidate = 60;
 
+/**
+ * Cuántos torneos muestra la portada. Es una vitrina, no un catálogo: quien
+ * quiere ver todo tiene el botón a `/tournaments`, que pagina de a 10.
+ */
+const LANDING_TOURNAMENTS = 10;
+
 export default async function HomePage() {
   // En paralelo: son dos consultas independientes y no hay razón para que
   // una espere a la otra.
   const [items, featured] = await Promise.all([
-    fetchLandingTournaments(12),
+    fetchLandingTournaments(LANDING_TOURNAMENTS),
     fetchFeaturedTournaments(),
   ]);
 

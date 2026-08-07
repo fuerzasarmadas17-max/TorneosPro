@@ -50,6 +50,101 @@ const TOURNAMENT_LIST_SELECT = `
   sponsors(*)
 `;
 
+/** Criterios de búsqueda de `fetchTournamentsPage`. Vacío = no filtra. */
+export interface TournamentQuery {
+  sport?: string;
+  status?: string;
+  search?: string;
+  department?: string;
+  municipality?: string;
+  /** Solo los torneos de este organizador (la vista "Mis Torneos"). */
+  createdBy?: string;
+}
+
+/** Cuántos torneos trae una página. Ver `/tournaments`. */
+export const TOURNAMENTS_PAGE_SIZE = 10;
+
+/**
+ * En `ilike`, `%` y `_` son comodines. Sin escaparlos, alguien buscando "100%"
+ * dispara un patrón que hace match con cualquier cosa.
+ */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+/**
+ * Una página de torneos, filtrada **en la base**.
+ *
+ * Existe porque `/tournaments` leía la lista completa del contexto y la
+ * filtraba en memoria: con el catálogo creciendo, eso obliga a bajar todos los
+ * torneos (con equipos, grupos, playoffs y patrocinadores) para mostrar diez.
+ *
+ * Los filtros y la búsqueda corren sobre **todo** el catálogo, no sobre la
+ * página cargada — se aplican en el `where`, y recién después se recorta. Es la
+ * diferencia entre "buscar" y "buscar entre lo que ya bajé".
+ *
+ * Select liviano, igual que el de la portada: sin matches ni eventos. La
+ * tarjeta solo necesita nombre, deporte, estado, ubicación y cuántos equipos.
+ *
+ * Orden: los más nuevos primero. No se ordena por estado —como sí hace la
+ * portada— porque ese orden ("en curso" antes que "próximo") no es el
+ * alfabético de la columna y PostgREST no acepta expresiones en `order`.
+ * Ordenarlo en memoria rompería la paginación: cada página se ordenaría solo
+ * consigo misma. Para eso está el filtro de estado, que en esta pantalla viene
+ * en "en curso" por defecto.
+ */
+export async function fetchTournamentsPage(
+  q: TournamentQuery = {},
+  page = 0,
+  pageSize = TOURNAMENTS_PAGE_SIZE
+): Promise<{ items: Tournament[]; total: number }> {
+  const from = page * pageSize;
+
+  let query = supabase
+    .from("tournaments")
+    .select(TOURNAMENT_LIST_SELECT, { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(from, from + pageSize - 1);
+
+  if (q.sport) query = query.eq("sport", q.sport);
+  if (q.status) query = query.eq("status", q.status);
+  if (q.department) query = query.eq("department", q.department);
+  if (q.municipality) query = query.eq("municipality", q.municipality);
+  if (q.createdBy) query = query.eq("created_by", q.createdBy);
+  if (q.search?.trim()) {
+    query = query.ilike("name", `%${escapeLike(q.search.trim())}%`);
+  }
+
+  const { data, error, count } = await query;
+  if (error || !data) return { items: [], total: 0 };
+
+  return {
+    items: data.map((row) => mapTournament(row as Record<string, unknown>)),
+    total: count ?? 0,
+  };
+}
+
+/**
+ * Todos los torneos de un organizador. Para su perfil público, que antes
+ * filtraba la lista completa del contexto en memoria — o sea bajaba todos los
+ * torneos del sistema para mostrar los de una sola persona.
+ *
+ * Sin paginar a propósito: un organizador tiene decenas, no miles, y el perfil
+ * los agrupa por estado. Si algún día alguien pasa de ~50, acá va el `range`.
+ */
+export async function fetchTournamentsByOrganizer(
+  userId: string
+): Promise<Tournament[]> {
+  const { data, error } = await supabase
+    .from("tournaments")
+    .select(TOURNAMENT_LIST_SELECT)
+    .eq("created_by", userId)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) return [];
+  return data.map((row) => mapTournament(row as Record<string, unknown>));
+}
+
 /**
  * Fase 1 de la carga de torneos: todo menos los matches. Rápida a propósito —
  * es la que bloquea el "Cargando..." del AppShell.

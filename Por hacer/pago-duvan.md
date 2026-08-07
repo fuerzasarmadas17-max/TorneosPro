@@ -168,6 +168,14 @@ order by t.created_at desc;
 Un torneo cobrado no aparece nunca más acá una vez soltado el cupón — la
 lista se vacía sola a medida que se van resolviendo.
 
+## Lo que puede reemplazar el fiado
+
+Los **paquetes de torneos** (`paquetes-de-torneos.md`, 2026-08-07): en vez de
+regalar un torneo mientras el organizador consigue la plata, se le vende un
+paquete de 5 y se arranca con la plata adentro. Deja de ser un favor y pasa a
+ser una venta. No cubre todos los casos —el que no tiene para uno tampoco tiene
+para cinco— pero sí el más común, que es el organizador que sí va a hacer varios.
+
 ## Si se vuelve costumbre
 
 Para un caso aislado, dos updates. Si empieza a repetirse (fiar un torneo y

@@ -316,31 +316,49 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  // Initial mount: arrancamos cargando torneos para tener la landing
-  // utilizable lo antes posible. Los equipos van en un effect separado
-  // que depende del estado de auth.
+  // La lista completa se carga SOLO para usuarios autenticados.
+  //
+  // Antes se cargaba siempre, también para el visitante anónimo que solo abre
+  // la portada: eran todos los torneos con equipos, grupos, playoffs y
+  // patrocinadores, y detrás la fase 2 con todos los matches (1,16 MB con 13
+  // torneos). Nada de eso se llegaba a mostrar.
+  //
+  // Las tres pantallas públicas ya no la necesitan: la portada llega renderizada
+  // del servidor, `/tournaments` pagina contra la base, y el detalle del torneo
+  // y el perfil del organizador consultan lo suyo. Quien sí la necesita es el
+  // panel del organizador, que es justamente lo que hay detrás del login.
   useEffect(() => {
+    if (authLoading) return;
+
+    if (!isAuthenticated) {
+      // Sin sesión no hay nada que esperar: si no se baja, el AppShell se queda
+      // en "Cargando..." para siempre.
+      setIsLoading(false);
+      return;
+    }
+
     // `loadTournaments` baja isLoading apenas termina su fase 1 (sin esperar a
     // los matches), así que acá no hay que tocarlo.
     loadTournaments();
-
-    // Re-load when Supabase confirms a valid session (after token refresh,
-    // sign-in, or session restore). Esto cubre el caso de que el JWT
-    // estuviera vencido al mount o que el usuario haya hecho login.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        loadTournaments();
-      }
-    });
 
     const safetyTimer = setTimeout(() => {
       setIsLoading(false);
     }, 6000);
 
-    return () => {
-      subscription.unsubscribe();
-      clearTimeout(safetyTimer);
-    };
+    return () => clearTimeout(safetyTimer);
+  }, [authLoading, isAuthenticated, loadTournaments]);
+
+  // Recarga cuando Supabase confirma una sesión válida (refresco de token,
+  // login, o restauración). Cubre el caso de que el JWT estuviera vencido al
+  // montar. Va aparte del effect de arriba para no re-suscribirse cada vez que
+  // cambia el estado de auth.
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        loadTournaments();
+      }
+    });
+    return () => subscription.unsubscribe();
   }, [loadTournaments]);
 
   // Equipos: cargar SOLO si el user está autenticado. Anónimos no los

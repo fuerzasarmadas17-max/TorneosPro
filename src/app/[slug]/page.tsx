@@ -2,12 +2,12 @@
 
 import { useParams, notFound } from "next/navigation";
 import { useState, useEffect } from "react";
-import { OrganizationProfile } from "@/types";
+import { OrganizationProfile, Tournament } from "@/types";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { ProfileTournaments } from "@/components/profile/profile-tournaments";
 import { SponsorBanner } from "@/components/sponsors/sponsor-banner";
 import { getUserBySlug } from "@/data/users";
-import { useTournaments } from "@/context/tournament-context";
+import { fetchTournamentsByOrganizer } from "@/lib/db/tournaments";
 import { usePageView } from "@/hooks/use-page-view";
 
 interface ProfileUser {
@@ -19,9 +19,12 @@ interface ProfileUser {
 
 export default function ProfilePage() {
   const params = useParams<{ slug: string }>();
-  const { tournaments } = useTournaments();
   const [user, setUser] = useState<ProfileUser | undefined>(undefined);
   const [checked, setChecked] = useState(false);
+  // Los torneos de ESTE organizador, consultados por `created_by`. Antes salían
+  // de filtrar la lista completa del contexto, lo que obligaba a bajar todos
+  // los torneos del sistema para mostrar los de una sola persona.
+  const [userTournaments, setUserTournaments] = useState<Tournament[]>([]);
   usePageView("profile", user?.id, "organization");
 
   useEffect(() => {
@@ -35,6 +38,11 @@ export default function ProfilePage() {
       });
   }, [params.slug]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    fetchTournamentsByOrganizer(user.id).then(setUserTournaments);
+  }, [user?.id]);
+
   if (!checked) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -46,8 +54,6 @@ export default function ProfilePage() {
   if (!user || !user.organizationProfile || !user.organizationProfile.isPublic || user.isActive === false) {
     notFound();
   }
-
-  const userTournaments = tournaments.filter((t) => t.createdBy === user.id);
 
   return (
     <div className="min-h-screen bg-background">

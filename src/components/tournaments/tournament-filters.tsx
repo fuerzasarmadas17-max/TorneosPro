@@ -53,7 +53,11 @@ export function TournamentFilters() {
 
   const updateFilter = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (value && value !== "all") {
+    // `status` es el único filtro cuyo default NO es "sin filtro": si no viene
+    // en la URL, la pantalla asume "en curso". Por eso su "all" se escribe en
+    // vez de borrarse — borrándolo, al releer volvía a "en curso" y "Todos los
+    // estados" quedaba inseleccionable.
+    if (value && (value !== "all" || key === "status")) {
       params.set(key, value);
     } else {
       params.delete(key);
