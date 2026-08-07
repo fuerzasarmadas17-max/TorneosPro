@@ -623,21 +623,41 @@ function BusinessContent() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex h-32 items-end gap-1.5">
+              {/* El monto va escrito sobre la barra y no solo en el `title`.
+                  Con la mayoría de los meses en cero, un gráfico sin números se
+                  lee como si no tuviera datos: las barras vacías son una línea
+                  de 2px y las que sí tienen no dicen cuánto. */}
+              <div className="flex h-36 items-end gap-1.5">
                 {m.monthly.map((mm, i) => (
                   <div
                     key={i}
                     className="group flex flex-1 flex-col items-center justify-end gap-1"
                     title={`${mm.label}: ${formatCOP(mm.amount)}`}
                   >
+                    {mm.amount > 0 && (
+                      <span className="text-[9px] font-medium tabular-nums text-muted-foreground">
+                        {Math.round(mm.amount / 1000)}k
+                      </span>
+                    )}
                     <div
-                      className="w-full rounded-t bg-primary/70 transition-colors group-hover:bg-primary"
-                      style={{ height: `${Math.max((mm.amount / m.maxMonth) * 100, 2)}%` }}
+                      className={
+                        mm.amount > 0
+                          ? "w-full rounded-t bg-primary/70 transition-colors group-hover:bg-primary"
+                          : "w-full rounded-t bg-muted"
+                      }
+                      style={{
+                        height: `${Math.max((mm.amount / m.maxMonth) * 100, 2)}%`,
+                      }}
                     />
                     <span className="text-[10px] text-muted-foreground">{mm.label}</span>
                   </div>
                 ))}
               </div>
+              {m.monthly.every((mm) => mm.amount === 0) && (
+                <p className="pt-3 text-center text-xs text-muted-foreground">
+                  Sin ingresos en los últimos 12 meses.
+                </p>
+              )}
             </CardContent>
           </Card>
 
