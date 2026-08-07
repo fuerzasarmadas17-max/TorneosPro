@@ -4,19 +4,40 @@
 
 # 🔴 POR DÓNDE VAMOS (retomar acá)
 
-## ⚠️ HAY UN MODO PRUEBA PRENDIDO EN PRODUCCIÓN
+## ✅ EN PRODUCCIÓN Y ABIERTO A TODOS (2026-08-07)
 
-`PACKS_TEST_MODE = true` en `src/lib/packs.ts`. Mientras esté así:
+`PACKS_TEST_MODE = false`. El paquete cuesta **$320.000** y la franja de compra
+la ven todos los organizadores en `/tournaments/create`.
 
-- El paquete cuesta **$5.000** en vez de $320.000.
-- La franja de compra **solo la ve un admin** — ningún organizador la ve.
+**Probado de punta a punta en producción:** compra por Wompi, acreditación de
+los 5 créditos, y consumo al crear un torneo.
 
-Está prendido porque el pago de Wompi no se puede probar en local (el webhook
-nunca llega a localhost), así que hay que comprarlo de verdad en producción.
+El interruptor queda en `src/lib/packs.ts` por si hay que volver a probar algo
+del flujo de pago sin exponerlo: en `true` baja el precio a $5.000 y esconde la
+franja a todos menos al admin, las dos cosas a la vez.
 
-**Para abrirlo a los organizadores: poner ese flag en `false` y desplegar.** Es
-una sola línea a propósito, para que no queden dos cambios sueltos que haya que
-recordar por separado.
+### 🧹 Pendiente de limpieza
+
+Quedaron en la base los **créditos de la prueba**, comprados a $5.000 (o sea
+`value_cop = 1000` cada uno). Conviene borrarlos:
+
+```sql
+-- Ver qué quedó de la prueba
+select c.id, c.value_cop, c.consumed_at, c.tournament_id, p.reference
+from tournament_credits c
+join payments p on p.id = c.payment_id
+where c.value_cop < 60000;
+```
+
+Dos razones para borrar los que sigan **sin consumir**:
+
+1. Aparecen en "Crédito sin usar" de Negocios como deuda que no es real.
+2. El diálogo de pago compara contra el precio del catálogo ($64.000), no
+   contra lo que costó cada crédito. Con créditos de $1.000 daría el aviso de
+   "te conviene pagarlo" cuando en realidad no aplica.
+
+Los que ya se consumieron **no se tocan**: son el rastro de la prueba y ya
+están atados a un torneo.
 
 
 **Última sesión: 2026-08-07.** Todo lo construido está **en local, sin

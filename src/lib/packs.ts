@@ -11,18 +11,17 @@
  */
 
 /**
- * 🔴 MODO PRUEBA — PONER EN `false` PARA ABRIRLO A LOS ORGANIZADORES
+ * Modo prueba. En `true` el paquete cuesta $5.000 y la franja de compra solo la
+ * ve un admin.
  *
- * Mientras esté en `true`:
- *   · el paquete cuesta $5.000 en vez de $320.000
- *   · la franja de compra SOLO la ve un admin
+ * Se usó para probar el pago en producción, porque Wompi no se puede probar en
+ * local: el webhook nunca llega a localhost. Se apagó el 2026-08-07, después de
+ * verificar la compra, la acreditación de los 5 créditos y el consumo.
  *
- * Existe porque el pago de Wompi no se puede probar en local —el webhook nunca
- * llega a localhost— así que hay que probarlo en producción, comprando de
- * verdad. Un solo interruptor y no dos cambios sueltos, para que revertirlo sea
- * una línea y no un acto de memoria.
+ * Queda como interruptor por si hay que volver a probar algo del flujo de pago
+ * sin exponerlo — es una línea, y apaga las dos cosas a la vez.
  */
-export const PACKS_TEST_MODE = true;
+export const PACKS_TEST_MODE = false;
 
 export interface TournamentPack {
   id: string;
