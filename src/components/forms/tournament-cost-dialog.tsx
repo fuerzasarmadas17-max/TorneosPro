@@ -322,46 +322,32 @@ export function TournamentCostDialog({
                 <>
                   <strong>Te conviene pagarlo.</strong> Este torneo cuesta menos
                   que uno de tus créditos ({formatCOP(creditValue)} cada uno).
-                  Guardalos para un torneo más grande.
+                  Guardalos para un torneo más grande — pero si preferís usar
+                  uno, podés.
                 </>
               ) : (
                 <>
                   Tenés <strong>{creditCount}</strong> torneo
-                  {creditCount === 1 ? "" : "s"} disponible
-                  {creditCount === 1 ? "" : "s"} de tu paquete. Si usás uno, te
-                  quedan {creditCount - 1}.
+                  {creditCount === 1 ? "" : "s"} de tu paquete. Podés usar uno
+                  —te quedarían {creditCount - 1}— o pagar este aparte y
+                  guardarlos todos.
                 </>
               )}
             </div>
           )}
 
-          <div className="flex gap-2 pt-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => handleOpenChange(false)}
-              disabled={processing}
-            >
-              Cancelar
-            </Button>
-            {skipPayment ? (
+          {/* Con créditos disponibles se muestran SIEMPRE las dos formas de
+              pagar, nunca una sola. Gastar un crédito es gastar plata: quitarle
+              el botón de pagar sería decidir por él.
+
+              Lo único que cambia según el caso es CUÁL va arriba y destacada.
+              Si el torneo vale menos que un crédito, se recomienda pagarlo; si
+              no, usar el crédito. */}
+          {creditCount > 0 && !appliedCoupon && !skipPayment ? (
+            <div className="space-y-2 pt-2">
               <Button
-                className="flex-1"
-                onClick={handleFreeConfirm}
-                disabled={processing}
-              >
-                {processing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Creando...
-                  </>
-                ) : (
-                  "Crear Torneo"
-                )}
-              </Button>
-            ) : creditCount > 0 && !appliedCoupon && !creditIsWasteful ? (
-              <Button
-                className="flex-1"
+                className="w-full"
+                variant={creditIsWasteful ? "outline" : "default"}
                 onClick={handleCreditConfirm}
                 disabled={processing}
               >
@@ -371,12 +357,13 @@ export function TournamentCostDialog({
                     Creando...
                   </>
                 ) : (
-                  `Usar 1 de tus ${creditCount}`
+                  `Usar 1 de tus ${creditCount} torneos`
                 )}
               </Button>
-            ) : (
+
               <Button
-                className="flex-1"
+                className="w-full"
+                variant={creditIsWasteful ? "default" : "outline"}
                 onClick={handleContinueToPayment}
                 disabled={processing}
               >
@@ -386,11 +373,62 @@ export function TournamentCostDialog({
                     Redirigiendo...
                   </>
                 ) : (
-                  "Ir a pagar"
+                  `Pagar ${formatCOP(effectiveCost)} y guardar mis créditos`
                 )}
               </Button>
-            )}
-          </div>
+
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={() => handleOpenChange(false)}
+                disabled={processing}
+              >
+                Cancelar
+              </Button>
+            </div>
+          ) : (
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => handleOpenChange(false)}
+                disabled={processing}
+              >
+                Cancelar
+              </Button>
+              {skipPayment ? (
+                <Button
+                  className="flex-1"
+                  onClick={handleFreeConfirm}
+                  disabled={processing}
+                >
+                  {processing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Creando...
+                    </>
+                  ) : (
+                    "Crear Torneo"
+                  )}
+                </Button>
+              ) : (
+                <Button
+                  className="flex-1"
+                  onClick={handleContinueToPayment}
+                  disabled={processing}
+                >
+                  {processing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Redirigiendo...
+                    </>
+                  ) : (
+                    "Ir a pagar"
+                  )}
+                </Button>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
   );
