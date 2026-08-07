@@ -28,6 +28,7 @@ import {
   TabsContent,
 } from "@/components/ui/tabs";
 import { supabase } from "@/lib/supabase";
+import { authHeader } from "@/lib/auth-header";
 import {
   resizeImageForUpload,
   IMAGE_SIZES,
@@ -644,20 +645,14 @@ function AdsContent() {
     }
     setLinkLoadingId(c.id);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) {
+      const headers = await authHeader();
+      if (!headers.Authorization) {
         toast.error("Sesión expirada, vuelve a iniciar sesión");
         return;
       }
       const res = await fetch("/api/ads/payment-link", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ campaignId: c.id }),
       });
       const data = await res.json();

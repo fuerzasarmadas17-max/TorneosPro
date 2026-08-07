@@ -14,10 +14,17 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 export async function requireAdmin(
   request: NextRequest
 ): Promise<{ userId: string } | NextResponse> {
+  // Los tres motivos de rechazo se distinguen en el mensaje a propósito. Con un
+  // "Unauthorized" genérico, un token vencido, una cuenta sin permisos y una
+  // variable de entorno faltante se ven todos igual desde el navegador, y no
+  // hay forma de saber cuál fue sin instrumentar el servidor.
   const auth = request.headers.get("authorization");
   const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
   if (!token) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { error: "No hay sesión. Vuelve a iniciar sesión." },
+      { status: 401 }
+    );
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -31,7 +38,10 @@ export async function requireAdmin(
   const validator = createClient(supabaseUrl, anonKey);
   const { data: userResp, error: authError } = await validator.auth.getUser(token);
   if (authError || !userResp?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Tu sesión venció. Vuelve a iniciar sesión." },
+      { status: 401 }
+    );
   }
 
   // Look up the role via service role so RLS doesn't get in the way.
@@ -41,8 +51,22 @@ export async function requireAdmin(
     .eq("id", userResp.user.id)
     .single();
 
-  if (roleError || row?.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  // Que la consulta FALLE no es lo mismo que "no sos admin": lo primero suele
+  // ser la service key mal cargada en el servidor, y devolverlo como "no tenés
+  // permiso" manda a buscar el problema en la cuenta equivocada.
+  if (roleError) {
+    console.error("requireAdmin: no se pudo leer el rol", roleError);
+    return NextResponse.json(
+      { error: "No se pudo verificar tu rol. Es un problema del servidor." },
+      { status: 500 }
+    );
+  }
+
+  if (row?.role !== "admin") {
+    return NextResponse.json(
+      { error: "Tu cuenta no es de administrador." },
+      { status: 403 }
+    );
   }
 
   return { userId: userResp.user.id };

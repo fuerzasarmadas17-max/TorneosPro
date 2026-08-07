@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { FastForward, Loader2, Star, Trash2 } from "lucide-react";
 import { Tournament } from "@/types";
 import { useTournaments } from "@/context/tournament-context";
-import { supabase } from "@/lib/supabase";
+import { authHeader } from "@/lib/auth-header";
 import { toast } from "sonner";
 
 type AdvanceMode = "jornada" | "phase";
@@ -22,12 +22,6 @@ type AdvanceStep = "select" | "confirm";
 
 interface AdminActionsProps {
   tournament: Tournament;
-}
-
-async function authHeader(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export function AdminActions({ tournament }: AdminActionsProps) {

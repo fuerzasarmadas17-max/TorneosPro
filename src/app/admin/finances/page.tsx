@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { formatCOP, TIER_LABELS } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
+import { authHeader } from "@/lib/auth-header";
 import { getSportInfo } from "@/data/sports";
 import { CouponType, TournamentTier, Tournament } from "@/types";
 import {
@@ -174,14 +175,11 @@ function FinancesContent() {
   const barrerPagos = async () => {
     setBarriendo(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
       const res = await fetch("/api/admin/payments/sweep", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session?.access_token}`,
+          ...(await authHeader()),
         },
         body: JSON.stringify({ diasAtras: 30 }),
       });
