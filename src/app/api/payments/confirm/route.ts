@@ -38,6 +38,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: "not_found" }, { status: 404 });
     }
 
+    // Un PAQUETE de torneos no crea ningún torneo: crea créditos. Devolverle un
+    // `tournamentId` a la página de retorno la mandaría a /tournaments/<id> con
+    // un id que no existe. Se responde con `kind: "pack"` y ella decide a dónde
+    // llevar al organizador.
+    const isPack =
+      (payment.tournament_data as { type?: string } | null)?.type === "pack";
+
     // Already fulfilled (webhook or a previous confirm created the tournament).
     if (payment.tournament_id) {
       return NextResponse.json({
@@ -56,6 +63,11 @@ export async function POST(request: NextRequest) {
       const tournamentId = await fulfillTournamentPayment(
         payment as unknown as PaymentRecord
       );
+      if (isPack) {
+        return NextResponse.json(
+          tournamentId ? { status: "approved", kind: "pack" } : { status: "pending" }
+        );
+      }
       return NextResponse.json(
         tournamentId ? { status: "approved", tournamentId } : { status: "pending" }
       );
@@ -96,6 +108,11 @@ export async function POST(request: NextRequest) {
         const tournamentId = await fulfillTournamentPayment(
           payment as unknown as PaymentRecord
         );
+        if (isPack) {
+          return NextResponse.json(
+            tournamentId ? { status: "approved", kind: "pack" } : { status: "pending" }
+          );
+        }
         return NextResponse.json(
           tournamentId
             ? { status: "approved", tournamentId }

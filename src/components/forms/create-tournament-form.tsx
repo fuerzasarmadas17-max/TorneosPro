@@ -153,7 +153,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 
 export function CreateTournamentForm() {
   const { user } = useAuth();
-  const { addTournament, addTeams, tournaments } = useTournaments();
+  const { addTournament, addTeams, tournaments, removeTournament } = useTournaments();
   const router = useRouter();
 
   const [step, setStep] = useState(1);
@@ -455,7 +455,12 @@ export function CreateTournamentForm() {
     setShowCostDialog(true);
   };
 
-  const createTournament = async (plan: "free" | "paid", couponId?: string, paymentId?: string) => {
+  const createTournament = async (
+    plan: "free" | "paid",
+    couponId?: string,
+    paymentId?: string,
+    useCredit = false
+  ) => {
     setCreating(true);
     try {
       // Claim coupon atomically BEFORE creating anything
@@ -597,6 +602,33 @@ export function CreateTournamentForm() {
           .from("coupons")
           .update({ tournament_id: newTournament.id })
           .eq("id", couponId);
+      }
+
+      // Pagado con un crédito del paquete: se consume DESPUÉS de crear porque
+      // el crédito necesita el id del torneo al que se ata.
+      //
+      // Si el consumo falla —otra pestaña se llevó el último, o venció entre
+      // que se abrió el diálogo y se confirmó— el torneo se borra. Dejarlo
+      // sería regalarlo: quedaría creado y pago sin que nadie haya pagado.
+      if (useCredit && newTournament?.id) {
+        const { data: creditId, error: creditError } = await supabase.rpc(
+          "consume_tournament_credit",
+          {
+            p_user_id: user!.id,
+            p_tournament_id: newTournament.id,
+            p_team_count: parseInt(teamCount) || 1,
+          }
+        );
+
+        if (creditError || !creditId) {
+          console.error("No se pudo consumir el crédito", creditError);
+          await removeTournament(newTournament.id);
+          toast.error(
+            "No se pudo usar tu crédito. Revisá tu saldo e intentá de nuevo."
+          );
+          setCreating(false);
+          return;
+        }
       }
 
       // Link payment to tournament
@@ -1428,7 +1460,9 @@ export function CreateTournamentForm() {
       <TournamentCostDialog
         open={showCostDialog}
         onOpenChange={setShowCostDialog}
-        onConfirm={(couponId, paymentId) => createTournament("paid", couponId, paymentId)}
+        onConfirm={(couponId, paymentId, useCredit) =>
+          createTournament("paid", couponId, paymentId, useCredit)
+        }
         priceInfo={priceInfo}
         tournamentName={name}
         format={format as TournamentFormat}

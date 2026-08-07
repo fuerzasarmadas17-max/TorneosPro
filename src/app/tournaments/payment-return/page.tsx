@@ -46,6 +46,14 @@ function PaymentReturnContent() {
         const data = await res.json();
         if (cancelled.current) return;
 
+        // Un paquete no deja un torneo al que ir: deja créditos. Se lleva al
+        // organizador a crear un torneo, que es lo que va a querer hacer a
+        // continuación y donde va a ver el saldo.
+        if (data.status === "approved" && data.kind === "pack") {
+          setState("approved");
+          router.replace("/tournaments/create?paquete=ok");
+          return;
+        }
         if (data.status === "approved" && data.tournamentId) {
           setState("approved");
           router.replace(`/tournaments/${data.tournamentId}`);

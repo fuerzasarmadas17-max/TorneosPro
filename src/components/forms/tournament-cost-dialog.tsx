@@ -16,6 +16,8 @@ import { TournamentPriceInfo, formatCOP } from "@/lib/pricing";
 import { TournamentFormat, Sport, CouponType } from "@/types";
 import { getSportInfo } from "@/data/sports";
 import { redirectToWompiCheckout, paymentReturnUrl } from "@/lib/payments/wompi-redirect";
+import { useTournamentCredits } from "@/hooks/use-tournament-credits";
+import { TOURNAMENT_PACKS, pricePerCredit } from "@/lib/packs";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { Loader2, X } from "lucide-react";
@@ -35,7 +37,7 @@ interface AppliedCoupon {
 interface TournamentCostDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (couponId?: string, paymentId?: string) => void;
+  onConfirm: (couponId?: string, paymentId?: string, useCredit?: boolean) => void;
   priceInfo: TournamentPriceInfo;
   tournamentName: string;
   format: TournamentFormat;
@@ -59,6 +61,18 @@ export function TournamentCostDialog({
 }: TournamentCostDialogProps) {
   const sportInfo = getSportInfo(sport);
   const [processing, setProcessing] = useState(false);
+
+  // Créditos que cubren un torneo de ESTE tamaño. Si el organizador tiene
+  // créditos de hasta 24 equipos y arma uno de 30, acá da 0 — y el diálogo no
+  // le ofrece algo que la función de consumo después va a rechazar.
+  const { balance: credits } = useTournamentCredits(teamCount);
+  const creditCount = credits?.total ?? 0;
+
+  // Un crédito vale más que un torneo chico: gastarlo ahí es perderle plata.
+  // Se lo avisamos en vez de dejarlo pasar — cuesta una línea y es lo que hace
+  // que confíe en el resto.
+  const creditValue = pricePerCredit(TOURNAMENT_PACKS["pack-5"]);
+  const creditIsWasteful = creditCount > 0 && priceInfo.price < creditValue;
 
   // Coupon
   const [couponCode, setCouponCode] = useState("");
@@ -122,6 +136,13 @@ export function TournamentCostDialog({
   const skipPayment = appliedCoupon
     ? appliedCoupon.type === "free_tournament"
     : false;
+
+  const handleCreditConfirm = () => {
+    setProcessing(true);
+    // El consumo real lo hace `createTournament` DESPUÉS de crear el torneo,
+    // porque el crédito se ata a su id. Acá solo se avisa la intención.
+    onConfirm(undefined, undefined, true);
+  };
 
   const handleFreeConfirm = () => {
     setProcessing(true);
@@ -289,6 +310,31 @@ export function TournamentCostDialog({
             </div>
           </div>
 
+          {creditCount > 0 && !appliedCoupon && (
+            <div
+              className={
+                creditIsWasteful
+                  ? "rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-500"
+                  : "rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs"
+              }
+            >
+              {creditIsWasteful ? (
+                <>
+                  <strong>Te conviene pagarlo.</strong> Este torneo cuesta menos
+                  que uno de tus créditos ({formatCOP(creditValue)} cada uno).
+                  Guardalos para un torneo más grande.
+                </>
+              ) : (
+                <>
+                  Tenés <strong>{creditCount}</strong> torneo
+                  {creditCount === 1 ? "" : "s"} disponible
+                  {creditCount === 1 ? "" : "s"} de tu paquete. Si usás uno, te
+                  quedan {creditCount - 1}.
+                </>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-2 pt-2">
             <Button
               variant="outline"
@@ -311,6 +357,21 @@ export function TournamentCostDialog({
                   </>
                 ) : (
                   "Crear Torneo"
+                )}
+              </Button>
+            ) : creditCount > 0 && !appliedCoupon && !creditIsWasteful ? (
+              <Button
+                className="flex-1"
+                onClick={handleCreditConfirm}
+                disabled={processing}
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creando...
+                  </>
+                ) : (
+                  `Usar 1 de tus ${creditCount}`
                 )}
               </Button>
             ) : (

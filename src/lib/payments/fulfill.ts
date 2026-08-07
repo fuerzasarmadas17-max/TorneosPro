@@ -46,6 +46,13 @@ export async function fulfillTournamentPayment(
   // Already fulfilled → idempotent no-op.
   if (payment.tournament_id) return payment.tournament_id;
 
+  // Paquete de torneos: el pago no crea un torneo, crea CRÉDITOS. Va antes que
+  // todo lo demás porque no tiene `teamCount` ni formato y caería en la rama de
+  // creación normal, que armaría un torneo fantasma.
+  if (data.type === "pack") {
+    return createCreditsFromPayment(payment, data);
+  }
+
   // Tier upgrade of an existing tournament.
   if (data.type === "upgrade" && data.tournamentId) {
     return upgradeTournamentFromPayment(payment, data);
@@ -459,4 +466,68 @@ async function upgradeTournamentFromPayment(
     console.error("Error upgrading tournament from payment:", err);
     return tournamentId;
   }
+}
+
+/**
+ * Crea los créditos de un paquete de torneos a partir de un pago aprobado.
+ *
+ * A diferencia del resto de este archivo, NO crea ningún torneo: deja N
+ * créditos que el organizador va gastando cuando los necesita. Ver
+ * `Por hacer/paquetes-de-torneos.md`.
+ *
+ * IDEMPOTENCIA — acá no sirve el `payment.tournament_id` que protege a las
+ * otras ramas, porque un paquete nunca tiene torneo. La guarda es que ya
+ * existan créditos de ESTE pago: si el webhook y la página de retorno corren a
+ * la vez, el segundo encuentra los créditos ya creados y no duplica.
+ *
+ * Devuelve el id del pago (no hay torneo al que apuntar) o null si falló, para
+ * que el llamador distinga "se hizo" de "no se hizo".
+ */
+async function createCreditsFromPayment(
+  payment: PaymentRecord,
+  data: Record<string, unknown>
+): Promise<string | null> {
+  const credits = Number(data.credits) || 0;
+  const valueCop = Number(data.valueCop) || 0;
+  const maxTeams = Number(data.maxTeams) || 0;
+  const months = Number(data.months) || 12;
+
+  if (credits <= 0 || maxTeams <= 0) {
+    console.error("Pack payment con datos inválidos", payment.id, data);
+    return null;
+  }
+
+  // ¿Ya se crearon? Entonces este pago ya se cumplió.
+  const { count, error: countErr } = await supabaseAdmin
+    .from("tournament_credits")
+    .select("id", { count: "exact", head: true })
+    .eq("payment_id", payment.id);
+
+  if (countErr) {
+    console.error("No se pudo verificar créditos existentes", countErr);
+    return null;
+  }
+  if ((count ?? 0) > 0) return payment.id; // ya cumplido
+
+  const expiresAt = new Date();
+  expiresAt.setMonth(expiresAt.getMonth() + months);
+
+  const rows = Array.from({ length: credits }, () => ({
+    user_id: payment.user_id,
+    payment_id: payment.id,
+    value_cop: valueCop,
+    max_teams: maxTeams,
+    expires_at: expiresAt.toISOString(),
+  }));
+
+  const { error: insErr } = await supabaseAdmin
+    .from("tournament_credits")
+    .insert(rows);
+
+  if (insErr) {
+    console.error("No se pudieron crear los créditos del paquete", insErr);
+    return null;
+  }
+
+  return payment.id;
 }

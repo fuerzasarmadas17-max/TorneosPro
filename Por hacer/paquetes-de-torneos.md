@@ -1,6 +1,103 @@
 # Paquetes de torneos (créditos prepagos)
 
-**Estado:** diseño cerrado, sin construir.
+---
+
+# 🔴 POR DÓNDE VAMOS (retomar acá)
+
+## ⚠️ HAY UN MODO PRUEBA PRENDIDO EN PRODUCCIÓN
+
+`PACKS_TEST_MODE = true` en `src/lib/packs.ts`. Mientras esté así:
+
+- El paquete cuesta **$5.000** en vez de $320.000.
+- La franja de compra **solo la ve un admin** — ningún organizador la ve.
+
+Está prendido porque el pago de Wompi no se puede probar en local (el webhook
+nunca llega a localhost), así que hay que comprarlo de verdad en producción.
+
+**Para abrirlo a los organizadores: poner ese flag en `false` y desplegar.** Es
+una sola línea a propósito, para que no queden dos cambios sueltos que haya que
+recordar por separado.
+
+
+**Última sesión: 2026-08-07.** Todo lo construido está **en local, sin
+commitear y sin desplegar**. El último commit en producción es `30a9652`, que
+no tiene nada de paquetes.
+
+## Lo que YA está hecho (en local)
+
+| Archivo | Qué hace |
+|---|---|
+| `supabase/migrations/20260807_tournament_credits.sql` | Tabla `tournament_credits` + consumo atómico + saldo disponible |
+| `src/lib/packs.ts` | Catálogo: 5 torneos, $320.000, hasta 24 equipos, 12 meses |
+| `src/lib/auth/require-user.ts` | Valida el token en rutas de usuario (hermano de `requireAdmin`) |
+| `src/app/api/payments/pack-reference/route.ts` | Crea el cobro del paquete. El precio sale del servidor, NO del cliente |
+| `src/lib/payments/fulfill.ts` | Rama `type: "pack"` → crea los 5 créditos al aprobarse el pago |
+| `src/app/api/payments/confirm/route.ts` | Devuelve `kind: "pack"` en vez de un `tournamentId` inexistente |
+| `src/app/tournaments/payment-return/page.tsx` | Al volver de Wompi con un paquete, lleva a crear torneo |
+
+Compila, pasa lint y build. **No está probado contra la base** porque la
+migración todavía no se corrió.
+
+## PASO 1 — Migraciones
+
+- ✅ `20260807_tournament_credits.sql` — **corrida el 2026-08-07** y verificada
+  contra la base: la tabla existe, RLS bloquea la lectura anónima, y las dos
+  funciones responden.
+- 🔴 `20260807b_tournament_credits_grants.sql` — **PENDIENTE. Correr esta.**
+
+**Por qué hay una segunda:** al verificar la primera se encontró que
+`available_tournament_credits` respondía a un llamado **anónimo**. Como es
+SECURITY DEFINER y recibe el `user_id` por parámetro, cualquiera podía
+preguntar cuántos créditos tiene una cuenta ajena.
+
+El `REVOKE ... FROM PUBLIC` original no alcanzaba: Supabase le concede permiso
+de ejecución al rol `anon` **directamente**, no a través de PUBLIC, así que hay
+que nombrarlo. La segunda migración además hace que la función verifique por
+dentro quién llama, para no depender solo de los permisos.
+
+## PASO 2 — Probar la compra de punta a punta
+
+Sin UI todavía, se prueba a mano:
+
+1. Llamar a `POST /api/payments/pack-reference` con `{ "packId": "pack-5" }` y
+   el `Authorization: Bearer <token>` de un organizador.
+2. Debe devolver `paymentId`, `reference` (empieza con `PAQUETE-`), `amountInCents`
+   e `integrity`.
+3. Verificar que la fila quedó en `payments` con `tournament_data.type = 'pack'`
+   y **sin** `tournament_id`.
+4. Simular la aprobación y confirmar que aparecen **5 filas** en
+   `tournament_credits` con el mismo `payment_id`.
+5. Volver a aprobar el mismo pago: **NO deben duplicarse** (la guarda de
+   idempotencia es que ya existan créditos de ese pago).
+
+## PASO 3 — Lo que falta construir, en orden
+
+| # | Qué | Notas |
+|---|---|---|
+| 1 | **Franja de créditos arriba de "Crear torneo"** | "Te quedan 3 torneos · vencen el 15/03/2027" + botón de comprar |
+| 2 | **Opción de pagar con crédito en el diálogo de costo** | `tournament-cost-dialog.tsx`. Tres opciones: cupón / crédito / pagar. La que conviene, preseleccionada |
+| 3 | **Consumir el crédito al crear** | Llamar a `consume_tournament_credit`; si devuelve NULL, **no crear el torneo** |
+| 4 | ⚠️ **Contabilidad: Negocios y Finanzas** | **Antes de vender el primer paquete de verdad.** Ver la sección de contabilidad más abajo |
+| 5 | Upsell personalizado en el dashboard + `/pricing` | No bloqueante |
+
+## Decisiones que quedaron tomadas por defecto
+
+Se pueden cambiar, pero están asumidas en el código:
+
+- **Vigencia: 12 meses** (`months` en `packs.ts`).
+- **Sin devolución de dinero**; el admin puede extender la vigencia a mano.
+- **Los créditos no se transfieren** entre cuentas.
+- El **ingreso se cuenta al cobrar**, no se reparte entre los 5 torneos.
+
+## Lo que NO hay que olvidar
+
+🔴 **No vender un paquete real hasta terminar el paso 4 (contabilidad).** El día
+que entre el primer pago de paquete sin eso, Negocios va a mostrar dos cifras
+distintas del mismo ingreso y no va a dar ningún error.
+
+---
+
+**Estado del diseño:** cerrado.
 **Fecha:** 2026-08-07.
 **Origen:** el organizador quiere vender torneos por adelantado en vez de uno
 por uno. Nace de un caso real: Daniel compró **4 torneos en una sola sentada**,
