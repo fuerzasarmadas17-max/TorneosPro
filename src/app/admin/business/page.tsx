@@ -23,6 +23,8 @@ import {
 import {
   Wallet,
   Receipt,
+  Ticket,
+  AlertTriangle,
   Repeat,
   Users,
   Megaphone,
@@ -43,6 +45,7 @@ interface Sale {
   amount: number;
   ts: number;
   userId: string;
+  isPack: boolean;
 }
 
 /** Chip de variación ▲/▼ vs período anterior. */
@@ -203,6 +206,8 @@ function BusinessContent() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [ownerNames, setOwnerNames] = useState<Record<string, string>>({});
   const [adRevenue, setAdRevenue] = useState(0);
+  /** Créditos de paquete vendidos y todavía sin usar: la deuda en servicio. */
+  const [openCredits, setOpenCredits] = useState({ count: 0, valueCop: 0 });
   // La hora "ahora" se fija en el callback async del fetch (no en render, que
   // debe ser puro; ni en un effect síncrono).
   const [now, setNow] = useState(0);
@@ -212,7 +217,7 @@ function BusinessContent() {
   useEffect(() => {
     supabase
       .from("payments")
-      .select("tournament_id, amount_cop, created_at, user_id")
+      .select("tournament_id, amount_cop, created_at, user_id, reference")
       .eq("status", "approved")
       .then(({ data }) => {
         setNow(Date.now());
@@ -223,6 +228,10 @@ function BusinessContent() {
             amount: row.amount_cop as number,
             ts: new Date(row.created_at as string).getTime(),
             userId: row.user_id as string,
+            // Los paquetes se distinguen por el prefijo de la referencia. Es
+            // más barato que traer `tournament_data` entero solo para leerle
+            // el tipo.
+            isPack: String(row.reference ?? "").startsWith("PAQUETE-"),
           }))
         );
       });
@@ -263,8 +272,30 @@ function BusinessContent() {
       });
   }, []);
 
+  // Créditos de paquete sin consumir.
+  //
+  // Es el único indicador de esta pantalla que NO es ingreso: es lo contrario.
+  // Un paquete se cobra completo el día que entra, pero deja torneos debidos.
+  // Sin este número, esa caja se ve como ganancia y es fácil gastarla.
+  useEffect(() => {
+    supabase
+      .from("tournament_credits")
+      .select("value_cop, consumed_at, expires_at")
+      .is("consumed_at", null)
+      .then(({ data }) => {
+        if (!data) return;
+        const vivos = data.filter(
+          (r) => new Date(r.expires_at as string) > new Date()
+        );
+        setOpenCredits({
+          count: vivos.length,
+          valueCop: vivos.reduce((s, r) => s + ((r.value_cop as number) ?? 0), 0),
+        });
+      });
+  }, []);
+
   const m = useMemo(() => {
-    // Ingreso estrictamente pagado: lo que Wompi aprobó por torneo.
+    // Ingreso atribuible a un torneo concreto: lo que Wompi aprobó por él.
     const paymentMap = new Map<string, number>();
     for (const s of sales) {
       if (!s.tournamentId) continue;
@@ -274,8 +305,37 @@ function BusinessContent() {
 
     // "Pagos" = torneos con al menos un pago aprobado (revenue real > 0).
     const paid = tournaments.filter((t) => revenueOf(t) > 0);
-    const totalRevenue = paid.reduce((s, t) => s + revenueOf(t), 0);
-    const ticketAvg = paid.length ? Math.round(totalRevenue / paid.length) : 0;
+    const perTournamentRevenue = paid.reduce((s, t) => s + revenueOf(t), 0);
+
+    // Pagos SIN torneo asociado: hoy son los paquetes de créditos, que se cobran
+    // una vez y después se convierten en varios torneos.
+    //
+    // Antes se descartaban en silencio: la gráfica mensual los sumaba (usa
+    // `sales` completo) pero esta tarjeta no, así que la misma pantalla mostraba
+    // dos cifras distintas del mismo dinero sin dar ningún error.
+    //
+    // Se cuentan al COBRAR y no se reparten entre los torneos que después salgan
+    // del paquete (decisión 2026-08-07). Repartirlos además de contarlos acá
+    // sería contar la misma plata dos veces.
+    const packRevenue = sales
+      .filter((s) => !s.tournamentId && s.isPack)
+      .reduce((sum, s) => sum + s.amount, 0);
+
+    // Pagos de TORNEO que quedaron sin su torneo. No son paquetes: son plata
+    // cobrada cuyo torneo nunca se creó — la falla que la escoba viene a
+    // rescatar. Suman al ingreso (entraron de verdad) pero se muestran aparte,
+    // porque cada peso acá es un cliente que pagó y no recibió nada.
+    const orphanSales = sales.filter((s) => !s.tournamentId && !s.isPack);
+    const orphanRevenue = orphanSales.reduce((sum, s) => sum + s.amount, 0);
+
+    const totalRevenue = perTournamentRevenue + packRevenue + orphanRevenue;
+
+    // El ticket promedio se calcula sobre los torneos pagados uno a uno: meter
+    // un paquete de $320.000 como si fuera una venta más inflaría el promedio
+    // y dejaría de servir para saber cuánto vale un torneo.
+    const ticketAvg = paid.length
+      ? Math.round(perTournamentRevenue / paid.length)
+      : 0;
 
     // Ingresos por deporte
     const bySport = new Map<string, { count: number; rev: number }>();
@@ -330,15 +390,46 @@ function BusinessContent() {
     }
     const payingOrgs = [...paidByOrg.keys()];
     const avgPerOrg = payingOrgs.length ? paid.length / payingOrgs.length : 0;
-    const repeatOrgs = payingOrgs.filter((o) => (paidByOrg.get(o)?.length || 0) >= 2);
-    const repeatRate = payingOrgs.length ? repeatOrgs.length / payingOrgs.length : 0;
     const arpo = payingOrgs.length ? Math.round(totalRevenue / payingOrgs.length) : 0;
 
-    // Tiempo promedio entre torneos (organizadores con 2+)
+    // RECOMPRA = volvió a COMPRAR, no volvió a crear torneos.
+    //
+    // Antes se contaba sobre torneos pagos, lo que con paquetes miente en las
+    // dos direcciones: quien compra un paquete y quema 5 créditos parecería
+    // fidelísimo habiendo comprado UNA vez, y quien compró 4 torneos sueltos en
+    // una sola sentada aparecía como recompra sin haber vuelto nunca.
+    //
+    // La pregunta que importa es "¿volvió después de terminar lo que compró?",
+    // y eso solo se ve contando eventos de compra separados en el tiempo.
+    const purchasesByOrg = new Map<string, number[]>();
+    for (const sale of sales) {
+      const arr = purchasesByOrg.get(sale.userId) || [];
+      arr.push(sale.ts);
+      purchasesByOrg.set(sale.userId, arr);
+    }
+    const buyerOrgs = [...purchasesByOrg.keys()];
+    // Dos compras el mismo día son una sola decisión de compra, no una
+    // recompra: es el caso del organizador que arma varios torneos de una
+    // sentada. Se agrupan por día.
+    const purchaseDaysOf = (userId: string) =>
+      new Set(
+        (purchasesByOrg.get(userId) || []).map((ts) =>
+          new Date(ts).toISOString().slice(0, 10)
+        )
+      );
+    const repeatBuyers = buyerOrgs.filter((o) => purchaseDaysOf(o).size >= 2);
+    const repeatRate = buyerOrgs.length
+      ? repeatBuyers.length / buyerOrgs.length
+      : 0;
+
+    // Tiempo promedio entre COMPRAS (organizadores que compraron en 2+ días).
+    // Antes medía entre creaciones de torneo, y por eso daba 2 días: el
+    // organizador que armó 4 torneos en una tarde. Eso no es cadencia de
+    // recompra, es una sola compra partida en cuatro.
     const orgGaps: number[] = [];
-    for (const o of repeatOrgs) {
-      const dates = (paidByOrg.get(o) || [])
-        .map((t) => new Date(t.createdAt).getTime())
+    for (const o of repeatBuyers) {
+      const dates = [...purchaseDaysOf(o)]
+        .map((d) => new Date(d).getTime())
         .sort((a, b) => a - b);
       let sum = 0;
       for (let i = 1; i < dates.length; i++) sum += (dates[i] - dates[i - 1]) / DAY_MS;
@@ -418,6 +509,9 @@ function BusinessContent() {
       maxMonth,
       topSport,
       totalRevenue,
+      packRevenue,
+      orphanRevenue,
+      orphanCount: orphanSales.length,
       ticketAvg,
       paidCount: paid.length,
       sportRows,
@@ -551,6 +645,24 @@ function BusinessContent() {
             Histórico completo
           </h2>
 
+          {m.orphanCount > 0 && (
+            <Card className="border-red-500/30 bg-red-500/5">
+              <CardContent className="flex flex-wrap items-center gap-3 py-4">
+                <AlertTriangle className="h-5 w-5 flex-shrink-0 text-red-600" />
+                <div className="min-w-0 text-sm">
+                  <p className="font-semibold text-red-700 dark:text-red-400">
+                    {m.orphanCount} pago{m.orphanCount === 1 ? "" : "s"} sin
+                    torneo · {formatCOP(m.orphanRevenue)}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Alguien pagó y su torneo nunca se creó. Corré la escoba en
+                    Finanzas para rescatarlos.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* KPIs */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <StatCard
@@ -564,7 +676,11 @@ function BusinessContent() {
               icon={Wallet}
               label="Ingreso por torneos"
               value={formatCOP(m.totalRevenue)}
-              hint="neto de descuentos"
+              hint={
+                m.packRevenue > 0
+                  ? `incluye ${formatCOP(m.packRevenue)} en paquetes`
+                  : "neto de descuentos"
+              }
             />
             <StatCard
               icon={Megaphone}
@@ -573,6 +689,15 @@ function BusinessContent() {
               hint="pagos aprobados"
               accent="amber"
             />
+            {openCredits.count > 0 && (
+              <StatCard
+                icon={Ticket}
+                label="Crédito sin usar"
+                value={`${openCredits.count} torneo${openCredits.count === 1 ? "" : "s"}`}
+                hint={`${formatCOP(openCredits.valueCop)} ya cobrados y debidos`}
+                accent="amber"
+              />
+            )}
             <StatCard
               icon={Users}
               label="Ingreso por organizador"
@@ -584,14 +709,14 @@ function BusinessContent() {
               icon={Repeat}
               label="Tasa de recompra"
               value={pct(m.repeatRate)}
-              hint={`${m.avgPerOrg.toFixed(1)} torneos/organizador`}
+              hint={`volvieron a comprar · ${m.avgPerOrg.toFixed(1)} torneos/organizador`}
               accent="green"
             />
             <StatCard
               icon={Timer}
-              label="Entre torneos"
+              label="Entre compras"
               value={m.avgGapDays != null ? `${m.avgGapDays} días` : "—"}
-              hint="cadencia de recompra"
+              hint="cuánto tardan en volver"
             />
           </div>
 
@@ -599,7 +724,12 @@ function BusinessContent() {
             {/* Ingresos por deporte */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Ingresos por deporte</CardTitle>
+                <CardTitle className="text-base">
+                  Ingresos por deporte
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                    (torneos pagados uno a uno)
+                  </span>
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <Breakdown
@@ -619,7 +749,12 @@ function BusinessContent() {
             {/* Ingresos por tier */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Ingresos por plan (tier)</CardTitle>
+                <CardTitle className="text-base">
+                  Ingresos por plan (tier)
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                    (torneos pagados uno a uno)
+                  </span>
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <Breakdown
