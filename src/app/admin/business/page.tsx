@@ -655,8 +655,9 @@ function BusinessContent() {
                     torneo · {formatCOP(m.orphanRevenue)}
                   </p>
                   <p className="text-muted-foreground">
-                    Alguien pagó y su torneo nunca se creó. Corré la escoba en
-                    Finanzas para rescatarlos.
+                    Alguien pagó y su torneo nunca se creó. En Finanzas, el
+                    botón de rescatar pagos los reconstruye a partir de lo que
+                    quedó guardado del checkout.
                   </p>
                 </div>
               </CardContent>

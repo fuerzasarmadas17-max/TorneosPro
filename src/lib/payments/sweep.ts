@@ -117,6 +117,50 @@ export async function barrerPagosPendientes(
     Date.now() - diasAtras * 24 * 60 * 60 * 1000
   ).toISOString();
 
+  // --- Ya APROBADOS pero sin torneo --------------------------------------
+  //
+  // Estos no necesitan preguntarle nada a Wompi: ya sabemos que la plata entró.
+  // Lo que falló fue el paso siguiente —crear el torneo— porque el webhook
+  // nunca llegó, o llegó y se cayó a mitad de camino.
+  //
+  // Van SIN filtro de fecha a propósito: un pago cobrado y no entregado no
+  // prescribe a los 30 días. El más viejo encontrado era de hacía dos meses.
+  //
+  // Los PAQUETES se excluyen: no tienen torneo por diseño, tienen créditos.
+  // Meterlos acá haría que la escoba intentara crearles un torneo en cada
+  // pasada, para siempre.
+  const { data: aprobadosSinTorneo } = await supabaseAdmin
+    .from("payments")
+    .select("*")
+    .eq("status", "approved")
+    .is("tournament_id", null)
+    .not("reference", "like", "PAQUETE-%")
+    .order("created_at", { ascending: false });
+
+  for (const pago of aprobadosSinTorneo ?? []) {
+    resultado.revisados++;
+    try {
+      const torneoId = await fulfillTournamentPayment(
+        pago as unknown as PaymentRecord
+      );
+      if (torneoId) {
+        resultado.torneosCreados.push({
+          reference: pago.reference as string,
+          tournamentId: torneoId,
+          montoCop: (pago.amount_cop as number) ?? 0,
+        });
+      } else {
+        // Sin `tournament_data` utilizable no hay nada que reconstruir. Se
+        // cuenta como sin resolver en vez de romper la pasada entera.
+        resultado.sinResolver++;
+      }
+    } catch (err) {
+      resultado.errores.push(
+        `${pago.reference}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
   // --- Pagos de torneos --------------------------------------------------
   const { data: pagos } = await supabaseAdmin
     .from("payments")
