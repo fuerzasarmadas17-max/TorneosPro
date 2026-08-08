@@ -786,6 +786,9 @@ export interface MySettlement {
   amountCop: number;
   status: AdSettlement["status"];
   paidAt: string | null;
+  /** Referencia de la transferencia. Se le muestra para que pueda buscarla en
+   *  su banco sin tener que escribirnos a preguntar si ya salió. */
+  paymentReference: string | null;
   campaigns: {
     campaignId: string;
     personDays: number;
@@ -802,6 +805,7 @@ export function toMySettlement(s: AdSettlement): MySettlement {
     amountCop: s.amount_cop,
     status: s.status,
     paidAt: s.paid_at,
+    paymentReference: s.payment_reference,
     campaigns: (s.breakdown ?? []).map((b) => ({
       campaignId: b.campaign_id,
       personDays: b.person_days,

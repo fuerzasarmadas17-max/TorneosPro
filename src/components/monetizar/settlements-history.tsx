@@ -112,6 +112,21 @@ export function SettlementsHistory({
                       <p className="mb-2 text-xs font-medium text-muted-foreground">
                         De dónde salió
                       </p>
+                      {/* La constancia de la transferencia, para que pueda
+                          buscarla en su banco en vez de escribirnos a preguntar
+                          si ya salió. */}
+                      {s.status === "paid" && s.paymentReference && (
+                        <p className="mb-3 rounded-md bg-emerald-500/10 px-3 py-2 text-sm">
+                          Transferida
+                          {s.paidAt && (
+                            <> el {new Date(s.paidAt).toLocaleDateString("es-CO")}</>
+                          )}
+                          . Referencia del banco:{" "}
+                          <strong className="tabular-nums">
+                            {s.paymentReference}
+                          </strong>
+                        </p>
+                      )}
                       <ul className="space-y-1 text-sm">
                         {s.campaigns.map((c) => (
                           <li
