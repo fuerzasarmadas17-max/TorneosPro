@@ -33,6 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatCOP } from "@/lib/pricing";
+import { monthLabel } from "@/lib/month-label";
 import {
   computeRevenueShare,
   defaultEligibility,
@@ -138,8 +139,19 @@ export function AdRevenueShare({
   }, [rows]);
 
   const load = useCallback(async () => {
+    // Sin mes ("Todo el histórico") no hay reparto que calcular: el cobro se
+    // registra POR MES en `ad_period_revenue`, así que sin mes todo daba cero y
+    // la pantalla quedaba llena de ceros con un "falta registrar el cobro" que
+    // se lee como un error. Lo que corresponde ahí es el histórico de verdad:
+    // los meses ya cerrados y cuánto se pagó en cada uno.
     if (!periodMonth) {
-      setSettlements([]);
+      const { data, error } = await supabase
+        .from("ad_settlements")
+        .select("*")
+        .neq("status", "void")
+        .order("period_month", { ascending: false });
+      if (error) console.error("No se pudieron leer los cortes", error);
+      setSettlements((data as AdSettlement[]) ?? []);
       setRevenue({});
       setLoading(false);
       return;
@@ -368,6 +380,84 @@ export function AdRevenueShare({
     a.download = `pagos-publicidad-${periodMonth}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // ---- TODO EL HISTÓRICO ----
+  // Va ANTES de la rama de "mes cerrado", que se activa con
+  // `settlements.length > 0`: sin este corte, acá caerían todos los cortes de
+  // todos los meses mezclados en una sola tabla, como si fueran uno solo.
+  if (!periodMonth) {
+    const byMonth = new Map<string, AdSettlement[]>();
+    for (const s of settlements) {
+      const list = byMonth.get(s.period_month);
+      if (list) list.push(s);
+      else byMonth.set(s.period_month, [s]);
+    }
+
+    return (
+      <Card>
+        {header}
+        <CardContent>
+          {byMonth.size === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Todavía no se ha cerrado ningún mes. Elegí un mes terminado para
+              calcular su reparto y cerrarlo.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Mes</TableHead>
+                  <TableHead className="text-right">Organizadores</TableHead>
+                  <TableHead className="text-right">Pagado</TableHead>
+                  <TableHead className="text-right">Pendiente</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[...byMonth.entries()].map(([month, list]) => {
+                  const pagado = list
+                    .filter((x) => x.status === "paid")
+                    .reduce((a, x) => a + x.amount_cop, 0);
+                  const pendiente = list
+                    .filter((x) => x.status !== "paid")
+                    .reduce((a, x) => a + x.amount_cop, 0);
+                  return (
+                    <TableRow key={month}>
+                      <TableCell className="font-medium">
+                        {monthLabel(month)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {list.length}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatCOP(pagado)}
+                      </TableCell>
+                      {/* Lo pendiente es lo accionable: son cortes emitidos o
+                          aprobados a los que todavía no se les hizo la
+                          transferencia. */}
+                      <TableCell
+                        className={
+                          "text-right tabular-nums " +
+                          (pendiente > 0
+                            ? "font-medium"
+                            : "text-muted-foreground")
+                        }
+                      >
+                        {pendiente > 0 ? formatCOP(pendiente) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+          <p className="mt-3 text-xs text-muted-foreground">
+            Para ver el detalle de un mes, pagarlo o cerrarlo, elegí ese mes
+            arriba.
+          </p>
+        </CardContent>
+      </Card>
+    );
   }
 
   // ---- MES CERRADO ----
