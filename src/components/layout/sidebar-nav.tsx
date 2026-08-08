@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Megaphone,
   Images,
+  Coins,
 } from "lucide-react";
 
 const navItems = [
@@ -25,6 +26,7 @@ const navItems = [
   { label: "Torneos", href: "/tournaments", icon: Trophy },
   { label: "Crear Torneo", href: "/tournaments/create", icon: PlusCircle },
   { label: "Logos", href: "/dashboard/logos", icon: Images },
+  { label: "Monetizar", href: "/dashboard/monetizar", icon: Coins },
   { label: "Configuracion", href: "/dashboard/settings", icon: Settings },
 ];
 
@@ -62,7 +64,9 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
             (item) =>
               !(
                 user?.role === "admin" &&
-                (item.href === "/dashboard/settings" || item.href === "/dashboard/logos")
+                (item.href === "/dashboard/settings" ||
+                  item.href === "/dashboard/logos" ||
+                  item.href === "/dashboard/monetizar")
               )
           )
           .map((item) => {

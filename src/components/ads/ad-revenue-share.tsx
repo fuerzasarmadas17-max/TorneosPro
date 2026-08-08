@@ -16,13 +16,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { HandCoins, Users, Lock, Loader2 } from "lucide-react";
+import {
+  HandCoins,
+  Users,
+  Lock,
+  Loader2,
+  Copy,
+  TriangleAlert,
+  Download,
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatCOP } from "@/lib/pricing";
 import {
   computeRevenueShare,
   defaultEligibility,
   eligibilityFrom,
+  buildPayoutCsv,
   isMonthClosable,
+  maskAccount,
   proratedRevenue,
   toSettlementInputs,
   wouldBeTotal,
@@ -30,6 +47,7 @@ import {
   type AdCampaignOrganizerRow,
   type AdSettlement,
   type MonetizationStatus,
+  type PayoutBatchRow,
 } from "@/lib/ad-analytics";
 
 /** Lo que hace falta saber de cada campaña para repartir. */
@@ -92,6 +110,26 @@ export function AdRevenueShare({
   const [monetization, setMonetization] = useState<MonetizationStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [closing, setClosing] = useState(false);
+  /** A dónde transferirle a cada organizador, por `user_id`. Se carga acá y no
+   *  en otra pestaña porque el momento de pagar es este: marcar "Pagada" sin
+   *  tener el número de cuenta a la vista obliga a salir a buscarlo, y es
+   *  justamente el paso donde un error cuesta plata. */
+  const [payoutInfo, setPayoutInfo] = useState<
+    Record<
+      string,
+      {
+        bank: string;
+        accountType: string;
+        accountNumber: string;
+        fullName: string;
+        documentType: string;
+        documentNumber: string;
+      }
+    >
+  >({});
+  /** Corte al que se le está registrando la transferencia. */
+  const [payingFor, setPayingFor] = useState<AdSettlement | null>(null);
+  const [reference, setReference] = useState("");
 
   const campaignIds = useMemo(() => {
     const ids = new Set<string>();
@@ -107,7 +145,7 @@ export function AdRevenueShare({
       return;
     }
     setLoading(true);
-    const [revRes, setRes, monRes] = await Promise.all([
+    const [revRes, setRes, monRes, payRes] = await Promise.all([
       supabase
         .from("ad_period_revenue")
         .select("campaign_id, amount_cop")
@@ -118,7 +156,42 @@ export function AdRevenueShare({
         .eq("period_month", periodMonth)
         .neq("status", "void"),
       supabase.rpc("get_monetization_status", { p_month: periodMonth }),
+      supabase
+        .from("organizer_payout_info")
+        .select("user_id, full_name, document_type, document_number, bank, account_type, account_number")
+        .eq("approval_status", "approved"),
     ]);
+
+    const payouts: Record<
+      string,
+      {
+        bank: string;
+        accountType: string;
+        accountNumber: string;
+        fullName: string;
+        documentType: string;
+        documentNumber: string;
+      }
+    > = {};
+    for (const row of (payRes.data ?? []) as {
+      user_id: string;
+      full_name: string;
+      document_type: string;
+      document_number: string;
+      bank: string;
+      account_type: string;
+      account_number: string;
+    }[]) {
+      payouts[row.user_id] = {
+        bank: row.bank,
+        accountType: row.account_type,
+        accountNumber: row.account_number,
+        fullName: row.full_name,
+        documentType: row.document_type,
+        documentNumber: row.document_number,
+      };
+    }
+    setPayoutInfo(payouts);
 
     if (monRes.error) {
       console.error("get_monetization_status falló", monRes.error);
@@ -253,6 +326,50 @@ export function AdRevenueShare({
     );
   }
 
+  // ---- Estado de la tanda de pagos ----
+  const paidCount = settlements.filter((s) => s.status === "paid").length;
+  const pendingCop = settlements
+    .filter((s) => s.status !== "paid")
+    .reduce((a, s) => a + s.amount_cop, 0);
+
+  /**
+   * Las filas del archivo para el banco: los cortes APROBADOS y todavía sin
+   * pagar. Los que están en "Emitida" quedan fuera a propósito — todavía no se
+   * revisaron, y un archivo de banco no es el lugar para revisar nada.
+   *
+   * Quien no tenga datos de pago aprobados tampoco entra: sin cuenta no hay
+   * transferencia, y meterlo en el archivo haría que el banco rechazara la tanda
+   * entera por una línea incompleta.
+   */
+  const batchRows: PayoutBatchRow[] = settlements
+    .filter((s) => s.status === "approved" && payoutInfo[s.organizer_id])
+    .map((s) => {
+      const p = payoutInfo[s.organizer_id];
+      return {
+        organizerName: organizerNameOf[s.organizer_id] ?? "Organizador",
+        fullName: p.fullName,
+        documentType: p.documentType,
+        documentNumber: p.documentNumber,
+        bank: p.bank,
+        accountType: p.accountType,
+        accountNumber: p.accountNumber,
+        amountCop: s.amount_cop,
+      };
+    });
+
+  function downloadBatch() {
+    // BOM al inicio para que Excel en español no rompa las tildes.
+    const blob = new Blob(["\uFEFF" + buildPayoutCsv(batchRows)], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pagos-publicidad-${periodMonth}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   // ---- MES CERRADO ----
   if (closed) {
     return (
@@ -264,11 +381,33 @@ export function AdRevenueShare({
             {new Date(settlements[0].closed_at).toLocaleDateString("es-CO")}. No
             se recalcula: es lo que se le prometió a cada organizador.
           </p>
+
+          {/* El estado de la tanda, arriba. Con veinte organizadores, "cuánto
+              falta por pagar" no se puede sacar leyendo la tabla fila por
+              fila. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
+            <p className="text-sm">
+              <strong>{paidCount}</strong> de {settlements.length} pagados
+              {pendingCop > 0 && (
+                <span className="text-muted-foreground">
+                  {" "}
+                  · faltan {formatCOP(pendingCop)}
+                </span>
+              )}
+            </p>
+            {batchRows.length > 0 && (
+              <Button size="sm" variant="outline" onClick={downloadBatch}>
+                <Download className="h-4 w-4" />
+                Archivo para el banco ({batchRows.length})
+              </Button>
+            )}
+          </div>
           <ScrollRows count={settlements.length} rowHeight={ROW_H_INPUT}>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Organizador</TableHead>
+                  <TableHead>A dónde transferir</TableHead>
                   <TableHead className="text-right">Personas-día</TableHead>
                   <TableHead className="text-right">Monto</TableHead>
                   <TableHead>Estado</TableHead>
@@ -283,6 +422,9 @@ export function AdRevenueShare({
                     <TableRow key={s.id}>
                       <TableCell className="font-medium">
                         {organizerNameOf[s.organizer_id] ?? "Organizador"}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <PayoutCell info={payoutInfo[s.organizer_id]} />
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {s.person_days.toLocaleString()}
@@ -306,9 +448,25 @@ export function AdRevenueShare({
                           </Button>
                         )}
                         {s.status === "approved" && (
-                          <Button size="sm" onClick={() => setStatus(s.id, "paid")}>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setPayingFor(s);
+                              setReference("");
+                            }}
+                          >
                             Marcar pagada
                           </Button>
+                        )}
+                        {s.status === "paid" && s.payment_reference && (
+                          // La constancia, en la misma fila. Es lo que responde
+                          // "¿a este ya le pagamos?" sin ir al extracto.
+                          <span className="block text-[11px] text-muted-foreground">
+                            Ref. {s.payment_reference}
+                            {s.paid_at && (
+                              <> · {new Date(s.paid_at).toLocaleDateString("es-CO")}</>
+                            )}
+                          </span>
                         )}
                       </TableCell>
                     </TableRow>
@@ -316,7 +474,7 @@ export function AdRevenueShare({
               </TableBody>
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={2}>Total del mes</TableCell>
+                  <TableCell colSpan={3}>Total del mes</TableCell>
                   <TableCell className="text-right tabular-nums font-semibold">
                     {formatCOP(payable)}
                   </TableCell>
@@ -326,22 +484,99 @@ export function AdRevenueShare({
             </Table>
           </ScrollRows>
         </CardContent>
+
+        {/* Registrar la transferencia. La referencia es obligatoria y la exige
+            también la base: un corte marcado como pagado sin referencia es
+            justo el registro que va a hacer falta el día que alguien diga que
+            no le llegó. */}
+        <Dialog
+          open={!!payingFor}
+          onOpenChange={(o) => {
+            if (!o) setPayingFor(null);
+          }}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Registrar la transferencia</DialogTitle>
+              <DialogDescription>
+                {payingFor && (
+                  <>
+                    {organizerNameOf[payingFor.organizer_id] ?? "Organizador"} ·{" "}
+                    {formatCOP(payingFor.amount_cop)}
+                  </>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+
+            {payingFor && payoutInfo[payingFor.organizer_id] && (
+              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                <p>{payoutInfo[payingFor.organizer_id].fullName}</p>
+                <p className="text-muted-foreground">
+                  {payoutInfo[payingFor.organizer_id].bank} ·{" "}
+                  {payoutInfo[payingFor.organizer_id].accountType} ·{" "}
+                  <span className="tabular-nums">
+                    {payoutInfo[payingFor.organizer_id].accountNumber}
+                  </span>
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <label className="text-sm" htmlFor="pay-ref">
+                Referencia de la transferencia
+              </label>
+              <Input
+                id="pay-ref"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="El número que devolvió el banco"
+              />
+              <p className="text-xs text-muted-foreground">
+                Con esto vas a poder encontrarla en el extracto sin adivinar.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setPayingFor(null)}>
+                Cancelar
+              </Button>
+              <Button
+                disabled={reference.trim().length < 3}
+                onClick={() =>
+                  payingFor &&
+                  setStatus(payingFor.id, "paid", reference.trim())
+                }
+              >
+                Marcar pagada
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </Card>
     );
   }
 
-  async function setStatus(id: string, status: AdSettlement["status"]) {
+  // `paid_at` y `paid_by` NO se mandan: los sella el trigger con la hora del
+  // servidor y el admin de la sesión. La referencia sí viaja, y la base rechaza
+  // el cambio a "pagada" si viene vacía.
+  async function setStatus(
+    id: string,
+    status: AdSettlement["status"],
+    paymentReference?: string
+  ) {
     const { error } = await supabase
       .from("ad_settlements")
       .update({
         status,
-        paid_at: status === "paid" ? new Date().toISOString() : null,
+        ...(status === "paid" ? { payment_reference: paymentReference } : {}),
       })
       .eq("id", id);
     if (error) {
       toast.error("No se pudo cambiar el estado: " + error.message);
       return;
     }
+    setPayingFor(null);
+    setReference("");
     load();
   }
 
@@ -698,5 +933,57 @@ function Figure({
         {value}
       </p>
     </div>
+  );
+}
+
+/**
+ * A dónde transferirle, en la misma fila donde se marca "Pagada".
+ *
+ * La cuenta va tapada: esta tabla se mira con gente al lado y en pantalla
+ * compartida. El botón copia el número completo, que es lo que de verdad se
+ * necesita —nadie transcribe una cuenta a mano— sin dejarlo a la vista.
+ *
+ * Si no hay datos aprobados, se avisa en vez de dejar la celda vacía. Un corte
+ * emitido a alguien sin cuenta aprobada no debería existir desde que la
+ * aprobación es requisito (20260808d), pero puede quedar de un cierre anterior,
+ * y ese es exactamente el caso en el que hay que frenar antes de transferir.
+ */
+function PayoutCell({
+  info,
+}: {
+  info?: { bank: string; accountType: string; accountNumber: string; fullName: string };
+}) {
+  if (!info) {
+    return (
+      <span className="inline-flex items-center gap-1 text-destructive">
+        <TriangleAlert className="h-3.5 w-3.5" />
+        Sin datos aprobados
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span>
+        {info.bank} · {info.accountType}
+        <span className="block text-muted-foreground tabular-nums">
+          {maskAccount(info.accountNumber)} · {info.fullName}
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(info.accountNumber);
+            toast.success("Número de cuenta copiado");
+          } catch {
+            toast.error("No se pudo copiar");
+          }
+        }}
+        className="text-muted-foreground hover:text-foreground"
+        aria-label="Copiar número de cuenta"
+      >
+        <Copy className="h-3.5 w-3.5" />
+      </button>
+    </span>
   );
 }

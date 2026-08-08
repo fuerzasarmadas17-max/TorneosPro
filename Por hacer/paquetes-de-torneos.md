@@ -16,10 +16,13 @@ El interruptor queda en `src/lib/packs.ts` por si hay que volver a probar algo
 del flujo de pago sin exponerlo: en `true` baja el precio a $5.000 y esconde la
 franja a todos menos al admin, las dos cosas a la vez.
 
-### 🧹 Pendiente de limpieza
+### ✅ Limpieza hecha (verificado el 2026-08-08)
 
-Quedaron en la base los **créditos de la prueba**, comprados a $5.000 (o sea
-`value_cop = 1000` cada uno). Conviene borrarlos:
+No quedó ningún crédito de prueba sin consumir (`por_borrar = 0`). Los de la
+prueba que sí se consumieron quedan como rastro, atados a su torneo.
+
+Los créditos de la prueba se compraron a $5.000 (o sea `value_cop = 1000` cada
+uno). Consulta que se usó para revisarlo:
 
 ```sql
 -- Ver qué quedó de la prueba
@@ -40,11 +43,11 @@ Los que ya se consumieron **no se tocan**: son el rastro de la prueba y ya
 están atados a un torneo.
 
 
-**Última sesión: 2026-08-07.** Todo lo construido está **en local, sin
-commitear y sin desplegar**. El último commit en producción es `30a9652`, que
-no tiene nada de paquetes.
+**Última sesión: 2026-08-08.** Todo lo de abajo está **commiteado y en
+producción** (`f1b9349` → `a1ebcdf`). Lo que sigue decía "en local" y ya no
+aplica; se deja la tabla porque sirve de mapa de archivos.
 
-## Lo que YA está hecho (en local)
+## Los archivos del paquete
 
 | Archivo | Qué hace |
 |---|---|
@@ -56,15 +59,16 @@ no tiene nada de paquetes.
 | `src/app/api/payments/confirm/route.ts` | Devuelve `kind: "pack"` en vez de un `tournamentId` inexistente |
 | `src/app/tournaments/payment-return/page.tsx` | Al volver de Wompi con un paquete, lleva a crear torneo |
 
-Compila, pasa lint y build. **No está probado contra la base** porque la
-migración todavía no se corrió.
+Probado de punta a punta contra la base y con un pago real de Wompi.
 
 ## PASO 1 — Migraciones
 
 - ✅ `20260807_tournament_credits.sql` — **corrida el 2026-08-07** y verificada
   contra la base: la tabla existe, RLS bloquea la lectura anónima, y las dos
   funciones responden.
-- 🔴 `20260807b_tournament_credits_grants.sql` — **PENDIENTE. Correr esta.**
+- ✅ `20260807b_tournament_credits_grants.sql` — **corrida y verificada el
+  2026-08-08**: `anon` ya no puede ejecutar `available_tournament_credits`, y la
+  función además rechaza por dentro a quien pregunte por una cuenta ajena.
 
 **Por qué hay una segunda:** al verificar la primera se encontró que
 `available_tournament_credits` respondía a un llamado **anónimo**. Como es
@@ -95,11 +99,11 @@ Sin UI todavía, se prueba a mano:
 
 | # | Qué | Notas |
 |---|---|---|
-| 1 | **Franja de créditos arriba de "Crear torneo"** | "Te quedan 3 torneos · vencen el 15/03/2027" + botón de comprar |
-| 2 | **Opción de pagar con crédito en el diálogo de costo** | `tournament-cost-dialog.tsx`. Tres opciones: cupón / crédito / pagar. La que conviene, preseleccionada |
-| 3 | **Consumir el crédito al crear** | Llamar a `consume_tournament_credit`; si devuelve NULL, **no crear el torneo** |
-| 4 | ⚠️ **Contabilidad: Negocios y Finanzas** | **Antes de vender el primer paquete de verdad.** Ver la sección de contabilidad más abajo |
-| 5 | Upsell personalizado en el dashboard + `/pricing` | No bloqueante |
+| 1 | ✅ **Franja de créditos arriba de "Crear torneo"** | Hecha |
+| 2 | ✅ **Opción de pagar con crédito en el diálogo de costo** | Hecha (`36431a8`: tener créditos ya no obliga a gastarlos) |
+| 3 | ✅ **Consumir el crédito al crear** | Hecha |
+| 4 | ✅ **Contabilidad: Negocios y Finanzas** | Arreglada en `93cdeae` — los pagos de paquete ya no desaparecen de "Ingreso por torneos". **Ya se puede vender un paquete real.** |
+| 5 | 🔴 Upsell personalizado en el dashboard + `/pricing` | Lo único que queda. No bloqueante |
 
 ## Decisiones que quedaron tomadas por defecto
 
@@ -112,9 +116,10 @@ Se pueden cambiar, pero están asumidas en el código:
 
 ## Lo que NO hay que olvidar
 
-🔴 **No vender un paquete real hasta terminar el paso 4 (contabilidad).** El día
-que entre el primer pago de paquete sin eso, Negocios va a mostrar dos cifras
-distintas del mismo ingreso y no va a dar ningún error.
+~~🔴 No vender un paquete real hasta terminar el paso 4 (contabilidad).~~
+✅ **Resuelto el 2026-08-07** (`93cdeae`). Los pagos de paquete se cuentan
+aparte, al cobrar, y no se reparten entre los torneos que salgan de ellos —
+eso sería contar la misma plata dos veces.
 
 ---
 

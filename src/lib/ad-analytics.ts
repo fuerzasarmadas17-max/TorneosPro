@@ -74,17 +74,51 @@ export const DATE_RANGE_LABELS: Record<DateRange, string> = {
   all: "Todo el histórico",
 };
 
-/** Límites del rango, en hora local, como ISO para la RPC. */
+// ============================================================================
+// El mes es el mes COLOMBIANO
+// ============================================================================
+// Antes esto usaba la hora del dispositivo (`new Date(y, m, 1)`). Funcionaba
+// porque quien abre el panel está en Colombia, pero es una suposición que nadie
+// escribió: desde otro huso el navegador contaría un mes corrido unas horas
+// respecto del que usa la base, y `close_ad_period` rechazaría el cierre con
+// "Personas-día no coinciden" sin que se entienda por qué.
+//
+// Colombia no tiene horario de verano desde 1993: es UTC-5 todo el año, así que
+// alcanza con un desplazamiento fijo. Del lado de la base el equivalente es
+// `co_day()` / `co_start()` (ver 20260808e_dia_colombiano.sql); los dos tienen
+// que moverse juntos.
+
+const COLOMBIA_OFFSET_HOURS = 5;
+
+/** Instante en que empieza (en Colombia) el mes `monthIndex0` de `year`. */
+function colombiaMonthStart(year: number, monthIndex0: number): number {
+  return Date.UTC(year, monthIndex0, 1, COLOMBIA_OFFSET_HOURS);
+}
+
+/** Año y mes que corren AHORA en Colombia, sin importar dónde esté el equipo. */
+function colombiaNow(): { year: number; month: number } {
+  const shifted = new Date(Date.now() - COLOMBIA_OFFSET_HOURS * 3600_000);
+  return { year: shifted.getUTCFullYear(), month: shifted.getUTCMonth() };
+}
+
+/** Primer día del mes en curso en Colombia, en el formato DATE de Postgres. */
+export function currentPeriodMonth(): string {
+  const { year, month } = colombiaNow();
+  return `${year}-${String(month + 1).padStart(2, "0")}-01`;
+}
+
+/** Límites del rango, como ISO para la RPC. */
 export function rangeBounds(range: DateRange): {
   from: string | null;
   to: string | null;
 } {
   if (range === "all") return { from: null, to: null };
-  const now = new Date();
-  const monthOffset = range === "previous" ? -1 : 0;
-  const from = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
-  const to = new Date(now.getFullYear(), now.getMonth() + monthOffset + 1, 1);
-  return { from: from.toISOString(), to: to.toISOString() };
+  const { year, month } = colombiaNow();
+  const offset = range === "previous" ? -1 : 0;
+  return {
+    from: new Date(colombiaMonthStart(year, month + offset)).toISOString(),
+    to: new Date(colombiaMonthStart(year, month + offset + 1)).toISOString(),
+  };
 }
 
 /** Porción de lo que paga cada campaña que va a los organizadores que le
@@ -129,11 +163,12 @@ export function proratedRevenue(
   // Sin mes (histórico completo) no hay nada que recortar.
   if (!periodMonth) return Math.floor(paidCop);
 
-  // Límites en hora local, igual que `rangeBounds`. Tienen que coincidir: es la
-  // misma ventana en la que se contaron las personas-día.
+  // Límites del mes colombiano, igual que `rangeBounds` y que `co_start()` en la
+  // base. Tienen que coincidir los tres: es la misma ventana en la que se
+  // contaron las personas-día.
   const [y, m] = periodMonth.split("-").map(Number);
-  const monthStart = new Date(y, m - 1, 1).getTime();
-  const monthEnd = new Date(y, m, 1).getTime();
+  const monthStart = colombiaMonthStart(y, m - 1);
+  const monthEnd = colombiaMonthStart(y, m);
 
   const overlap = Math.min(end, monthEnd) - Math.max(start, monthStart);
   if (overlap <= 0) return 0;
@@ -260,6 +295,12 @@ export interface MonetizationRow {
   account_age_days: number;
   profile_complete: boolean;
   payout_info_complete: boolean;
+  /** Un admin revisó y aprobó sus datos de pago. Nadie cobra sin esto. */
+  payout_approved: boolean;
+  /** `missing` = ni se inscribió. */
+  payout_status: "missing" | "pending" | "approved" | "rejected";
+  /** Qué tiene que corregir, cuando el estado es `rejected`. */
+  rejection_reason: string | null;
   /** Claves de lo que le falta para el nivel 2. */
   missing: MissingKey[];
   /** 0 = ni ve la sección · 1 = la ve con su progreso · 2 = liquidable. */
@@ -274,6 +315,7 @@ export type MissingKey =
   | "account_age_days"
   | "profile"
   | "payout_info"
+  | "payout_approval"
   | "excluded";
 
 export const MISSING_LABELS: Record<MissingKey, string> = {
@@ -283,6 +325,7 @@ export const MISSING_LABELS: Record<MissingKey, string> = {
   account_age_days: "Cuenta muy nueva",
   profile: "Perfil sin nombre o logo",
   payout_info: "Faltan los datos de pago",
+  payout_approval: "Datos de pago sin aprobar",
   excluded: "Cuenta excluida del reparto",
 };
 
@@ -487,19 +530,19 @@ export function computeRevenueShare(
  *  rangos que no son un mes (el histórico completo no se puede cerrar). */
 export function periodMonthOf(range: DateRange): string | null {
   if (range === "all") return null;
-  const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth() + (range === "previous" ? -1 : 0), 1);
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${d.getFullYear()}-${m}-01`;
+  if (range === "current") return currentPeriodMonth();
+  const { year, month } = colombiaNow();
+  const prev = new Date(colombiaMonthStart(year, month - 1) + 3600_000);
+  return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, "0")}-01`;
 }
 
 /** ¿Ya terminó ese mes? Un mes en curso no se puede cerrar: las personas-día
  *  seguirían subiendo después de congelar y el corte quedaría corto. */
 export function isMonthClosable(periodMonth: string | null): boolean {
   if (!periodMonth) return false;
-  const now = new Date();
-  const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  return periodMonth < current;
+  // Contra el mes colombiano: el 1 de septiembre a la medianoche de Bogotá
+  // agosto ya se puede cerrar, aunque en UTC todavía sea agosto.
+  return periodMonth < currentPeriodMonth();
 }
 
 /** Fila que se le manda a `close_ad_period`. Solo van los que cobran: el no
@@ -549,7 +592,66 @@ export interface AdSettlement {
   breakdown: SettlementInput["breakdown"];
   status: "issued" | "approved" | "paid" | "void";
   paid_at: string | null;
+  /** Número de la transferencia según el banco. Obligatorio para marcar
+   *  "Pagada" — sin él, ese estado es una afirmación que nadie puede verificar
+   *  después. Lo exige la base, no solo el formulario. */
+  payment_reference: string | null;
   closed_at: string;
+}
+
+/** Una línea del archivo de pagos: a quién, cuánto y a qué cuenta. */
+export interface PayoutBatchRow {
+  organizerName: string;
+  fullName: string;
+  documentType: string;
+  documentNumber: string;
+  bank: string;
+  accountType: string;
+  accountNumber: string;
+  amountCop: number;
+}
+
+/**
+ * Arma el CSV para cargar en el banco.
+ *
+ * ⚠️ El formato exacto lo define cada banco. Este archivo lleva las columnas que
+ * todos piden, en texto plano y separadas por punto y coma —no por coma— porque
+ * en Excel en español la coma es el separador decimal y el archivo se abre
+ * corrido en una sola columna.
+ *
+ * Los montos van sin puntos ni símbolo: "125000", no "$125.000". Un banco que
+ * recibe "$125.000" lo lee como 125 pesos, o lo rechaza.
+ */
+export function buildPayoutCsv(rows: PayoutBatchRow[]): string {
+  const head = [
+    "Organizador",
+    "Nombre titular",
+    "Tipo documento",
+    "Documento",
+    "Banco",
+    "Tipo cuenta",
+    "Numero cuenta",
+    "Valor",
+  ];
+
+  // El punto y coma dentro de un nombre partiría la fila; se cambia por coma.
+  const clean = (v: string) => v.replace(/[;\r\n]/g, ",").trim();
+
+  return [
+    head.join(";"),
+    ...rows.map((r) =>
+      [
+        clean(r.organizerName),
+        clean(r.fullName),
+        clean(r.documentType),
+        clean(r.documentNumber),
+        clean(r.bank),
+        clean(r.accountType),
+        clean(r.accountNumber),
+        String(r.amountCop),
+      ].join(";")
+    ),
+  ].join("\n");
 }
 
 export const SETTLEMENT_STATUS_LABELS: Record<AdSettlement["status"], string> = {
@@ -558,3 +660,155 @@ export const SETTLEMENT_STATUS_LABELS: Record<AdSettlement["status"], string> = 
   paid: "Pagada",
   void: "Anulada",
 };
+
+// ============================================================================
+// La vista del organizador
+// ============================================================================
+// DURANTE EL MES NO SE LE MUESTRA PLATA. Solo audiencia.
+//
+// La versión anterior le mostraba una proyección en pesos con la etiqueta
+// "estimado". Se quitó por dos razones que apuntan al mismo lado:
+//
+//   1. Un número con pesos adelante se lee como promesa por más que diga
+//      "estimado". Y baja: si otro organizador suma audiencia a la misma
+//      campaña, la tarifa cae para todos. Enseñar $47.300 el día 10 y $31.000
+//      el día 20 arruina la relación aunque las dos cifras estén bien.
+//   2. Sin monto ni tarifa durante el mes, no queda ningún número que se pueda
+//      invertir para deducir cuánto pagó el anunciante.
+//
+// La plata aparece en el histórico, cuando el mes se cierra y el monto queda
+// congelado. Ahí ya no es una estimación: es lo que se le va a transferir.
+//
+// Consecuencia: la RPC sigue devolviendo `paid_cop` y `total_person_days`
+// porque es la misma función, pero esta capa ya no los mira. Es información que
+// entra al servidor y no sale.
+
+/** Una campaña donde el organizador aportó audiencia. ⚠️ SOLO SERVIDOR: trae lo
+ *  que pagó el anunciante y la audiencia total de la campaña. */
+export interface MyEarningsCampaignRow {
+  campaign_id: string;
+  /** `null` si la campaña se eliminó y quedaron sus eventos. */
+  advertiser_name: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  /** Campaña social: no se cobra, así que nunca va a repartir. */
+  is_nonprofit: boolean;
+  my_person_days: number;
+  total_person_days: number;
+  paid_cop: number;
+  revenue_override_cop: number | null;
+  tournaments: {
+    tournament_id: string;
+    tournament_name: string | null;
+    person_days: number;
+  }[];
+}
+
+/** ⚠️ SOLO SERVIDOR. Lo que devuelve `get_my_ad_earnings`. */
+export interface MyEarningsIngredients {
+  month: string;
+  campaigns: MyEarningsCampaignRow[];
+}
+
+/** Una fila de la tabla del mes. Esto sí viaja al navegador: audiencia y nada
+ *  más. */
+export interface MyAudienceCampaign {
+  campaignId: string;
+  advertiserName: string | null;
+  nonprofit: boolean;
+  myPersonDays: number;
+  tournaments: {
+    tournamentId: string;
+    tournamentName: string | null;
+    personDays: number;
+  }[];
+}
+
+/**
+ * No lleva un total de personas: sumar las campañas cuenta dos veces a quien vio
+ * dos el mismo día, y ese total tampoco cuadra con el requisito de audiencia,
+ * que se mide sobre las visitas a los torneos. Serían dos números del mismo mes
+ * sin forma de saber cuál mirar.
+ */
+export interface MyAudienceSummary {
+  month: string;
+  campaigns: MyAudienceCampaign[];
+}
+
+export const EMPTY_AUDIENCE: MyAudienceSummary = { month: "", campaigns: [] };
+
+/** Se queda con lo único que el organizador puede ver del mes en curso.
+ *  ⚠️ SOLO SERVIDOR: la entrada trae datos que no deben salir. */
+export function computeMyAudience(
+  data: MyEarningsIngredients | null
+): MyAudienceSummary {
+  if (!data) return EMPTY_AUDIENCE;
+
+  return {
+    month: data.month,
+    campaigns: data.campaigns
+      .map((c) => ({
+        campaignId: c.campaign_id,
+        advertiserName: c.advertiser_name,
+        nonprofit: c.is_nonprofit,
+        myPersonDays: c.my_person_days,
+        tournaments: c.tournaments.map((t) => ({
+          tournamentId: t.tournament_id,
+          tournamentName: t.tournament_name,
+          personDays: t.person_days,
+        })),
+      }))
+      .sort((a, b) => b.myPersonDays - a.myPersonDays),
+  };
+}
+
+// ----------------------------------------------------------------------------
+// Cortes cerrados, como los ve el organizador
+// ----------------------------------------------------------------------------
+
+/**
+ * Un corte cerrado. Acá SÍ hay plata: el mes terminó y el monto quedó congelado.
+ *
+ * ⚠️ NO LLEVA EL TOTAL DE PERSONAS-DÍA, a propósito.
+ * `ad_settlements.person_days` es la SUMA de las celdas campaña × organizador:
+ * quien vio dos campañas el mismo día cuenta dos veces. Es el número correcto
+ * para el admin —es el que se congeló— pero al lado del requisito de audiencia,
+ * que se mide distinto, serían dos cifras que no cuadran sin explicación
+ * posible. La audiencia por campaña sí se muestra: esa no se suma con nada.
+ *
+ * Tampoco lleva el `share`. Con el porcentaje y el monto se deduce lo que pagó
+ * el anunciante (monto ÷ % ÷ 50%); con la tarifa por persona no, porque le
+ * faltaría la audiencia total de la campaña.
+ */
+export interface MySettlement {
+  id: string;
+  periodMonth: string;
+  amountCop: number;
+  status: AdSettlement["status"];
+  paidAt: string | null;
+  campaigns: {
+    campaignId: string;
+    personDays: number;
+    ratePerPersonDay: number;
+    amountCop: number;
+  }[];
+}
+
+/** ⚠️ SOLO SERVIDOR: la entrada trae `share`, que es lo que no debe salir. */
+export function toMySettlement(s: AdSettlement): MySettlement {
+  return {
+    id: s.id,
+    periodMonth: s.period_month,
+    amountCop: s.amount_cop,
+    status: s.status,
+    paidAt: s.paid_at,
+    campaigns: (s.breakdown ?? []).map((b) => ({
+      campaignId: b.campaign_id,
+      personDays: b.person_days,
+      ratePerPersonDay:
+        b.person_days > 0 ? Math.floor(b.amount_cop / b.person_days) : 0,
+      amountCop: b.amount_cop,
+    })),
+  };
+}
+

@@ -5,13 +5,13 @@ que ve el organizador** (especificada abajo en el Paso 3) y **calibrar los
 umbrales** con agosto completo.
 **Última actualización:** 2026-07-30
 
+> **Al 2026-08-08 — los pasos 1, 2 y la mitad del 3 están ESCRITOS EN LOCAL,
+> sin commitear y sin correr la migración.** Ver *Estado de la plomería* justo
+> abajo. Sigue sin existir la pantalla, los términos ni los datos de pago.
+>
 > **Revisado el 2026-08-06.** Confirmado contra el código: los Pasos 0, 1 y 2
 > están hechos, las 9 migraciones existen y el tope de frecuencia también.
-> **Del Paso 3 sigue sin construirse todo lo del lado del organizador**: no
-> existe `get_my_ad_earnings`, ni la policy de lectura en `ad_settlements`, ni
-> pantalla de datos de pago, ni sección "Monetizar" — `organizer_payout_info`
-> solo aparece mencionado en la migración, sin UI. El documento queda tal cual
-> porque es la especificación de lo que falta.
+> El documento queda tal cual porque es la especificación de lo que falta.
 >
 > 🔴 **El ensayo del 1 de agosto NO se corrió.** Verificado el 2026-08-06:
 > `ad_settlements` está vacía, sin una sola fila. **El camino de cierre sigue
@@ -359,9 +359,133 @@ necesita todo lo anterior; el 7 y el 8 vienen después de que exista.
 
 | # | Qué | Depende de | Se puede hacer ya |
 |---|---|---|---|
-| **1** | **RPC `get_my_ad_earnings(mes)`** — le devuelve al organizador sus personas-día por campaña y por torneo, y su participación. No puede reusar `get_ad_analytics`, que es admin-only. | nada | ✅ sí |
-| **2** | **Policy de lectura en `ad_settlements`** (`organizer_id = auth.uid()`, solo cortes no anulados). | va junto con la 1 | ✅ sí |
-| **3** | **Pintar el desglose por campaña.** Ya se calcula y ya se guarda en `ad_settlements.breakdown`, pero hoy no se muestra en ningún lado — se quitó al simplificar el panel de admin. Hace falta en los dos lados. | nada | ✅ sí |
+| **1** | 🟡 **RPC `get_my_ad_earnings`** — **escrita, sin correr.** Ver *Estado de la sección* | nada | ✅ sí |
+| **2** | ❌ **Policy de lectura en `ad_settlements`** — **se decidió NO hacerla.** Filtraría el porcentaje; ver *Estado de la sección* | — | — |
+| **3** | 🟡 **Pintar el desglose por campaña.** Hecho del lado del organizador. **Falta del lado del admin**, donde se quitó al simplificar el panel | nada | ✅ sí |
+
+---
+
+### Estado de la sección (2026-08-08)
+
+**En local, sin commitear y sin correr la migración:**
+
+| Archivo | Qué hace |
+|---|---|
+| `supabase/migrations/20260808_my_ad_earnings.sql` | RPC `get_my_ad_earnings`, **solo service_role** |
+| `supabase/migrations/20260808b_monetizar_terms.sql` | `terms_version` + `terms_accepted_at` en `organizer_payout_info`, con trigger que sella la fecha del servidor |
+| `src/lib/monetizar-terms.ts` | El texto de los términos y su versión. **Borrador sin revisión legal** |
+| `src/lib/monetizar-requirements.ts` | Arma la lista de requisitos y calcula el avance del mes |
+| `src/hooks/use-payout-info.ts` | Datos de pago + si aceptó la versión vigente |
+| `src/components/monetizar/monetizar-onboarding.tsx` | Etapa 1: qué es el programa, datos de pago, aceptar |
+| `src/components/monetizar/month-goal.tsx` | La barra grande de "cómo vas este mes" |
+| `src/app/api/monetizar/earnings/route.ts` | Calcula del lado del servidor y manda hacia afuera solo tarifa y monto |
+| `src/lib/ad-analytics.ts` | `computeMyEarnings()`, `toMySettlement()` y los dos juegos de tipos (ingredientes ≠ lo que viaja) |
+| `src/hooks/use-my-ad-earnings.ts` | Junta proyección + cortes + requisitos |
+| `src/lib/month-label.ts` | "2026-08-01" → "Agosto 2026" sin corrimiento de zona horaria |
+| `src/app/(dashboard)/dashboard/monetizar/page.tsx` | La pantalla, con pestañas "Este mes" e "Histórico" |
+| `src/components/monetizar/earnings-this-month.tsx` | La tabla del mes, con el desglose por torneo |
+| `src/components/monetizar/settlements-history.tsx` | Los meses cerrados y su estado de cobro |
+| `src/components/monetizar/requirements-progress.tsx` | Las barras de "qué te falta" |
+| `src/components/layout/sidebar-nav.tsx` | El enlace "Monetizar" (oculto para el admin) |
+
+Compila, pasa lint y build. **No está probado contra la base.**
+
+#### ⚠️ Dos decisiones que cambiaron el modelo (2026-08-08, tarde)
+
+**1. Durante el mes el organizador NO ve plata, solo audiencia.** El monto
+aparece en el histórico, cuando el mes cierra y queda congelado. Se quitó la
+proyección en pesos porque un número con "$" adelante se lee como promesa aunque
+diga "estimado", y ese número **baja** cuando otro organizador suma audiencia a
+la misma campaña. Mostrar $47.300 el día 10 y $31.000 el día 20 rompe la relación
+aunque las dos cifras estén bien calculadas. Efecto lateral: sin monto ni tarifa
+durante el mes tampoco queda ningún número que invertir para deducir lo que pagó
+el anunciante.
+
+**2. Nadie cobra hasta que un admin lo apruebe** (`20260808d`). Se pasó de lista
+negra —cobraba todo el que cumpliera los umbrales salvo los marcados en
+`users.revenue_share_excluded`— a lista blanca. Con plata de por medio, el que se
+equivoca por omisión no puede ser el dueño. Y es donde se engancha el KYC más
+adelante sin rediseñar nada. Cambiar la cuenta bancaria vuelve los datos a
+revisión: lo aprobado fue *esa* cuenta, no cualquier cuenta futura.
+
+Lo que sigue de esta sección describe por qué el **histórico** muestra tarifa y
+no porcentaje. Sigue vigente.
+
+#### La decisión de fondo del histórico: TARIFA, no porcentaje
+
+Se le muestra al organizador *"esta campaña paga $85 por persona-día"*, no
+*"aportaste el 20%"*. Los dos explican de dónde salió su plata, pero el
+porcentaje **se puede invertir**: monto ÷ porcentaje ÷ 50% da exactamente lo que
+pagó el anunciante. Con la tarifa no se puede, porque le faltaría la audiencia
+total de la campaña.
+
+Importa porque acá los anunciantes tienen nombre y apellido y están en la misma
+ciudad que los organizadores. YouTube sí muestra su bruto (el CPM) porque su
+plata sale de una subasta de miles de anunciantes y no es atribuible a ninguno;
+esto no tiene esa escala.
+
+**De ahí salen tres cosas que parecen rodeos y no lo son:**
+
+1. **La RPC es de servidor, no de navegador** (`GRANT` solo a `service_role`).
+   Devuelve la audiencia total de cada campaña y lo cobrado, que es justo lo que
+   no debe salir. Si se le concede a `authenticated`, el organizador la llama
+   directo y se salta el filtro.
+2. **`ad_settlements` NO lleva policy de lectura para el organizador**, aunque
+   el plan la pedía. Su `breakdown` guarda el `share` — o sea el porcentaje.
+   Cerrar la puerta de adelante y dejar la de atrás abierta no es cerrar nada.
+   Los cortes le llegan por la misma ruta, ya filtrados.
+3. **La cuenta la hace el servidor con `lib/ad-analytics.ts`**, no SQL. Así no
+   hay dos versiones de la misma matemática de plata. Y no es teórico:
+   `proratedRevenue` recorta el mes en hora **local** y SQL lo haría en la zona
+   de la base — 5 horas de diferencia, que cambian el prorrateo de una campaña
+   que arranca cerca del cambio de mes.
+
+#### Otras dos decisiones que conviene no revertir sin leer
+
+4. **El denominador es la SUMA de las celdas campaña × organizador**, no un
+   `COUNT(DISTINCT)` global de la campaña. Son números distintos, y el global
+   —que es más chico— inflaría la tarifa y le prometería plata que el corte no
+   le va a pagar.
+
+5. **La tarifa se redondea primero y el monto sale de ella**, no al revés. Si se
+   calculara el monto exacto y la tarifa aparte, la pantalla mostraría
+   "300 × $85" al lado de "$25.410" y la multiplicación no cerraría. Efecto de
+   borde bueno: la proyección queda por debajo del corte real, nunca por encima.
+
+#### La Etapa 1 ya está (2026-08-08)
+
+Al entrar por primera vez, el organizador ve qué es el programa, deja sus datos
+de pago y acepta las condiciones. Recién después ve cifras. Si los términos
+cambian de versión, se le vuelve a pedir que acepte y no ve la sección hasta que
+lo haga.
+
+**Tres detalles que no se ven pero importan:**
+
+- **La fecha de aceptación la pone la base, no el navegador** (trigger
+  `stamp_terms_acceptance`). Si viajara en el body sería un dato que el cliente
+  elige, y es justamente la constancia de que aceptó.
+- **El número de cuenta se pide dos veces y no se puede pegar en el segundo
+  campo.** Un dígito mal no da ningún error visible: la transferencia se
+  devuelve semanas después, o le llega a otra persona.
+- **"Tiene datos de pago" implica "aceptó los términos"** porque el formulario
+  guarda las dos cosas juntas. Por eso el requisito de elegibilidad sigue siendo
+  `require_payout_info` y no se agregó uno nuevo. Si algún día se cargan datos de
+  pago por otra vía, esa implicación se rompe y hay que separar los requisitos.
+
+#### 🔴 Lo que falta para poder desplegar esto
+
+1. **Que el dueño lea los términos** (`src/lib/monetizar-terms.ts`). Son un
+   borrador escrito a partir de cómo funciona el reparto de verdad, **sin
+   revisión legal**. Dos números están puestos como propuesta y hay que
+   confirmarlos — buscar `DECIDIR` en el archivo: el **mínimo para transferir**
+   ($50.000) y el **plazo de pago** (primeros 15 días del mes siguiente). El
+   punto de impuestos debería verlo un contador.
+2. **Correr las dos migraciones** (`20260808` y `20260808b`).
+3. **Prender `require_payout_info`** con un UPDATE, ahora que la pantalla para
+   llenarlos ya existe.
+4. **Decidir cómo se entera de que le entró plata.** No hay correo transaccional
+   ni notificaciones en la app. Al arranque puede vivir solo adentro, pero hay
+   que decidirlo.
 | **4** | **Términos y condiciones del programa** — cómo se calcula, cuándo se paga, y que el estimado del mes puede bajar. Más las columnas para guardar **cuándo** aceptó y **qué versión**. | decisión + redacción tuya | 🟡 depende de vos |
 | **5** | **Decidir cómo se entera de que tiene plata.** No hay correo transaccional ni notificaciones de ningún tipo en la app. Al arranque puede vivir solo adentro, pero hay que decidirlo. | decisión tuya | 🟡 depende de vos |
 | **6** | **La pantalla "Monetizar"** — las tres etapas del flujo de más abajo: datos y términos → qué le falta para clasificar → cuánto ganó y por qué. | 1, 2, 3, 4 | ❌ |

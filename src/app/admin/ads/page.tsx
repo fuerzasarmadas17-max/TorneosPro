@@ -58,6 +58,7 @@ import {
   Users,
   BarChart3,
   HandCoins,
+  UserCheck,
 } from "lucide-react";
 import { formatCOP } from "@/lib/pricing";
 import { SPORTS } from "@/data/sports";
@@ -74,6 +75,7 @@ import { AdCampaignDetail } from "@/components/ads/ad-campaign-detail";
 import { AdInventory } from "@/components/ads/ad-inventory";
 import { useOrganizers } from "@/hooks/use-organizers";
 import { AdCampaignFilters } from "@/components/ads/ad-campaign-filters";
+import { OrganizerApprovals } from "@/components/ads/organizer-approvals";
 import {
   campaignFilterCounts,
   filterCampaigns,
@@ -112,6 +114,9 @@ interface CampaignRow {
   starts_at: string;
   ends_at: string;
   monthly_price: number;
+  /** Campaña social: no se cobra y no reparte. Explícito y no deducido de
+   *  `monthly_price = 0`, que también significa "comercial sin precio todavía". */
+  is_nonprofit: boolean;
   target_mode: "rule" | "list";
   target_sports: string[];
   target_statuses: string[];
@@ -248,6 +253,7 @@ function AdsContent() {
   /** Lo que hay que transferir en el período. Lo reporta el reparto, que es
    *  donde viven los cobros por campaña. */
   const [payableCop, setPayableCop] = useState(0);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
   const [tournaments, setTournaments] = useState<TournamentLite[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -260,6 +266,7 @@ function AdsContent() {
   const [whatsapp, setWhatsapp] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [price, setPrice] = useState("");
+  const [nonprofit, setNonprofit] = useState(false);
   const [startsAt, setStartsAt] = useState(todayInput());
   const [endsAt, setEndsAt] = useState(todayInput(30));
   const [mode, setMode] = useState<"rule" | "list">("rule");
@@ -492,6 +499,7 @@ function AdsContent() {
     setWhatsapp("");
     setImageUrl("");
     setPrice("");
+    setNonprofit(false);
     setStartsAt(todayInput());
     setEndsAt(todayInput(30));
     setMode("rule");
@@ -518,6 +526,7 @@ function AdsContent() {
     setWhatsapp(c.whatsapp || "");
     setImageUrl(c.image_url);
     setPrice(c.monthly_price ? String(c.monthly_price) : "");
+    setNonprofit(c.is_nonprofit ?? false);
     setStartsAt(isoToDateInput(c.starts_at));
     setEndsAt(isoToDateInput(c.ends_at));
     setMode(c.target_mode);
@@ -548,7 +557,11 @@ function AdsContent() {
       image_url: imageUrl.trim(),
       link_url: linkUrl.trim() || null,
       whatsapp: whatsapp.trim() || null,
-      monthly_price: numPrice,
+      // Una campaña social no tiene precio: si quedó uno escrito de antes, se
+      // descarta acá. Guardarlo sería dejar un número que el sorteo de avisos sí
+      // usa como peso, y que el panel mostraría como si fuera cobrable.
+      monthly_price: nonprofit ? 0 : numPrice,
+      is_nonprofit: nonprofit,
       starts_at: new Date(startsAt + "T00:00:00").toISOString(),
       ends_at: new Date(endsAt + "T23:59:59").toISOString(),
       target_mode: mode,
@@ -639,6 +652,10 @@ function AdsContent() {
 
   const [linkLoadingId, setLinkLoadingId] = useState<string | null>(null);
   const generatePaymentLink = async (c: CampaignRow) => {
+    if (c.is_nonprofit) {
+      toast.error("Es una campaña social: no se cobra, así que no lleva link de pago");
+      return;
+    }
     if (c.monthly_price <= 0) {
       toast.error("Define el precio de la campaña antes de generar el link de pago");
       return;
@@ -926,6 +943,14 @@ function AdsContent() {
             Reparto
             {payableCop > 0 && ` · ${formatCOP(payableCop)}`}
           </TabsTrigger>
+          {/* El contador de pendientes va en la pestaña porque una solicitud sin
+              revisar no avisa sola: el organizador queda esperando y nadie se
+              entera hasta que pregunta. */}
+          <TabsTrigger value="organizadores" className="flex-1">
+            <UserCheck className="h-4 w-4" />
+            Organizadores
+            {pendingApprovals > 0 && ` · ${pendingApprovals}`}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="campanas" className="space-y-3">
@@ -1033,10 +1058,19 @@ function AdsContent() {
                             {new Date(c.starts_at).toLocaleDateString()} –{" "}
                             {new Date(c.ends_at).toLocaleDateString()}
                           </span>
-                          {c.monthly_price > 0 && (
+                          {c.is_nonprofit ? (
+                            // Sin esto, una campaña social y una comercial a la
+                            // que le falta el precio se ven exactamente igual en
+                            // la lista: las dos sin monto.
                             <span className="font-medium text-foreground">
-                              ${c.monthly_price.toLocaleString()}/mes
+                              Social · no se cobra
                             </span>
+                          ) : (
+                            c.monthly_price > 0 && (
+                              <span className="font-medium text-foreground">
+                                ${c.monthly_price.toLocaleString()}/mes
+                              </span>
+                            )
                           )}
                           {c.contact && <span className="truncate">{c.contact}</span>}
                         </div>
@@ -1195,6 +1229,10 @@ function AdsContent() {
             />
           )}
         </TabsContent>
+
+        <TabsContent value="organizadores">
+          <OrganizerApprovals onPendingChange={setPendingApprovals} />
+        </TabsContent>
       </Tabs>
 
       {/* ===== Diálogo: desglose de una campaña ===== */}
@@ -1306,11 +1344,32 @@ function AdsContent() {
                 <Input
                   type="number"
                   min="0"
-                  value={price}
+                  value={nonprofit ? "" : price}
                   onChange={(e) => setPrice(e.target.value)}
-                  placeholder="0"
+                  placeholder={nonprofit ? "No aplica" : "0"}
+                  disabled={nonprofit}
                   className="h-9"
                 />
+                {/* La marca de campaña social va pegada al precio porque es lo
+                    que decide: sin ella, precio 0 es ambiguo — puede ser una
+                    campaña social o una comercial a la que todavía no le
+                    pusieron precio, y el organizador ve "Sin pagar" en las dos.
+                    Ver Por hacer/monetizacion-analitica-publicidad.md. */}
+                <label className="flex cursor-pointer items-start gap-2 pt-1 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={nonprofit}
+                    onChange={(e) => setNonprofit(e.target.checked)}
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
+                  />
+                  <span>
+                    Campaña social (no se cobra)
+                    <span className="block text-[11px] text-muted-foreground">
+                      El organizador la ve marcada como &quot;no genera pago&quot;
+                      en vez de &quot;Sin pagar&quot;.
+                    </span>
+                  </span>
+                </label>
               </div>
               <div className="space-y-2">
                 <Label className="text-xs">Vigencia desde</Label>
