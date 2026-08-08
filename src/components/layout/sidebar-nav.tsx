@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
+import { MONETIZAR_ENABLED } from "@/lib/monetizar-flag";
 import { Separator } from "@/components/ui/separator";
 import {
   LayoutDashboard,
@@ -26,7 +27,12 @@ const navItems = [
   { label: "Torneos", href: "/tournaments", icon: Trophy },
   { label: "Crear Torneo", href: "/tournaments/create", icon: PlusCircle },
   { label: "Logos", href: "/dashboard/logos", icon: Images },
-  { label: "Monetizar", href: "/dashboard/monetizar", icon: Coins },
+  // Solo aparece si el programa está prendido. Ver `lib/monetizar-flag.ts`:
+  // mientras no haya anunciantes pagando, mostrarla sería pedirle la cédula y
+  // la cuenta bancaria a alguien para una plata que todavía no puede llegar.
+  ...(MONETIZAR_ENABLED
+    ? [{ label: "Monetizar", href: "/dashboard/monetizar", icon: Coins }]
+    : []),
   { label: "Configuracion", href: "/dashboard/settings", icon: Settings },
 ];
 

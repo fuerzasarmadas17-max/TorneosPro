@@ -18,6 +18,7 @@ import { ApprovalNotice } from "@/components/monetizar/approval-notice";
 import { SettlementsHistory } from "@/components/monetizar/settlements-history";
 import { RequirementsProgress } from "@/components/monetizar/requirements-progress";
 import { maskAccount } from "@/lib/ad-analytics";
+import { MONETIZAR_ENABLED } from "@/lib/monetizar-flag";
 
 /**
  * Sección "Monetizar" del organizador.
@@ -51,13 +52,19 @@ function MonetizarContent() {
     error,
   } = useMyAdEarnings(month);
 
-  // El admin tiene su propio panel con el reparto de todos; acá no tiene nada
-  // que hacer. Mismo criterio que Logos y Configuración.
+  // Se sale de acá por dos motivos distintos:
+  //
+  //  - El programa está apagado (`MONETIZAR_ENABLED`). Esconder el enlace del
+  //    menú no alcanza: la URL sigue existiendo y se comparte por WhatsApp.
+  //  - Es admin, que tiene su propio panel con el reparto de todos. Mismo
+  //    criterio que Logos y Configuración.
   useEffect(() => {
-    if (user?.role === "admin") router.replace("/dashboard");
+    if (!MONETIZAR_ENABLED || user?.role === "admin") {
+      router.replace("/dashboard");
+    }
   }, [user, router]);
 
-  if (user?.role === "admin") return null;
+  if (!MONETIZAR_ENABLED || user?.role === "admin") return null;
 
   const heading = (
     <div className="mb-6 space-y-1">
