@@ -35,6 +35,12 @@ import {
 } from "@/data/helpers";
 import { Shuffle, LayoutList, CalendarIcon, Clock, MapPin, AlertTriangle, Filter } from "lucide-react";
 import { toast } from "sonner";
+import {
+  isSaneMatchDate,
+  INVALID_MATCH_DATE_MESSAGE,
+  MIN_MATCH_DATE,
+  MAX_MATCH_DATE,
+} from "@/lib/match-date";
 
 interface MatchScheduleProps {
   tournament: Tournament;
@@ -203,7 +209,12 @@ function MatchDisplay({
   })();
 
   // --- Default view: grouped by date ---
-  const allSections: { label: string; matches: Match[] }[] = [];
+  // `key` es la fecha cruda (yyyy-mm-dd) y `label` el título visible. Van
+  // separados a propósito: el título NO lleva el año, así que dos fechas
+  // distintas pueden producir el mismo texto. Usar el título como key de React
+  // hacía que dos bloques homónimos colisionaran y quedaran tarjetas huérfanas
+  // pegadas en pantalla al cambiar de pestaña. Ver `@/lib/match-date`.
+  const allSections: { key: string; label: string; matches: Match[] }[] = [];
 
   if (!isFiltered) {
     const dateGroups = new Map<string, Match[]>();
@@ -229,7 +240,7 @@ function MatchDisplay({
       const label = key === "__nodate__"
         ? "Sin fecha asignada"
         : formatDateFull(key);
-      allSections.push({ label, matches });
+      allSections.push({ key, label, matches });
     }
   }
 
@@ -280,6 +291,10 @@ function MatchDisplay({
   const handleRescheduleConfirm = (matchId: string) => {
     if (!rescheduleDate || !rescheduleTime || !rescheduleVenue.trim()) {
       toast.error("Completa fecha, hora y cancha para reprogramar");
+      return;
+    }
+    if (!isSaneMatchDate(rescheduleDate)) {
+      toast.error(INVALID_MATCH_DATE_MESSAGE);
       return;
     }
     updateMatchDetails(tournament.id, matchId, {
@@ -532,6 +547,8 @@ function MatchDisplay({
               <Input
                 type="date"
                 className="h-7 text-xs w-auto"
+                min={MIN_MATCH_DATE}
+                max={MAX_MATCH_DATE}
                 value={rescheduleDate}
                 onChange={(e) => setRescheduleDate(e.target.value)}
               />
@@ -554,7 +571,7 @@ function MatchDisplay({
               <Button
                 size="sm"
                 className="h-7 text-xs"
-                disabled={!rescheduleDate || !rescheduleTime || !rescheduleVenue.trim()}
+                disabled={!rescheduleDate || !isSaneMatchDate(rescheduleDate) || !rescheduleTime || !rescheduleVenue.trim()}
                 onClick={() => handleRescheduleConfirm(match.id)}
               >
                 Confirmar
@@ -689,7 +706,7 @@ function MatchDisplay({
             allSections
               .filter((section) => section.matches.length > 0)
               .map((section) => (
-              <Card key={section.label}>
+              <Card key={section.key}>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">{section.label}</CardTitle>
                 </CardHeader>

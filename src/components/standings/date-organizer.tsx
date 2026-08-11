@@ -10,6 +10,12 @@ import { getRoundLabel } from "@/data/helpers";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CalendarIcon, Clock, MapPin, Check, ArrowRight, Filter } from "lucide-react";
 import { toast } from "sonner";
+import {
+  isSaneMatchDate,
+  INVALID_MATCH_DATE_MESSAGE,
+  MIN_MATCH_DATE,
+  MAX_MATCH_DATE,
+} from "@/lib/match-date";
 
 /** Normalizes user input into HH:MM format. Accepts: "1630", "16:30", "430pm", "4:30 PM", etc. */
 function normalizeTime(raw: string): string {
@@ -495,10 +501,20 @@ function MatchRow({
 
   const home = match.homeTeamId ? getTeamById(match.homeTeamId) : null;
   const away = match.awayTeamId ? getTeamById(match.awayTeamId) : null;
-  const isReady = !!(date && time && venue.trim());
+  const isReady = !!(date && time && venue.trim()) && isSaneMatchDate(date);
 
-  const commitDate = () => {
+  /** Devuelve false (y avisa) si la fecha tecleada no es sana, para que
+   *  "Programar" no siga con los demás commits. El input nativo deja escribir
+   *  años de 6 dígitos aunque tenga min/max, así que la validación real va
+   *  acá. Ver `@/lib/match-date`. */
+  const commitDate = (): boolean => {
+    if (!isSaneMatchDate(date)) {
+      toast.error(INVALID_MATCH_DATE_MESSAGE);
+      setDate(match.date || "");
+      return false;
+    }
     updateMatchDetails(tournament.id, match.id, { date: date || undefined });
+    return true;
   };
 
   const commitTime = () => {
@@ -541,9 +557,11 @@ function MatchRow({
           <Input
             type="date"
             className="h-8 sm:h-7 text-sm sm:text-xs w-[130px]"
+            min={MIN_MATCH_DATE}
+            max={MAX_MATCH_DATE}
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            onBlur={commitDate}
+            onBlur={() => commitDate()}
           />
         </div>
         <div className="flex items-center gap-1.5">
@@ -578,7 +596,7 @@ function MatchRow({
           className="h-8 sm:h-7 text-xs gap-1"
           disabled={!isReady}
           onClick={() => {
-            commitDate();
+            if (!commitDate()) return;
             commitTime();
             commitVenue();
             onSchedule(match);

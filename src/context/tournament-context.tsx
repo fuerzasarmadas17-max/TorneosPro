@@ -22,6 +22,7 @@ import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
 import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
+import { isSaneMatchDate } from "@/lib/match-date";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/auth-context";
 
@@ -622,6 +623,21 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
 
   const updateMatchDetails = useCallback(
     async (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "round" | "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => {
+      // Candado final contra fechas imposibles (típico: año de 6 dígitos por
+      // un dedo en el <input type="date">). La UI ya avisa antes de llegar
+      // acá; esto solo evita que una fecha así se persista y descuadre el
+      // calendario. Se descarta el campo, no el update completo.
+      if (!isSaneMatchDate(updates.date)) {
+        console.warn(
+          `[updateMatchDetails] fecha descartada por fuera de rango: ${updates.date} (match ${matchId})`
+        );
+        // `delete` y no `date: undefined`: el optimistic update de abajo hace
+        // spread, y una clave presente con undefined borraría la fecha buena
+        // que ya tenía el partido en pantalla.
+        const sanitized = { ...updates };
+        delete sanitized.date;
+        updates = sanitized;
+      }
       await dbUpdateMatchDetails(matchId, updates);
       // Optimistic update
       setTournaments((prev) =>
