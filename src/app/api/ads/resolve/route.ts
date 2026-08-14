@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import {
   campaignMatchesTournament,
-  campaignWeight,
+  sharesFor,
   type TournamentTargeting,
 } from "@/lib/ads/targeting";
 
@@ -15,9 +15,10 @@ import {
  * salen al cliente. Usa service role porque `ad_campaigns` no tiene lectura
  * pública (mismo patrón que `/api/scorer/*`).
  *
- * El pick es ponderado por `monthly_price` (share of voice proporcional al
- * monto, decisión 2026-07-03). Cada carga/refresh vuelve a pegarle, así que
- * la rotación ocurre naturalmente por request.
+ * El pick sale de `sharesFor`: las comerciales con precio compiten por plata
+ * (share of voice proporcional al monto, decisión 2026-07-03), las sociales
+ * tienen su cupo reservado y las de $0 solo llenan hueco. Cada carga/refresh
+ * vuelve a pegarle, así que la rotación ocurre naturalmente por request.
  */
 
 interface CampaignRow {
@@ -26,6 +27,7 @@ interface CampaignRow {
   link_url: string | null;
   whatsapp: string | null;
   monthly_price: number;
+  is_nonprofit: boolean;
   target_mode: "rule" | "list";
   target_sports: string[];
   target_statuses: string[];
@@ -34,19 +36,26 @@ interface CampaignRow {
   target_municipalities: string[];
 }
 
-/** Pick ponderado: probabilidad de cada campaña = su peso / suma de pesos.
- *  El peso sale de `campaignWeight` (lib/ads/targeting) para que el share que
- *  muestra el inventario del admin sea el mismo con el que se sortea acá. */
-function weightedPick(pool: CampaignRow[]): CampaignRow | null {
+/** Sorteo por share: la probabilidad de cada campaña ES el porcentaje que le
+ *  asigna `sharesFor` (lib/ads/targeting) — la misma función que usa el
+ *  inventario del admin. No se recalcula acá a propósito: cuando el picker
+ *  tenía su propia cuenta de pesos, el panel podía decir "20%" mientras el
+ *  sorteo hacía otra cosa, y nadie se enteraba.
+ *
+ *  Las campañas con share 0 (relleno mientras haya alguien más) quedan fuera:
+ *  sin ese filtro, el redondeo del recorrido acumulado podía sacarlas igual. */
+function pickByShare(pool: CampaignRow[]): CampaignRow | null {
   if (pool.length === 0) return null;
-  const weights = pool.map((c) => campaignWeight(c.monthly_price));
-  const total = weights.reduce((a, b) => a + b, 0);
-  let r = Math.random() * total;
-  for (let i = 0; i < pool.length; i++) {
-    r -= weights[i];
-    if (r < 0) return pool[i];
+  const shares = sharesFor(pool);
+  const eligible = pool.filter((c) => (shares.get(c) ?? 0) > 0);
+  if (eligible.length === 0) return null;
+
+  let r = Math.random();
+  for (const c of eligible) {
+    r -= shares.get(c) ?? 0;
+    if (r < 0) return c;
   }
-  return pool[pool.length - 1];
+  return eligible[eligible.length - 1];
 }
 
 export async function GET(request: NextRequest) {
@@ -75,7 +84,7 @@ export async function GET(request: NextRequest) {
     supabaseAdmin
       .from("ad_campaigns")
       .select(
-        "id, image_url, link_url, whatsapp, monthly_price, target_mode, target_sports, target_statuses, target_scopes, target_departments, target_municipalities"
+        "id, image_url, link_url, whatsapp, monthly_price, is_nonprofit, target_mode, target_sports, target_statuses, target_scopes, target_departments, target_municipalities"
       )
       .eq("is_active", true)
       .lte("starts_at", nowIso)
@@ -107,7 +116,7 @@ export async function GET(request: NextRequest) {
     campaignMatchesTournament(c, t, listedIds.has(c.id))
   );
 
-  const chosen = weightedPick(pool);
+  const chosen = pickByShare(pool);
   if (!chosen) return NextResponse.json({ ad: null });
 
   return NextResponse.json({

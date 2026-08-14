@@ -28,6 +28,10 @@ export interface InventoryCampaignInput
     CampaignSchedule {
   advertiser_name: string;
   monthly_price: number;
+  /** Campaña social: cambia en qué liga entra al repartir apariciones
+   *  (`campaignTier`), así que el inventario la necesita para no mostrar un
+   *  share distinto del que sortea el endpoint público. */
+  is_nonprofit?: boolean;
 }
 
 export interface InventoryTournamentInput extends TournamentTargeting {
