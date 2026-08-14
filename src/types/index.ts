@@ -109,7 +109,8 @@ export type MatchEventType =
   | "goals_against" | "strikeout" | "ejection"
   | "blue_card"
   | "at_bat" | "walk" | "rbi" | "run_scored"
-  | "putout" | "winning_pitcher";
+  | "putout" | "winning_pitcher"
+  | "fair_play";
 
 export interface MatchEvent {
   id: string;
@@ -150,17 +151,37 @@ export function getWinPoints(sport: Sport): number {
   return sport === "microfutbol" ? 2 : 3;
 }
 
+/** Punto extra en la tabla para el equipo que se lleva el Juego Limpio del
+ *  partido. Se suma sobre lo que haya sacado en la cancha: ganando 3+1=4,
+ *  empatando 1+1=2, perdiendo 0+1=1. */
+export const FAIR_PLAY_POINTS = 1;
+
 export interface StatDefinition {
   key: MatchEventType;
   label: string;
   pluralLabel: string;
   sportDefaults: Sport[];
   computed?: boolean; // true = calculated from match scores, not from player events
+  /** Deportes donde la stat se OFRECE pero arranca DESMARCADA al crear el
+   *  torneo. `sportDefaults` sigue mandando qué se ofrece; esto solo saca el
+   *  pre-marcado. Para las que casi nadie usa (asistencias) o las que cambian
+   *  las reglas del torneo y nadie debería activar sin querer (juego limpio,
+   *  que suma un punto en la tabla). */
+  optInSports?: Sport[];
 }
 
 export const STAT_CATALOG: StatDefinition[] = [
   { key: "goal", label: "Gol", pluralLabel: "Goles", sportDefaults: ["futbol", "futsal", "microfutbol"] },
-  { key: "assist", label: "Asistencia", pluralLabel: "Asistencias", sportDefaults: ["futbol", "futsal", "microfutbol", "basketball", "beisbol", "softball", "wiffleball"] },
+  // Asistencia sigue disponible en fútbol, pero desmarcada: casi ningún
+  // organizador de fútbol la carga y ensuciaba el form de resultado con una
+  // fila que nadie llena. En basket y béisbol sí se usa, ahí sigue marcada.
+  { key: "assist", label: "Asistencia", pluralLabel: "Asistencias", sportDefaults: ["futbol", "futsal", "microfutbol", "basketball", "beisbol", "softball", "wiffleball"], optInSports: ["futbol", "futsal", "microfutbol"] },
+  // Juego Limpio: premio de EQUIPO, no de jugador. En cada partido se lo puede
+  // llevar uno de los dos (o ninguno) y vale un punto en la tabla. Por eso es
+  // `computed` —no sale de eventos de jugador sino de `match.fairPlayTeamId`—
+  // y `optInSports` en su único deporte: activarla cambia cómo se puntúa el
+  // torneo, así que nunca debe quedar prendida por descuido.
+  { key: "fair_play", label: "Juego Limpio", pluralLabel: "Juego Limpio", sportDefaults: ["futbol"], computed: true, optInSports: ["futbol"] },
   { key: "yellow_card", label: "Tarjeta Amarilla", pluralLabel: "Tarjetas Amarillas", sportDefaults: ["futbol", "futsal", "microfutbol", "volleyball"] },
   { key: "red_card", label: "Tarjeta Roja", pluralLabel: "Tarjetas Rojas", sportDefaults: ["futbol", "futsal", "microfutbol", "volleyball"] },
   { key: "blue_card", label: "Tarjeta Azul", pluralLabel: "Tarjetas Azules", sportDefaults: ["microfutbol"] },
@@ -187,10 +208,18 @@ export const STAT_CATALOG: StatDefinition[] = [
   { key: "rebound", label: "Rebote", pluralLabel: "Rebotes", sportDefaults: ["basketball"] },
 ];
 
+/** Las que arrancan MARCADAS al crear un torneo de este deporte. */
 export function getDefaultStats(sport: Sport): MatchEventType[] {
   return STAT_CATALOG
     .filter((s) => s.sportDefaults.includes(sport))
+    .filter((s) => !s.optInSports?.includes(sport))
     .map((s) => s.key);
+}
+
+/** Las que se OFRECEN para este deporte — marcadas y opt-in juntas. Es la
+ *  lista que pinta el selector de estadísticas del wizard. */
+export function getAvailableStats(sport: Sport): StatDefinition[] {
+  return STAT_CATALOG.filter((s) => s.sportDefaults.includes(sport));
 }
 
 export function getStatDefinition(key: string): StatDefinition | undefined {
@@ -220,6 +249,10 @@ export interface Match {
   /** Ganado por W: el rival no se presentó o fue descalificado. El marcador
    *  por sí solo no alcanza para saberlo (un 3-0 es un resultado normal). */
   walkover?: boolean;
+  /** Equipo que se llevó el Juego Limpio de este partido, o null/undefined si
+   *  no se le dio a nadie (es opcional). Solo se usa en torneos que tengan la
+   *  stat `fair_play` habilitada; vale FAIR_PLAY_POINTS en la tabla. */
+  fairPlayTeamId?: string | null;
 }
 
 export interface StandingsEntry {
@@ -232,6 +265,10 @@ export interface StandingsEntry {
   goalsAgainst: number;
   goalDifference: number;
   points: number;
+  /** Cuántos Juegos Limpios ganó. Ya están sumados dentro de `points`; se
+   *  guarda aparte para poder mostrarlos en su propia columna — si no, la
+   *  tabla mostraría más puntos de los que explican los resultados. */
+  fairPlay: number;
 }
 
 export interface BaseballStandingsEntry {

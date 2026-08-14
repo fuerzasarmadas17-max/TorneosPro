@@ -145,6 +145,22 @@ export function useTournamentStats(tournament: Tournament) {
         match.homeScore !== null &&
         match.awayScore !== null
       ) {
+        // Juego limpio: no sale del marcador sino del premio que cargó quien
+        // anotó el partido. `matchesPlayed` cuenta los partidos jugados por
+        // cada equipo (no los premios) para que el ranking pueda mostrar
+        // "3 de 8" sin recorrer los partidos otra vez.
+        if (computedStats.includes("fair_play")) {
+          const fpMap = teamMaps.get("fair_play")!;
+          const home = fpMap.get(match.homeTeamId);
+          const away = fpMap.get(match.awayTeamId);
+          if (home) home.matchesPlayed++;
+          if (away) away.matchesPlayed++;
+          if (match.fairPlayTeamId) {
+            const winner = fpMap.get(match.fairPlayTeamId);
+            if (winner) winner.value++;
+          }
+        }
+
         if (computedStats.includes("goals_against")) {
           const gaMap = teamMaps.get("goals_against")!;
           const home = gaMap.get(match.homeTeamId);
@@ -207,12 +223,15 @@ export function useTournamentStats(tournament: Tournament) {
         if (def.computed) {
           const teamMap = teamMaps.get(statKey);
           if (!teamMap) return null;
-          // goals_against: sort ascending (fewer is better)
+          // Cada stat de equipo tiene su propio "mejor": en malla menos
+          // vencida gana quien menos goles recibió, en juego limpio quien más
+          // premios juntó.
           // Sin recortar: quien consume decide cuántos mostrar. Recortar acá
           // rompía el filtro por equipo (ver `leaders` más abajo).
+          const higherIsBetter = statKey === "fair_play";
           const teamLeaders = Array.from(teamMap.values())
             .filter((t) => t.matchesPlayed > 0)
-            .sort((a, b) => a.value - b.value);
+            .sort((a, b) => (higherIsBetter ? b.value - a.value : a.value - b.value));
 
           return {
             statKey,

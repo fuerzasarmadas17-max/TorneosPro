@@ -40,6 +40,7 @@ import { dedupePlayersByName, buildPlayerNameOptions, normalizePlayerName } from
 import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
 import { fetchTeamsByIds } from "@/lib/db/teams";
 import { PlayerCombobox } from "./player-combobox";
+import { FairPlayPicker } from "./fair-play-picker";
 import {
   Dialog,
   DialogContent,
@@ -92,6 +93,11 @@ export function MatchResultForm({
     }))
   );
   const [error, setError] = useState("");
+  // Equipo que se lleva el juego limpio, null = a nadie. Arranca con lo que
+  // ya tenga el partido para que corregir un resultado no borre el premio.
+  const [fairPlayTeamId, setFairPlayTeamId] = useState<string | null>(
+    match.fairPlayTeamId ?? null
+  );
   // null = no hay W pendiente de confirmar; true/false = a quién se le daría.
   const [walkoverWinnerIsHome, setWalkoverWinnerIsHome] = useState<boolean | null>(null);
   // 4 pasos de planilla: 1=local ofensiva, 2=local defensiva,
@@ -125,6 +131,7 @@ export function MatchResultForm({
   );
 
   const stats = enabledStats || [];
+  const showFairPlay = stats.includes("fair_play");
   const isBaseball = sport ? getSportCategory(sport) === "baseball" : false;
   const useScoresheet = isBaseball;
   const isVolleyball = sport === "volleyball";
@@ -369,7 +376,11 @@ export function MatchResultForm({
       away,
       [],
       buildWalkoverSets(walkoverRule, winnerIsHome),
-      true
+      true,
+      // Se respeta lo que haya elegido en pantalla: un W no impide premiar al
+      // equipo que sí se presentó, y si no eligió nada va null y no premia a
+      // nadie.
+      showFairPlay ? fairPlayTeamId : undefined
     );
     setWalkoverWinnerIsHome(null);
     toast.success("Partido cargado como W");
@@ -426,7 +437,7 @@ export function MatchResultForm({
         }));
 
       void saveWithInscription(events, (finalEvents) => {
-        updateMatch(match.tournamentId, match.id, homeSetsWon, awaySetsWon, finalEvents, completedSets);
+        updateMatch(match.tournamentId, match.id, homeSetsWon, awaySetsWon, finalEvents, completedSets, false, showFairPlay ? fairPlayTeamId : undefined);
         toast.success("Resultado guardado");
         router.push(`/tournaments/${match.tournamentId}`);
       });
@@ -463,7 +474,9 @@ export function MatchResultForm({
     }
 
     void saveWithInscription(events, (finalEvents) => {
-      updateMatch(match.tournamentId, match.id, home, away, finalEvents);
+      // El juego limpio va como `undefined` cuando la stat no está habilitada:
+      // así un torneo sin el premio nunca pisa la columna.
+      updateMatch(match.tournamentId, match.id, home, away, finalEvents, undefined, false, showFairPlay ? fairPlayTeamId : undefined);
       toast.success("Resultado guardado");
       router.push(`/tournaments/${match.tournamentId}`);
     });
@@ -628,6 +641,20 @@ export function MatchResultForm({
                 />
               </div>
             </div>
+          )}
+
+          {showFairPlay && (
+            <>
+              <Separator />
+              <FairPlayPicker
+                homeTeamId={match.homeTeamId}
+                awayTeamId={match.awayTeamId}
+                homeTeamName={homeTeam?.name || "Local"}
+                awayTeamName={awayTeam?.name || "Visitante"}
+                value={fairPlayTeamId}
+                onChange={setFairPlayTeamId}
+              />
+            </>
           )}
 
           {/* Baseball scoresheet mode - step by step. Siempre se muestra

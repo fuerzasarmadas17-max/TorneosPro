@@ -16,7 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { getWinPoints, Tournament } from "@/types";
+import { FAIR_PLAY_POINTS, getWinPoints, Tournament } from "@/types";
 import { getSportInfo } from "@/data/sports";
 import { useStandings } from "@/hooks/use-standings";
 import { useTournaments } from "@/context/tournament-context";
@@ -33,6 +33,7 @@ interface StandingsTableProps {
 function ScoringRulesDialog({ tournament }: { tournament: Tournament }) {
   const winPoints = getWinPoints(tournament.sport);
   const sportLabel = getSportInfo(tournament.sport)?.label ?? "Fútbol";
+  const showFairPlay = !!tournament.enabledStats?.includes("fair_play");
   return (
     <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden grid-rows-[auto_minmax(0,1fr)]">
       <DialogHeader>
@@ -62,9 +63,25 @@ function ScoringRulesDialog({ tournament }: { tournament: Tournament }) {
                   <td className="px-3 py-2">Derrota</td>
                   <td className="text-center px-3 py-2 text-muted-foreground">0 pts</td>
                 </tr>
+                {showFairPlay && (
+                  <tr className="border-t bg-emerald-50 dark:bg-emerald-950/30">
+                    <td className="px-3 py-2">Juego Limpio</td>
+                    <td className="text-center px-3 py-2 font-bold text-emerald-600">
+                      +{FAIR_PLAY_POINTS} pt
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
+          {showFairPlay && (
+            <p className="text-xs text-muted-foreground mt-2">
+              El juego limpio es un premio de equipo: en cada partido se lo
+              puede llevar uno de los dos, o ninguno. El punto se suma encima
+              del resultado, así que el equipo premiado hace {winPoints + FAIR_PLAY_POINTS} si
+              gana, 2 si empata y 1 si pierde.
+            </p>
+          )}
         </div>
 
         <div>
@@ -77,6 +94,12 @@ function ScoringRulesDialog({ tournament }: { tournament: Tournament }) {
             <span className="font-mono font-medium">GF</span><span>Goles a favor</span>
             <span className="font-mono font-medium">GC</span><span>Goles en contra</span>
             <span className="font-mono font-medium">DG</span><span>Diferencia de goles (GF – GC)</span>
+            {showFairPlay && (
+              <>
+                <span className="font-mono font-medium">JL</span>
+                <span>Juegos limpios ganados (ya sumados en Pts)</span>
+              </>
+            )}
             <span className="font-mono font-bold">Pts</span><span>Puntos en la tabla</span>
           </div>
         </div>
@@ -102,6 +125,10 @@ function ScoringRulesDialog({ tournament }: { tournament: Tournament }) {
 export function StandingsTable({ tournament }: StandingsTableProps) {
   const standings = useStandings(tournament);
   const { getTeamById } = useTournaments();
+  // Con juego limpio, los puntos ya no se explican solo con PG/PE: un equipo
+  // con 3 victorias puede mostrar 10 pts. La columna JL es la que hace que la
+  // cuenta cierre a la vista.
+  const showFairPlay = !!tournament.enabledStats?.includes("fair_play");
 
   return (
     <div className="space-y-2">
@@ -131,6 +158,9 @@ export function StandingsTable({ tournament }: StandingsTableProps) {
               <TableHead className="text-center w-10">GF</TableHead>
               <TableHead className="text-center w-10">GC</TableHead>
               <TableHead className="text-center w-10">DG</TableHead>
+              {showFairPlay && (
+                <TableHead className="text-center w-10">JL</TableHead>
+              )}
               <TableHead className="text-center w-12 font-bold">Pts</TableHead>
             </TableRow>
           </TableHeader>
@@ -162,6 +192,11 @@ export function StandingsTable({ tournament }: StandingsTableProps) {
                       ? `+${entry.goalDifference}`
                       : entry.goalDifference}
                   </TableCell>
+                  {showFairPlay && (
+                    <TableCell className="text-center text-emerald-600 font-medium">
+                      {entry.fairPlay > 0 ? `+${entry.fairPlay}` : "—"}
+                    </TableCell>
+                  )}
                   <TableCell className="text-center font-bold">
                     {entry.points}
                   </TableCell>

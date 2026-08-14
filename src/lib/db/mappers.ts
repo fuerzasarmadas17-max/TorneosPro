@@ -197,6 +197,7 @@ export function mapMatch(row: Record<string, unknown>): Match {
     phase: (row.phase as MatchPhase) ?? undefined,
     groupId: (row.group_id as string) ?? undefined,
     walkover: (row.walkover as boolean) ?? undefined,
+    fairPlayTeamId: (row.fair_play_team_id as string) ?? null,
   };
 }
 
@@ -306,6 +307,7 @@ export function toDbMatch(m: Partial<Match>): Record<string, unknown> {
   if (m.phase !== undefined) db.phase = m.phase;
   if (m.groupId !== undefined) db.group_id = m.groupId;
   if (m.walkover !== undefined) db.walkover = m.walkover;
+  if (m.fairPlayTeamId !== undefined) db.fair_play_team_id = m.fairPlayTeamId;
   return db;
 }
 

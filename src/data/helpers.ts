@@ -1,4 +1,4 @@
-import { getWinPoints, Match, MatchPhase, Sport, StandingsEntry, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, User } from "@/types";
+import { FAIR_PLAY_POINTS, getWinPoints, Match, MatchEventType, MatchPhase, Sport, StandingsEntry, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, User } from "@/types";
 
 /**
  * Pieza I: identify the winner of the final series, if any.
@@ -127,7 +127,7 @@ export function getClassifiedTeamsRanked(
     );
     return {
       group,
-      ranked: rankTeamsInGroup(group.teamIds, groupMatches, tournament.sport),
+      ranked: rankTeamsInGroup(group.teamIds, groupMatches, tournament.sport, fairPlayEnabled(tournament)),
     };
   });
 
@@ -552,10 +552,21 @@ export function getRoundLabel(round: number, totalRounds: number): string {
   return `Ronda ${round}`;
 }
 
+/** El torneo premia el juego limpio (la stat está habilitada). */
+export function fairPlayEnabled(tournament: {
+  enabledStats?: MatchEventType[];
+}): boolean {
+  return !!tournament.enabledStats?.includes("fair_play");
+}
+
 export function rankTeamsInGroup(
   teamIds: string[],
   matches: Match[],
-  sport: Sport = "futbol"
+  sport: Sport = "futbol",
+  /** El torneo tiene la stat `fair_play` habilitada. Si no, el punto del juego
+   *  limpio no se suma aunque la columna traiga un equipo — así un torneo que
+   *  probó la stat y la apagó vuelve a clasificar con los puntos de cancha. */
+  fairPlayEnabled = false
 ): string[] {
   const winPoints = getWinPoints(sport);
   const entries: Record<string, StandingsEntry> = {};
@@ -565,6 +576,7 @@ export function rankTeamsInGroup(
       teamId,
       played: 0, won: 0, drawn: 0, lost: 0,
       goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0,
+      fairPlay: 0,
     };
   }
 
@@ -595,6 +607,17 @@ export function rankTeamsInGroup(
     } else {
       home.drawn++; away.drawn++;
       home.points += 1; away.points += 1;
+    }
+
+    // Juego limpio: un punto para el equipo premiado, encima de lo que sacó
+    // en la cancha. `fairPlayTeamId` puede apuntar a un equipo que ya no está
+    // en el grupo (reasignaciones), por eso el lookup puede dar undefined.
+    if (fairPlayEnabled && match.fairPlayTeamId) {
+      const fp = entries[match.fairPlayTeamId];
+      if (fp) {
+        fp.fairPlay++;
+        fp.points += FAIR_PLAY_POINTS;
+      }
     }
   }
 
@@ -721,7 +744,7 @@ export function fillPlayoffBracket(tournament: Tournament, phaseNumber?: number)
     const groupMatches = tournament.matches.filter(
       (m) => m.phase === "group" && m.groupId === group.id
     );
-    return rankTeamsInGroup(group.teamIds, groupMatches, tournament.sport);
+    return rankTeamsInGroup(group.teamIds, groupMatches, tournament.sport, fairPlayEnabled(tournament));
   });
 
   // Collect advancing teams ordered by seed
@@ -862,7 +885,7 @@ export function fillPhase2Groups(
     const groupMatches = tournament.matches.filter(
       (m) => m.phase === "group" && m.groupId === group.id
     );
-    return rankTeamsInGroup(group.teamIds, groupMatches, tournament.sport);
+    return rankTeamsInGroup(group.teamIds, groupMatches, tournament.sport, fairPlayEnabled(tournament));
   });
 
   // Collect advancing teams (interleave by seed position). Each group can

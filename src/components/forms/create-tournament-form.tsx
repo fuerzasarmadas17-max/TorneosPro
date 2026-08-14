@@ -24,7 +24,15 @@ import { useAuth } from "@/context/auth-context";
 import { useTournaments } from "@/context/tournament-context";
 import { SPORTS } from "@/data/sports";
 import { SCOPES, DEPARTMENTS, getDepartment } from "@/data/colombia";
-import { Sport, TournamentFormat, TournamentScope, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, MatchEventType, STAT_CATALOG, getDefaultStats } from "@/types";
+import { Sport, TournamentFormat, TournamentScope, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, MatchEventType, getAvailableStats, getDefaultStats, getWinPoints, FAIR_PLAY_POINTS } from "@/types";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Minus, Trophy, ListOrdered, Network } from "lucide-react";
 import { getTournamentPriceInfo, TournamentPriceInfo, checkFreeTier, FREE_TIER_LIMITS, distributeTeamsToGroups } from "@/lib/pricing";
@@ -212,6 +220,8 @@ export function CreateTournamentForm() {
   const [municipality, setMunicipality] = useState("");
   const [error, setError] = useState("");
   const [showCostDialog, setShowCostDialog] = useState(false);
+  // Confirmación de "Juego Limpio": prenderla cambia la puntuación del torneo.
+  const [confirmFairPlay, setConfirmFairPlay] = useState(false);
   const [priceInfo, setPriceInfo] = useState<TournamentPriceInfo | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -1311,7 +1321,7 @@ export function CreateTournamentForm() {
               </div>
 
               {/* Stats Selection */}
-              {sport && STAT_CATALOG.some((s) => s.sportDefaults.includes(sport as Sport)) && (
+              {sport && getAvailableStats(sport as Sport).length > 0 && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="font-semibold text-lg">Estadísticas del Torneo</h3>
@@ -1323,21 +1333,27 @@ export function CreateTournamentForm() {
                     Selecciona que eventos se pueden registrar en los partidos
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {STAT_CATALOG
-                      .filter((stat) => stat.sportDefaults.includes(sport as Sport))
+                    {getAvailableStats(sport as Sport)
                       .map((stat) => {
                         const isEnabled = enabledStats.includes(stat.key);
                         return (
                           <button
                             key={stat.key}
                             type="button"
-                            onClick={() =>
+                            onClick={() => {
+                              // Juego limpio cambia cómo se puntúa el torneo
+                              // entero, así que se confirma antes de prender.
+                              // Apagarlo no pregunta nada.
+                              if (stat.key === "fair_play" && !isEnabled) {
+                                setConfirmFairPlay(true);
+                                return;
+                              }
                               setEnabledStats((prev) =>
                                 isEnabled
                                   ? prev.filter((s) => s !== stat.key)
                                   : [...prev, stat.key]
-                              )
-                            }
+                              );
+                            }}
                             className={`text-left text-sm px-3 py-2 rounded-lg border transition-colors ${
                               isEnabled
                                 ? "bg-primary/10 border-primary text-primary font-medium"
@@ -1455,6 +1471,81 @@ export function CreateTournamentForm() {
         </CardContent>
       </form>
     </Card>
+
+    <Dialog open={confirmFairPlay} onOpenChange={setConfirmFairPlay}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Juego Limpio suma puntos en la tabla</DialogTitle>
+          <DialogDescription>
+            No es una estadística más: cambia cómo se puntúa el torneo.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <p>
+            En cada partido, el que carga el resultado puede darle el juego
+            limpio a uno de los dos equipos (o a ninguno). Ese equipo se lleva{" "}
+            <span className="font-semibold">
+              {FAIR_PLAY_POINTS} punto extra
+            </span>{" "}
+            encima de lo que haya hecho en la cancha:
+          </p>
+          <div className="rounded-lg border overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-muted/50 text-xs">
+                  <th className="text-left px-3 py-1.5 font-medium">
+                    Resultado
+                  </th>
+                  <th className="text-center px-3 py-1.5 font-medium">
+                    Normal
+                  </th>
+                  <th className="text-center px-3 py-1.5 font-medium">
+                    Con juego limpio
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { label: "Gana", base: sport ? getWinPoints(sport as Sport) : 3 },
+                  { label: "Empata", base: 1 },
+                  { label: "Pierde", base: 0 },
+                ].map((r) => (
+                  <tr key={r.label} className="border-t">
+                    <td className="px-3 py-1.5">{r.label}</td>
+                    <td className="text-center px-3 py-1.5 text-muted-foreground">
+                      {r.base}
+                    </td>
+                    <td className="text-center px-3 py-1.5 font-bold text-emerald-600">
+                      {r.base + FAIR_PLAY_POINTS}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-muted-foreground text-xs">
+            La tabla de posiciones va a mostrar una columna JL con los juegos
+            limpios de cada equipo, para que se entienda de dónde salen los
+            puntos. Activala solo si tu torneo premia el juego limpio.
+          </p>
+        </div>
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button variant="outline" onClick={() => setConfirmFairPlay(false)}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={() => {
+              setEnabledStats((prev) =>
+                prev.includes("fair_play") ? prev : [...prev, "fair_play"]
+              );
+              setConfirmFairPlay(false);
+            }}
+          >
+            Entiendo, activar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     {priceInfo && (
       <TournamentCostDialog

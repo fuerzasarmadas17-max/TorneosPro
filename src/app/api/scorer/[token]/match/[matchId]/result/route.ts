@@ -71,6 +71,7 @@ export async function POST(
     sets?: SetInput[];
     events?: EventInput[];
     walkover?: boolean;
+    fairPlayTeamId?: string | null;
   };
   try {
     body = await request.json();
@@ -116,6 +117,23 @@ export async function POST(
     return NextResponse.json({ error: "Match de otro torneo" }, { status: 403 });
   }
 
+  // Juego limpio: el premio es de uno de los dos equipos del partido, o de
+  // nadie. Se valida contra el partido y no contra lo que mande el cliente —
+  // sin esto, un token válido podría escribirle el premio a un equipo de otro
+  // torneo y regalarle un punto en una tabla ajena.
+  const fairPlayTeamId =
+    body.fairPlayTeamId === undefined ? undefined : body.fairPlayTeamId || null;
+  if (
+    fairPlayTeamId != null &&
+    fairPlayTeamId !== match.home_team_id &&
+    fairPlayTeamId !== match.away_team_id
+  ) {
+    return NextResponse.json(
+      { error: "Juego limpio con equipo ajeno al partido" },
+      { status: 400 }
+    );
+  }
+
   // Determinar winner_id (igual lógica que el form actual: mayor score gana;
   // empate → null).
   const winnerId =
@@ -137,6 +155,9 @@ export async function POST(
       // mal cargado como W lo desmarca. El cliente manda el marcador
       // reglamentario; acá solo registramos la marca.
       walkover: body.walkover === true,
+      ...(fairPlayTeamId !== undefined
+        ? { fair_play_team_id: fairPlayTeamId }
+        : {}),
       result_entered_by_name: scorerName,
       result_entered_via_token: token,
       updated_at: new Date().toISOString(),

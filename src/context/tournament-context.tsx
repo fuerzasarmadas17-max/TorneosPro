@@ -125,7 +125,10 @@ interface TournamentContextType {
     events?: MatchEvent[],
     sets?: VolleyballSet[],
     /** true = ganado por W (el rival no se presentó). */
-    walkover?: boolean
+    walkover?: boolean,
+    /** Equipo que ganó el Juego Limpio del partido, null si no se le dio a
+     *  nadie. `undefined` deja la columna como estaba. */
+    fairPlayTeamId?: string | null
   ) => Promise<void>;
   /** Apply an externally-sourced match update (Realtime channel). Only
    *  patches local state — does NOT write to the DB. The patch comes from
@@ -1510,7 +1513,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       awayScore: number,
       events?: MatchEvent[],
       sets?: VolleyballSet[],
-      walkover = false
+      walkover = false,
+      fairPlayTeamId?: string | null
     ) => {
       setTournaments((prev) =>
         prev.map((t) => {
@@ -1580,6 +1584,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
               events: events || [],
               ...(sets ? { sets } : {}),
               walkover,
+              ...(fairPlayTeamId !== undefined ? { fairPlayTeamId } : {}),
             };
           });
 
@@ -1798,7 +1803,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
             : null;
       })();
 
-      await dbUpdateMatchResult(matchId, homeScore, awayScore, winnerId, events, sets, undefined, walkover);
+      await dbUpdateMatchResult(matchId, homeScore, awayScore, winnerId, events, sets, undefined, walkover, fairPlayTeamId);
     },
     [tournaments]
   );

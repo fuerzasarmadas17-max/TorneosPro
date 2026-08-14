@@ -1,9 +1,13 @@
 import { useMemo } from "react";
-import { getWinPoints, StandingsEntry, Tournament } from "@/types";
+import { FAIR_PLAY_POINTS, getWinPoints, StandingsEntry, Tournament } from "@/types";
 
 export function useStandings(tournament: Tournament): StandingsEntry[] {
   return useMemo(() => {
     const winPoints = getWinPoints(tournament.sport);
+    // El punto del juego limpio solo cuenta si el torneo tiene la stat
+    // prendida. Si se apagó, la tabla vuelve a los puntos de cancha aunque
+    // los partidos conserven el premio marcado.
+    const fairPlayOn = !!tournament.enabledStats?.includes("fair_play");
     const dqTeams = new Set(tournament.disqualifiedTeamIds || []);
     const entries: Record<string, StandingsEntry> = {};
 
@@ -19,6 +23,7 @@ export function useStandings(tournament: Tournament): StandingsEntry[] {
         goalsAgainst: 0,
         goalDifference: 0,
         points: 0,
+        fairPlay: 0,
       };
     }
 
@@ -61,6 +66,15 @@ export function useStandings(tournament: Tournament): StandingsEntry[] {
         away.drawn++;
         home.points += 1;
         away.points += 1;
+      }
+
+      // Juego limpio: punto extra al equipo premiado, encima de lo de cancha.
+      if (fairPlayOn && match.fairPlayTeamId) {
+        const fp = entries[match.fairPlayTeamId];
+        if (fp) {
+          fp.fairPlay++;
+          fp.points += FAIR_PLAY_POINTS;
+        }
       }
     }
 
@@ -146,5 +160,5 @@ export function useStandings(tournament: Tournament): StandingsEntry[] {
     }
 
     return result;
-  }, [tournament.matches, tournament.teamIds, tournament.disqualifiedTeamIds, tournament.sport]);
+  }, [tournament.matches, tournament.teamIds, tournament.disqualifiedTeamIds, tournament.sport, tournament.enabledStats]);
 }

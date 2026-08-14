@@ -78,7 +78,11 @@ export async function updateMatchResult(
   client: SupabaseClient = supabase,
   /** true = ganado por W. Se escribe SIEMPRE (no solo cuando es true) para
    *  que corregir un partido mal cargado como W lo desmarque. */
-  walkover = false
+  walkover = false,
+  /** Equipo que se llevó el Juego Limpio, o null para quitárselo a quien lo
+   *  tuviera. `undefined` no toca la columna: los flujos que no manejan juego
+   *  limpio (W automático por descalificación) no deben pisar el premio. */
+  fairPlayTeamId?: string | null
 ): Promise<boolean> {
   const { error } = await client
     .from("matches")
@@ -88,6 +92,9 @@ export async function updateMatchResult(
       winner_id: winnerId,
       status: "completed",
       walkover,
+      ...(fairPlayTeamId !== undefined
+        ? { fair_play_team_id: fairPlayTeamId }
+        : {}),
     })
     .eq("id", matchId);
 

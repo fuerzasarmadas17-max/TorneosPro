@@ -60,6 +60,7 @@ const SHORT_STAT_HEADER: Record<string, string> = {
   walk: "BB",
   run_scored: "R",
   at_bat: "AB",
+  fair_play: "JL",
 };
 const shortHeader = (statKey: string, fallback: string) =>
   SHORT_STAT_HEADER[statKey] ?? fallback;
