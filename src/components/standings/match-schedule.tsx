@@ -887,11 +887,15 @@ function RoundRobinEmptySchedule({
         matches = [];
     }
 
-    // Assign dates by round
-    matches = assignDatesToMatches(matches, tournament.startDate);
+    // Los partidos nacen SIN fecha, a propósito. Antes se les ponía una
+    // tentativa (inicio del torneo + 7 días por jornada) y salía peor el
+    // remedio: el organizador veía una fecha ya escrita, la daba por buena y
+    // sólo completaba hora y lugar — que sí venían en blanco. Resultado:
+    // partidos programados para un día que nadie eligió. Con el campo vacío,
+    // "Programar" no se habilita hasta que él mismo ponga fecha, hora y lugar.
     setTournamentMatches(tournament.id, matches);
     updateTournamentProps(tournament.id, { doubleRoundRobin });
-    toast.success("Calendario generado aleatoriamente");
+    toast.success("Calendario generado. Asigná fecha, hora y lugar en Fechas");
   };
 
   return (
@@ -954,35 +958,4 @@ function RoundRobinEmptySchedule({
       </Dialog>
     </div>
   );
-}
-
-
-// --- Date assignment helper ---
-
-function assignDatesToMatches(matches: Match[], startDate: string): Match[] {
-  const roundKeys = new Set<string>();
-  for (const m of matches) {
-    roundKeys.add(`${m.phase || "regular"}-${m.round}`);
-  }
-  const phaseOrder: Record<string, number> = { group: 0, regular: 1, playoff: 2 };
-  const sorted = Array.from(roundKeys).sort((a, b) => {
-    const [phaseA, roundA] = a.split("-");
-    const [phaseB, roundB] = b.split("-");
-    const po = (phaseOrder[phaseA] ?? 1) - (phaseOrder[phaseB] ?? 1);
-    if (po !== 0) return po;
-    return parseInt(roundA) - parseInt(roundB);
-  });
-
-  const dateMap = new Map<string, string>();
-  const base = new Date(startDate + "T12:00:00");
-  sorted.forEach((key, i) => {
-    const d = new Date(base);
-    d.setDate(d.getDate() + i * 7);
-    dateMap.set(key, d.toISOString().split("T")[0]);
-  });
-
-  return matches.map((m) => ({
-    ...m,
-    date: dateMap.get(`${m.phase || "regular"}-${m.round}`) || m.date,
-  }));
 }
