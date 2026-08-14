@@ -23,9 +23,9 @@ import { Label } from "@/components/ui/label";
 import { useTournaments } from "@/context/tournament-context";
 import { useAuth } from "@/context/auth-context";
 import {
-  getTier,
   getTournamentPriceInfo,
   TIER_LABELS,
+  TIER_ORDER,
   formatCOP,
 } from "@/lib/pricing";
 import {
@@ -242,7 +242,7 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
   };
 
   // Free add (no payment): genuine free add, or a 100%-bono upgrade.
-  const handleFreeAdd = async (setNewTier: boolean) => {
+  const handleFreeAdd = async () => {
     // Defensa: aunque el botón "Confirmar" está disabled si !allAssigned,
     // protegemos por si un bug de state desync llama esta fn directamente.
     // Sin este guard, equipos sin grupo quedan huérfanos en `tournament.
@@ -263,7 +263,13 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
     } else {
       await generateLigaMatches(teamIds);
     }
-    if (setNewTier || (currentTier && getTier(newTotal) !== currentTier)) {
+    // El plan solo SUBE, nunca baja. Antes esto escribía el tier del conteo
+    // nuevo a secas, así que un torneo Pro que había borrado equipos se
+    // degradaba solo a Medio al agregar uno — y en el siguiente intento el
+    // sistema le volvía a cobrar los $30.000 de un cupo que ya estaba pagado.
+    const currentIdx = TIER_ORDER.indexOf(currentTier ?? "free");
+    const newIdx = TIER_ORDER.indexOf(newTierInfo.tier);
+    if (newIdx > currentIdx) {
       await updateTournamentProps(tournament.id, {
         tier: newTierInfo.tier,
         price: newTierInfo.price,
@@ -313,7 +319,7 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
 
       // 100% bono (or no charge needed) → add for free and set the new tier.
       if (!data.needsPayment) {
-        await handleFreeAdd(true);
+        await handleFreeAdd();
         return;
       }
 
@@ -348,7 +354,7 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
     } else if (needsUpgrade) {
       handlePayRedirect();
     } else {
-      handleFreeAdd(false);
+      handleFreeAdd();
     }
   };
 
@@ -357,7 +363,7 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
     if (needsUpgrade) {
       handlePayRedirect();
     } else {
-      handleFreeAdd(false);
+      handleFreeAdd();
     }
   };
 

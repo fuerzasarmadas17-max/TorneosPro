@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { getTournamentPriceInfo } from "@/lib/pricing";
+import { getTournamentPriceInfo, TIER_PRICES } from "@/lib/pricing";
 import { Sport, TournamentTier } from "@/types";
 
 const INDIVIDUAL_SPORTS: Sport[] = ["tenis", "padel", "ping-pong"];
@@ -49,8 +49,17 @@ export async function computeUpgradeQuote(
   // A genuinely free tournament (free tier, no coupon) has no paid baseline.
   const hasPaidBaseline =
     Boolean(tournament.coupon_id) || tournament.plan === "paid";
+
+  // El cupo comprado se lee del `tier` guardado, NO del conteo actual de
+  // equipos. Si el organizador borró equipos, el cupo sigue siendo suyo: quien
+  // pagó Pro (17-24) y bajó a 16 no puede volver a pagar los $30.000 para
+  // llegar a 17. El `max` con el precio del conteo actual es un cinturón por si
+  // el `tier` quedó desactualizado hacia abajo.
+  const paidTierPrice = tournament.tier
+    ? (TIER_PRICES[tournament.tier as TournamentTier] ?? 0)
+    : 0;
   const listaOld = hasPaidBaseline
-    ? getTournamentPriceInfo(currentCount).price
+    ? Math.max(paidTierPrice, getTournamentPriceInfo(currentCount).price)
     : 0;
   const newInfo = getTournamentPriceInfo(newTotal);
   const listaNew = newInfo.price;
