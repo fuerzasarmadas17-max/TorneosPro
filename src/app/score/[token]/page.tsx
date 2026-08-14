@@ -26,10 +26,12 @@ import {
 import { dedupePlayersByName, buildPlayerNameOptions } from "@/lib/name-utils";
 import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
 import { PlayerCombobox } from "@/components/forms/player-combobox";
+import { FairPlayPicker } from "@/components/forms/fair-play-picker";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -53,6 +55,8 @@ interface ScorerMatch {
   time: string | null;
   venue: string | null;
   resultEnteredByName: string | null;
+  /** Equipo que ganó el Juego Limpio, null si no se le dio a nadie. */
+  fairPlayTeamId: string | null;
   events: {
     id: string;
     team_id: string;
@@ -110,6 +114,8 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
   const [error, setError] = useState<string | null>(null);
   const [scorerName, setScorerName] = useState<string>("");
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
+  // El anotador cerró su propio link con "Terminé mi labor".
+  const [finished, setFinished] = useState(false);
 
   // Cargar datos del link.
   const loadData = useCallback(async () => {
@@ -141,11 +147,16 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
     loadData();
   }, [loadData]);
 
-  // Restaurar nombre del scorer desde localStorage al cargar.
+  // Restaurar nombre del scorer desde localStorage al cargar. Junto con él,
+  // la marca de "ya terminé": si refresca después de cerrar, le mostramos la
+  // pantalla de gracias en vez del error genérico de link inválido.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const saved = window.localStorage.getItem(`scorer_name_${token}`);
     if (saved) setScorerName(saved);
+    if (window.localStorage.getItem(`scorer_finished_${token}`) === "1") {
+      setFinished(true);
+    }
   }, [token]);
 
   const handleNameSubmit = (name: string) => {
@@ -158,8 +169,39 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
     window.localStorage.setItem(`scorer_name_${token}`, trimmed);
   };
 
+  // Cierra el link desde el lado del anotador. Devuelve false si falló, para
+  // que la pantalla deje el diálogo abierto y pueda reintentar.
+  const handleFinish = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/scorer/${token}/finish`, { method: "POST" });
+      // 404 = el link ya no existe o ya estaba cerrado: para el anotador el
+      // resultado es el mismo, terminó igual.
+      if (!res.ok && res.status !== 404) {
+        toast.error("No pudimos cerrar el link. Probá de nuevo.");
+        return false;
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Sin conexión. Probá de nuevo.");
+      return false;
+    }
+    window.localStorage.setItem(`scorer_finished_${token}`, "1");
+    setFinished(true);
+    return true;
+  };
+
   if (loading) {
     return <FullScreenCentered icon={<Loader2 className="h-8 w-8 animate-spin" />} text="Cargando..." />;
+  }
+
+  if (finished) {
+    return (
+      <FullScreenCentered
+        icon={<CheckCircle2 className="h-12 w-12 text-green-600" />}
+        text={scorerName ? `¡Listo, ${scorerName}! Gracias.` : "¡Listo! Gracias."}
+        sub="Los resultados quedaron guardados para el organizador. Ya podés cerrar esta página."
+      />
+    );
   }
 
   if (error === "link-not-found") {
@@ -228,6 +270,7 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
       data={data}
       scorerName={scorerName}
       onSelectMatch={(id) => setActiveMatchId(id)}
+      onFinish={handleFinish}
       onChangeName={() => {
         window.localStorage.removeItem(`scorer_name_${token}`);
         setScorerName("");
@@ -293,13 +336,17 @@ function MatchListScreen({
   data,
   scorerName,
   onSelectMatch,
+  onFinish,
   onChangeName,
 }: {
   data: ScorerData;
   scorerName: string;
   onSelectMatch: (id: string) => void;
+  onFinish: () => Promise<boolean>;
   onChangeName: () => void;
 }) {
+  const [confirmFinish, setConfirmFinish] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const teamById = useMemo(() => {
     const map = new Map<string, ScorerTeam>();
     for (const t of data.teams) map.set(t.id, t);
@@ -327,6 +374,16 @@ function MatchListScreen({
   );
 
   const expiresAt = new Date(data.expiresAt);
+  const pendingCount = sortedMatches.filter((m) => m.status !== "completed").length;
+
+  const handleConfirmFinish = async () => {
+    setFinishing(true);
+    const ok = await onFinish();
+    setFinishing(false);
+    // Si falló dejamos el diálogo abierto: el toast ya explicó qué pasó y
+    // puede reintentar sin volver a buscar el botón.
+    if (ok) setConfirmFinish(false);
+  };
 
   return (
     <div className="max-w-md mx-auto px-4 py-6 space-y-5">
@@ -393,7 +450,14 @@ function MatchListScreen({
         })}
       </div>
 
-      <footer className="text-xs text-muted-foreground text-center space-y-2 pt-4 border-t">
+      <footer className="text-xs text-muted-foreground text-center space-y-3 pt-4 border-t">
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={() => setConfirmFinish(true)}
+        >
+          <CheckCircle2 className="h-4 w-4 mr-2" /> Terminé mi labor
+        </Button>
         <p>
           Este link expira el{" "}
           {expiresAt.toLocaleString("es-CO", {
@@ -408,6 +472,55 @@ function MatchListScreen({
           Cambiar nombre
         </button>
       </footer>
+
+      <Dialog open={confirmFinish} onOpenChange={setConfirmFinish}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>¿Terminaste de anotar?</DialogTitle>
+            <DialogDescription>
+              Los resultados se envían tal como están ahora. ¿Está todo
+              correcto?
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {pendingCount > 0 ? (
+              <>
+                Te {pendingCount === 1 ? "queda" : "quedan"}{" "}
+                <span className="font-semibold text-foreground">
+                  {pendingCount}{" "}
+                  {pendingCount === 1 ? "partido" : "partidos"} sin cargar
+                </span>
+                . Al cerrar no vas a poder seguir cargando ni corregir lo que ya
+                enviaste.
+              </>
+            ) : (
+              <>
+                Cargaste todos los partidos. Al cerrar no vas a poder corregir
+                lo que ya enviaste.
+              </>
+            )}{" "}
+            Si necesitás volver, pedile al organizador un link nuevo.
+          </p>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmFinish(false)}
+              disabled={finishing}
+            >
+              No, sigo anotando
+            </Button>
+            <Button onClick={handleConfirmFinish} disabled={finishing}>
+              {finishing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Cerrando...
+                </>
+              ) : (
+                "Sí, terminé"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -555,6 +668,13 @@ function MatchScreen({
     });
   }, [tournament.enabledStats]);
 
+  // Juego limpio: es `computed` (no sale de eventos de jugador), así que queda
+  // fuera de `enabledStats` de arriba y se pinta con su propio selector.
+  const showFairPlay = tournament.enabledStats.includes("fair_play");
+  const [fairPlayTeamId, setFairPlayTeamId] = useState<string | null>(
+    match.fairPlayTeamId ?? null
+  );
+
   const addEvent = (type: MatchEventType) => {
     setEventEntries((prev) => [
       ...prev,
@@ -617,6 +737,7 @@ function MatchScreen({
             : undefined,
           events: [],
           walkover: true,
+          ...(showFairPlay ? { fairPlayTeamId } : {}),
         }),
       });
       const json = await res.json();
@@ -713,6 +834,9 @@ function MatchScreen({
               type: e.type,
               paid: false,
             })),
+            // Solo se manda si el torneo premia el juego limpio: así el
+            // servidor no pisa la columna en los torneos que no lo usan.
+            ...(showFairPlay ? { fairPlayTeamId } : {}),
           }),
         }
       );
@@ -922,6 +1046,19 @@ function MatchScreen({
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {showFairPlay && (
+        <div className="rounded-lg border bg-card p-3">
+          <FairPlayPicker
+            homeTeamId={match.homeTeamId}
+            awayTeamId={match.awayTeamId}
+            homeTeamName={home?.name ?? "Local"}
+            awayTeamName={away?.name ?? "Visitante"}
+            value={fairPlayTeamId}
+            onChange={setFairPlayTeamId}
+          />
         </div>
       )}
 
