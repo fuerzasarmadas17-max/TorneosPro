@@ -10,11 +10,24 @@
 > (Nota menor: el comentario de `sport-images.ts` apunta a
 > `Por hacer/fotos-por-deporte.md`, que no existe — el archivo es este.)
 
+> 👉 **Para generarlas, usá `prompts-fotos-tarjetas.md`** (2026-08-14): trae
+> los 24 prompts de la Tanda 1 ya armados, listos para copiar y pegar uno por
+> uno, más qué herramienta conviene y cómo recortar. Este documento queda como
+> el "por qué" y la referencia del mecanismo.
+
 ## Qué es esto
 
-Son las fotos que van de fondo en la **tarjeta de cada torneo** (la portada y
-`/tournaments`) y en la **banda superior al abrir el torneo**. Es la misma
-foto en los dos lugares.
+Son las fotos que van de fondo en la **tarjeta de cada torneo** (la portada,
+`/tournaments` y el perfil del organizador) y en el **torneo destacado** de la
+portada. Es la misma foto en los dos lugares, recortada distinto.
+
+> ⚠️ **Corregido el 2026-08-14.** Antes acá decía que la foto también salía en
+> la "banda superior al abrir el torneo". **Eso ya no es cierto**: verificado
+> contra el código, `tournament-detail.tsx` no muestra ninguna foto. De ahí
+> salía la regla de "dejar despejado el tercio izquierdo" (para que el título
+> se leyera encima), que **ya no aplica**. La regla correcta hoy es **acción
+> centrada con aire a los dos lados**, porque el destacado recorta 15-20% de
+> cada borde. Ver `prompts-fotos-tarjetas.md`.
 
 **No confundir con las del hero**, que son las del banner grande de la
 portada: esas ya están (volleyball, fútbol, béisbol, softball, microfútbol) y
@@ -61,7 +74,13 @@ no se usaría nunca. El catálogo real está muy desbalanceado: de 21 torneos,
 10 son de volleyball, 4 de béisbol, 3 de fútbol, 3 de softball y 1 de
 microfútbol.
 
-### Tanda 1 — cubre 20 de los 21 torneos de hoy (24 fotos)
+> ⚠️ **El reparto de abajo quedó obsoleto el 2026-08-14.** El organizador
+> pidió otras categorías (volley playa, mamás, padres, jóvenes, mixtos) y el
+> plan se rehízo a **26 fotos**. El reparto vigente, con nombres de archivo y
+> prompts, está en **`prompts-fotos-tarjetas.md`**. Se deja lo de abajo solo
+> como registro de lo que se pensó primero.
+
+### ~~Tanda 1~~ (obsoleto — ver `prompts-fotos-tarjetas.md`)
 
 | Deporte | General | Masculino | Femenino | Infantil | Total |
 |---|---|---|---|---|---|
@@ -71,7 +90,7 @@ microfútbol.
 | softball | 1 | 1 | 2 | — | **4** |
 | microfutbol | 1 | 1 | — | 1 | **3** |
 
-### Tanda 2 — el resto, cuando aparezcan torneos (12 fotos)
+### ~~Tanda 2~~ (obsoleto)
 
 futsal, wiffleball, basketball, padel, ping-pong, tenis: **2 cada uno**
 (1 general + 1 infantil).
@@ -107,8 +126,8 @@ Uniformes lisos, SIN escudos, SIN números legibles, SIN nombres, SIN marcas.
 Sin texto de ningún tipo, sin logos, sin marcas de agua.
 Personas de rasgos latinoamericanos, no reconocibles, sin parecido a
 ninguna persona famosa.
-La acción ocupa el centro-derecha del encuadre; el tercio izquierdo queda
-más despejado.
+La acción va centrada, con aire a los dos lados: nada importante en el 20%
+del borde izquierdo ni en el 20% del derecho.
 ```
 
 **Negativos** (si el generador los acepta):
@@ -122,8 +141,9 @@ sin dedos de más, sin cuerpos incompletos
 ### Por qué cada regla
 
 - **8:3 panorámica** — es como recorta la tarjeta.
-- **Tercio izquierdo despejado** — la misma foto se usa en la banda superior
-  del torneo, donde la mitad izquierda la tapa el título.
+- **Acción centrada con aire a los lados** — la misma foto se usa en el
+  torneo destacado, que la recorta 15-20% por cada borde. Lo que sobrevive
+  siempre es el centro.
 - **Uniformes lisos sin escudos** — la foto se repite en torneos de
   organizadores distintos; un escudo inventado confunde. Además los kits
   reales son marca registrada.

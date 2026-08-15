@@ -49,17 +49,73 @@ export interface SportImage {
  * tarjeta cae al degradado de `SPORT_GRADIENTS`; sumar una foto es agregar el
  * archivo y su entrada acá, sin tocar ningún componente.
  *
- * Ver `Por hacer/fotos-por-deporte.md` para qué hay que producir.
+ * Ver `Por hacer/fotos-de-tarjetas.md` para el mecanismo y
+ * `Por hacer/prompts-fotos-tarjetas.md` para el prompt exacto con el que se
+ * generó cada una (útil si hay que rehacer alguna: reescribirlo de memoria
+ * pierde el par de colores, el ángulo y la jugada asignados).
+ *
+ * El `label` es lo único que lee el organizador en el selector, así que ahí
+ * viven las categorías finas ("Mamás", "Padres", "Jóvenes"): `category` solo
+ * tiene cuatro valores y agrupa, no describe.
+ *
+ * `beisbol`, `basketball`, `wiffleball`, `padel`, `ping-pong` y `tenis` siguen
+ * vacíos a propósito — sus fotos no se han generado todavía y esos deportes
+ * caen al degradado sin romper nada.
  */
 export const SPORT_IMAGES: Record<string, SportImage[]> = {
-  futbol: [],
-  futsal: [],
-  microfutbol: [],
-  beisbol: [],
-  softball: [],
-  wiffleball: [],
-  volleyball: [],
+  volleyball: [
+    { key: "volleyball-playa-1", file: "volleyball-playa-1.jpg", label: "Volley playa (hombres)", category: "general" },
+    { key: "volleyball-playa-2", file: "volleyball-playa-2.jpg", label: "Volley playa (mujeres)", category: "general" },
+    { key: "volleyball-mixto-1", file: "volleyball-mixto-1.jpg", label: "Mixto", category: "general" },
+    { key: "volleyball-masc-1", file: "volleyball-masc-1.jpg", label: "Masculino", category: "masculino" },
+    { key: "volleyball-jov-masc-1", file: "volleyball-jov-masc-1.jpg", label: "Jóvenes", category: "masculino" },
+    { key: "volleyball-padres-1", file: "volleyball-padres-1.jpg", label: "Padres", category: "masculino" },
+    { key: "volleyball-mamas-1", file: "volleyball-mamas-1.jpg", label: "Mamás", category: "femenino" },
+    { key: "volleyball-jov-fem-1", file: "volleyball-jov-fem-1.jpg", label: "Jóvenes", category: "femenino" },
+    { key: "volleyball-inf-1", file: "volleyball-inf-1.jpg", label: "Niños", category: "infantil" },
+    { key: "volleyball-inf-2", file: "volleyball-inf-2.jpg", label: "Niñas", category: "infantil" },
+  ],
+  softball: [
+    { key: "softball-masc-1", file: "softball-masc-1.jpg", label: "Hombres", category: "masculino" },
+    { key: "softball-masc-2", file: "softball-masc-2.jpg", label: "Hombres", category: "masculino" },
+    { key: "softball-jov-masc-1", file: "softball-jov-masc-1.jpg", label: "Jóvenes", category: "masculino" },
+    { key: "softball-jov-masc-2", file: "softball-jov-masc-2.jpg", label: "Jóvenes", category: "masculino" },
+    { key: "softball-fem-1", file: "softball-fem-1.jpg", label: "Mujeres", category: "femenino" },
+    { key: "softball-fem-2", file: "softball-fem-2.jpg", label: "Mujeres", category: "femenino" },
+    { key: "softball-jov-fem-1", file: "softball-jov-fem-1.jpg", label: "Jóvenes", category: "femenino" },
+    { key: "softball-jov-fem-2", file: "softball-jov-fem-2.jpg", label: "Jóvenes", category: "femenino" },
+  ],
+  microfutbol: [
+    { key: "microfutbol-masc-1", file: "microfutbol-masc-1.jpg", label: "Hombres", category: "masculino" },
+    { key: "microfutbol-masc-2", file: "microfutbol-masc-2.jpg", label: "Hombres", category: "masculino" },
+    { key: "microfutbol-fem-1", file: "microfutbol-fem-1.jpg", label: "Mujeres", category: "femenino" },
+    { key: "microfutbol-fem-2", file: "microfutbol-fem-2.jpg", label: "Mujeres", category: "femenino" },
+  ],
+  futsal: [
+    { key: "futsal-masc-1", file: "futsal-masc-1.jpg", label: "Hombres", category: "masculino" },
+    { key: "futsal-masc-2", file: "futsal-masc-2.jpg", label: "Hombres", category: "masculino" },
+    { key: "futsal-fem-1", file: "futsal-fem-1.jpg", label: "Mujeres", category: "femenino" },
+    { key: "futsal-fem-2", file: "futsal-fem-2.jpg", label: "Mujeres", category: "femenino" },
+  ],
+  futbol: [
+    { key: "futbol-masc-1", file: "futbol-masc-1.jpg", label: "Adultos", category: "masculino" },
+    { key: "futbol-masc-2", file: "futbol-masc-2.jpg", label: "Adultos", category: "masculino" },
+    { key: "futbol-jov-masc-1", file: "futbol-jov-masc-1.jpg", label: "Jóvenes", category: "masculino" },
+  ],
+  // Las cuatro son de menores a propósito: los cuatro torneos de béisbol en
+  // producción son Pony, Pre-Infantil, Infantil y Pre-Junior. No hay ninguno
+  // de adultos, así que una foto de adultos no le serviría a nadie. Se
+  // etiquetan por la jugada y no por edad porque a simple vista los chicos de
+  // 11 y los de 15 no se distinguen, y una etiqueta de edad que no se puede
+  // verificar en la foto confunde más de lo que ayuda.
+  beisbol: [
+    { key: "beisbol-inf-1", file: "beisbol-inf-1.jpg", label: "Lanzando", category: "infantil" },
+    { key: "beisbol-inf-2", file: "beisbol-inf-2.jpg", label: "Con el entrenador", category: "infantil" },
+    { key: "beisbol-inf-3", file: "beisbol-inf-3.jpg", label: "Robando base", category: "infantil" },
+    { key: "beisbol-inf-4", file: "beisbol-inf-4.jpg", label: "Bateando", category: "infantil" },
+  ],
   basketball: [],
+  wiffleball: [],
   padel: [],
   "ping-pong": [],
   tenis: [],
@@ -117,59 +173,34 @@ export function resolveSportImage(
 }
 
 /**
- * Asigna a cada torneo cuál de las fotos de su deporte le toca, para los que
- * no eligieron ninguna.
+ * Resuelve la foto de cada torneo: **solo la que eligió su organizador**.
+ * Sin elección explícita devuelve null, y la tarjeta cae al degradado del
+ * deporte.
  *
- * Determinístico y estable, igual que `buildTournamentColorMap()` en
- * `lib/tournament-colors.ts`: si la foto cambiara en cada recarga, el
- * visitante perdería el reconocimiento visual del torneo entre visitas.
+ * ⚠️ ANTES esto repartía por turnos: al torneo que no había elegido se le
+ * asignaba una foto cualquiera de su deporte, rotando para que dos vecinos no
+ * se repitieran. **Se quitó a pedido del organizador (2026-08-15)**, y el
+ * motivo importa para no reponerlo sin pensarlo:
  *
- * Se reparte por turnos dentro de cada deporte, sobre los ids ordenados: dos
- * torneos vecinos del mismo deporte nunca caen en la misma foto mientras haya
- * fotos disponibles, que es justo el caso feo (la fila de seis tarjetas de
- * béisbol clonadas del mockup oscuro).
+ * El reparto miraba el DEPORTE pero no la CATEGORÍA. Con 10 fotos de
+ * volleyball que van desde niñas hasta padres, a un torneo de mamás le podía
+ * tocar la foto de niños. Eso no se lee como "una foto genérica bonita", se
+ * lee como que el sistema se equivocó — y encima el organizador no tiene por
+ * qué saber que puede cambiarla.
  *
- * Si el torneo tiene `cardImage`, gana esa: la elección del organizador
- * manda sobre el reparto automático.
+ * El degradado no miente: dice "todavía no hay foto elegida" y ya. Si algún
+ * día se repone el reparto, tiene que filtrar por `category` primero.
  */
 export function buildSportImageMap(
   tournaments: { id: string; sport: string; cardImage?: string | null }[]
 ): Map<string, string | null> {
   const map = new Map<string, string | null>();
-  const bySport = new Map<string, string[]>();
-
-  // Se descartan los ids repetidos: la portada le pasa la grilla y los
-  // destacados juntos, y un torneo puede estar en las dos listas. Contarlo
-  // dos veces correría el reparto de todos los que vienen detrás.
-  const seen = new Set<string>();
+  // La portada pasa la grilla y los destacados juntos, así que un mismo
+  // torneo puede venir dos veces. `map.has` lo resuelve solo.
   for (const t of tournaments) {
-    if (seen.has(t.id)) continue;
-    seen.add(t.id);
-
-    // Elección explícita del organizador: no entra al reparto automático.
-    const chosen = resolveSportImage(t.sport, t.cardImage);
-    if (chosen) {
-      map.set(t.id, chosen);
-      continue;
-    }
-
-    const ids = bySport.get(t.sport);
-    if (ids) ids.push(t.id);
-    else bySport.set(t.sport, [t.id]);
+    if (map.has(t.id)) continue;
+    map.set(t.id, resolveSportImage(t.sport, t.cardImage));
   }
-
-  for (const [sport, ids] of bySport) {
-    const photos = SPORT_IMAGES[sport] ?? [];
-    // Ordenar por id, no por el orden de render: así el reparto no depende
-    // del filtro ni del orden en que vinieron de la base.
-    [...ids].sort().forEach((id, i) => {
-      map.set(
-        id,
-        photos.length > 0 ? `/sports/${photos[i % photos.length].file}` : null
-      );
-    });
-  }
-
   return map;
 }
 
