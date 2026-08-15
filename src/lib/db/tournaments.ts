@@ -291,7 +291,13 @@ export async function createTournament(
     .select("id")
     .single();
 
-  if (error || !inserted) return null;
+  if (error || !inserted) {
+    // Sin este log el fallo era invisible: el llamador recibía null y no había
+    // forma de saber por qué. Así fue como un enum incompleto (`fair_play`)
+    // rompió la creación de torneos de fútbol durante un día sin dejar rastro.
+    console.error("createTournament: falló el insert del torneo", error);
+    return null;
+  }
   const tournamentId = inserted.id as string;
 
   // Insert tournament_teams

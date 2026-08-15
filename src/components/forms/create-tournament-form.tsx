@@ -606,6 +606,36 @@ export function CreateTournamentForm() {
 
       const newTournament = await addTournament(tournament);
 
+      // Si el insert del torneo falló, `addTournament` devuelve null EN
+      // SILENCIO (createTournament() se traga el error de Postgres). Sin este
+      // guard el código seguía derecho hasta el `toast.success` y el
+      // `router.push("/dashboard")`: el organizador veía "Torneo creado
+      // correctamente", aterrizaba en un dashboard vacío, y quedaba con el
+      // cupón quemado y los equipos sueltos. Pasó de verdad el 2026-08-14 con
+      // un torneo de fútbol que activó Juego Limpio (el valor `fair_play` no
+      // existía en el enum de la base).
+      //
+      // Se devuelve el cupón porque es lo único que el organizador no puede
+      // recuperar solo: sin esto tiene que pedir otro código.
+      if (!newTournament?.id) {
+        if (couponId) {
+          await supabase
+            .from("coupons")
+            .update({ used_by: null, used_at: null })
+            .eq("id", couponId);
+        }
+        // Los equipos ya insertados quedarían sueltos para siempre. Es best
+        // effort: si RLS no deja borrarlos, son filas inertes.
+        if (dbTeamIds.length > 0) {
+          await supabase.from("teams").delete().in("id", dbTeamIds);
+        }
+        toast.error(
+          "No se pudo crear el torneo. Tu código quedó disponible — intentá de nuevo."
+        );
+        setCreating(false);
+        return;
+      }
+
       // Link coupon to tournament (used_by/used_at already set above)
       if (couponId && newTournament?.id) {
         await supabase
