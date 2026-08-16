@@ -25,10 +25,10 @@ export function ReferrerList({ data }: ReferrerListProps) {
             {data.map((entry) => (
               <div
                 key={entry.referrer}
-                className="flex justify-between items-center text-sm"
+                className="flex min-w-0 items-center justify-between gap-2 text-sm"
               >
-                <span className="truncate mr-2">{entry.referrer}</span>
-                <span className="text-muted-foreground tabular-nums whitespace-nowrap">
+                <span className="min-w-0 flex-1 truncate">{entry.referrer}</span>
+                <span className="shrink-0 text-muted-foreground tabular-nums whitespace-nowrap">
                   {entry.count}
                 </span>
               </div>

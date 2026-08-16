@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { firstWords } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronRight, ChevronDown, MousePointerClick } from "lucide-react";
@@ -17,7 +18,7 @@ function TournamentRow({ t }: { t: SponsorClicksTournament }) {
     <div className="border rounded-lg overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between gap-4 p-4 hover:bg-muted/50 transition-colors text-left"
+        className="w-full flex items-center justify-between gap-2 sm:gap-4 p-4 hover:bg-muted/50 transition-colors text-left"
       >
         <div className="flex items-center gap-2 min-w-0">
           {expanded ? (
@@ -25,9 +26,13 @@ function TournamentRow({ t }: { t: SponsorClicksTournament }) {
           ) : (
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           )}
-          <span className="font-medium truncate">{t.name}</span>
+          {/* En móvil, las dos primeras palabras del nombre del torneo. */}
+          <span className="truncate font-medium sm:hidden">
+            {firstWords(t.name, 2)}
+          </span>
+          <span className="hidden truncate font-medium sm:inline">{t.name}</span>
         </div>
-        <div className="flex items-center gap-1.5 text-sm whitespace-nowrap">
+        <div className="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap sm:text-sm">
           <MousePointerClick className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="font-semibold tabular-nums">{t.total}</span>
           <span className="text-muted-foreground">clics</span>

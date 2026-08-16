@@ -20,6 +20,7 @@ import { useAdminAnalytics, OrganizerSummary } from "@/hooks/use-admin-analytics
 import { personDaysOf } from "@/hooks/use-analytics";
 import { SponsorClicksPanel } from "@/components/analytics/sponsor-clicks-panel";
 import { Loader2, ChevronRight, ChevronDown } from "lucide-react";
+import { firstWords } from "@/lib/utils";
 
 /** Cuántas filas se muestran de entrada en los rankings de esta pantalla. */
 const TOP_N = 7;
@@ -38,7 +39,7 @@ function OrganizerRow({ org }: { org: OrganizerSummary }) {
     <div className="border rounded-lg overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between gap-4 p-4 hover:bg-muted/50 transition-colors text-left"
+        className="w-full flex items-center justify-between gap-2 sm:gap-4 p-4 hover:bg-muted/50 transition-colors text-left"
       >
         <div className="flex items-center gap-2 min-w-0">
           {expanded ? (
@@ -46,11 +47,21 @@ function OrganizerRow({ org }: { org: OrganizerSummary }) {
           ) : (
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           )}
-          <span className="font-medium truncate">{org.organization_name}</span>
+          {/* En móvil sólo la primera palabra del nombre: el nombre completo
+              de un club no cabe junto a los números. */}
+          <span className="truncate font-medium sm:hidden">
+            {firstWords(org.organization_name, 1)}
+          </span>
+          <span className="hidden truncate font-medium sm:inline">
+            {org.organization_name}
+          </span>
         </div>
-        <div className="flex gap-4 text-sm text-muted-foreground whitespace-nowrap">
-          <span>{org.profile_views} perfil</span>
-          <span>{totalTournamentViews} torneos</span>
+        {/* El desglose perfil/torneos sólo desde sm. En móvil va el total, que
+            es el número que se mira de un vistazo — el desglose ya aparece
+            completo al desplegar la fila. */}
+        <div className="flex shrink-0 gap-2 text-xs text-muted-foreground whitespace-nowrap sm:gap-4 sm:text-sm">
+          <span className="hidden sm:inline">{org.profile_views} perfil</span>
+          <span className="hidden sm:inline">{totalTournamentViews} torneos</span>
           <span className="font-medium text-foreground">{totalViews} total</span>
         </div>
       </button>
@@ -58,9 +69,9 @@ function OrganizerRow({ org }: { org: OrganizerSummary }) {
       {expanded && (
         <div className="border-t bg-muted/30 px-4 py-3 space-y-2">
           {/* Profile row */}
-          <div className="flex items-center justify-between text-sm pl-6">
-            <span className="text-muted-foreground">Perfil del organizador</span>
-            <div className="flex gap-4 text-muted-foreground whitespace-nowrap">
+          <div className="flex items-center justify-between gap-2 pl-6 text-sm">
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">Perfil del organizador</span>
+            <div className="flex shrink-0 gap-2 text-xs text-muted-foreground whitespace-nowrap sm:gap-4 sm:text-sm">
               <span>{org.profile_views} visitas</span>
               <span>{org.profile_unique} unicos</span>
             </div>
@@ -73,15 +84,15 @@ function OrganizerRow({ org }: { org: OrganizerSummary }) {
             org.tournaments.map((t) => (
               <div
                 key={t.tournament_id}
-                className="flex items-center justify-between text-sm pl-6"
+                className="flex items-center justify-between gap-2 pl-6 text-sm"
               >
                 <Link
                   href={`/tournaments/${t.tournament_id}`}
-                  className="hover:underline truncate mr-2"
+                  className="min-w-0 flex-1 truncate hover:underline"
                 >
                   {t.name}
                 </Link>
-                <div className="flex gap-4 text-muted-foreground whitespace-nowrap">
+                <div className="flex shrink-0 gap-2 text-xs text-muted-foreground whitespace-nowrap sm:gap-4 sm:text-sm">
                   <span>{t.views} visitas</span>
                   <span>{t.unique_visitors} unicos</span>
                 </div>

@@ -39,15 +39,15 @@ export function TournamentViews({ data, tournaments }: TournamentViewsProps) {
             {enriched.map((entry) => (
               <div
                 key={entry.tournament_id}
-                className="flex items-center justify-between gap-4"
+                className="flex items-center justify-between gap-2 sm:gap-4"
               >
                 <Link
                   href={`/tournaments/${entry.tournament_id}`}
-                  className="text-sm font-medium hover:underline truncate"
+                  className="min-w-0 flex-1 truncate text-sm font-medium hover:underline"
                 >
                   {entry.name}
                 </Link>
-                <div className="flex gap-4 text-sm text-muted-foreground whitespace-nowrap">
+                <div className="flex shrink-0 gap-2 text-xs text-muted-foreground whitespace-nowrap sm:gap-4 sm:text-sm">
                   <span>{entry.views} visitas</span>
                   <span>{entry.unique_persons ?? 0} personas</span>
                 </div>
