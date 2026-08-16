@@ -1,17 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
 import { AdminGuard } from "@/components/auth-guard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -19,213 +14,185 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  StatTile,
+  FilterChips,
+  SearchBox,
+  ListFooter,
+  EmptyState,
+  ListSkeleton,
+} from "@/components/admin/admin-ui";
+import {
+  useAdminCoupons,
+  generateCode,
+  type CouponFilter,
+} from "@/hooks/use-admin-coupons";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
-import { Trash2, Plus, Ticket, Copy } from "lucide-react";
 import { CouponType } from "@/types";
+import {
+  Ticket,
+  CheckCircle2,
+  CircleSlash,
+  AlertTriangle,
+  Plus,
+  Copy,
+  Trash2,
+  Loader2,
+  Wand2,
+} from "lucide-react";
 
-interface CouponRow {
-  id: string;
-  code: string;
-  type: CouponType;
-  value: number;
-  used_by: string | null;
-  used_at: string | null;
-  tournament_id: string | null;
-  created_at: string;
-  users?: { name: string } | null;
-  tournaments?: { name: string } | null;
-}
-
-const TYPE_LABELS: Record<CouponType, string> = {
-  percentage: "Descuento %",
-  free_tournament: "Torneo Gratis",
-};
+/** Cuántos códigos se pueden crear de una. */
+const MAX_LOTE = 20;
 
 function CouponsContent() {
-  const [coupons, setCoupons] = useState<CouponRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const c = useAdminCoupons();
 
-  // Form
-  const [code, setCode] = useState("");
   const [type, setType] = useState<CouponType>("free_tournament");
   const [value, setValue] = useState("");
+  const [qty, setQty] = useState("1");
+  const [code, setCode] = useState("");
   const [creating, setCreating] = useState(false);
+  const [recien, setRecien] = useState<string[]>([]);
 
-  const loadCoupons = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("coupons")
-      .select("*, users:used_by(name), tournaments:tournament_id(name)")
-      .order("created_at", { ascending: false });
-    if (error) {
-      console.error("Error loading coupons:", error);
-    }
-    setCoupons((data as CouponRow[]) || []);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    loadCoupons();
-  }, [loadCoupons]);
-
-  const generateCode = () => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let result = "";
-    for (let i = 0; i < 8; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setCode(result);
-  };
+  const cantidad = Math.min(Math.max(parseInt(qty) || 1, 1), MAX_LOTE);
+  const enLote = cantidad > 1;
 
   const handleCreate = async () => {
-    if (!code.trim()) {
-      toast.error("El código es obligatorio");
-      return;
-    }
-
     const numValue = type === "free_tournament" ? 0 : parseInt(value);
-    if (type !== "free_tournament" && (isNaN(numValue) || numValue < 1)) {
-      toast.error("Ingresa un porcentaje valido (1-100)");
+    if (type === "percentage" && (isNaN(numValue) || numValue < 1 || numValue > 100)) {
+      toast.error("El porcentaje tiene que estar entre 1 y 100");
       return;
     }
-
-    if (type === "percentage" && numValue > 100) {
-      toast.error("El porcentaje no puede ser mayor a 100");
+    if (!enLote && !code.trim()) {
+      toast.error("Escribí un código o generá uno");
       return;
     }
 
     setCreating(true);
-    const { error } = await supabase.from("coupons").insert({
-      code: code.trim().toUpperCase(),
-      type,
-      value: numValue,
-    });
+    // En lote los códigos se generan solos; de a uno se respeta el que se
+    // escribió, que es el caso de "quiero un código que se pueda dictar".
+    const codes = enLote
+      ? Array.from({ length: cantidad }, () => generateCode())
+      : [code.trim().toUpperCase()];
+
+    const { error } = await supabase
+      .from("coupons")
+      .insert(codes.map((code) => ({ code, type, value: numValue })));
 
     if (error) {
-      if (error.code === "23505") {
-        toast.error("Ya existe un cupón con ese código");
-      } else {
-        toast.error("Error al crear el cupón");
-      }
+      toast.error(
+        error.code === "23505"
+          ? "Ya existe un cupón con ese código"
+          : "No se pudieron crear los cupones"
+      );
     } else {
-      toast.success(`Cupon ${code.trim().toUpperCase()} creado`);
+      toast.success(
+        codes.length === 1 ? `Cupón ${codes[0]} creado` : `${codes.length} cupones creados`
+      );
+      setRecien(codes);
       setCode("");
       setValue("");
-      loadCoupons();
+      await c.refresh();
     }
     setCreating(false);
   };
 
-  const handleDelete = async (id: string, couponCode: string) => {
+  const handleDelete = async (id: string, codigo: string) => {
     const { error } = await supabase.from("coupons").delete().eq("id", id);
     if (error) {
-      toast.error("Error al eliminar el cupón");
-    } else {
-      toast.success(`Cupon ${couponCode} eliminado`);
-      loadCoupons();
+      toast.error("No se pudo eliminar");
+      return;
     }
+    c.removeLocal(id);
+    toast.success(`Cupón ${codigo} eliminado`);
   };
 
-  const copyCode = (couponCode: string) => {
-    navigator.clipboard.writeText(couponCode);
-    toast.success("Código copiado");
+  const copy = (txt: string, msg = "Código copiado") => {
+    navigator.clipboard.writeText(txt);
+    toast.success(msg);
   };
 
-  const availableCount = coupons.filter((c) => !c.used_by).length;
-  const usedCount = coupons.filter((c) => c.used_by).length;
+  const filtros: { key: CouponFilter; label: string; count?: number }[] = [
+    { key: "todos", label: "Todos", count: c.counts.total },
+    { key: "disponibles", label: "Disponibles", count: c.counts.disponibles },
+    { key: "usados", label: "Usados", count: c.counts.usados },
+    { key: "quemados", label: "Quemados", count: c.counts.quemados },
+  ];
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
+    <div className="container mx-auto space-y-6 px-4 py-8">
       <div>
         <h1 className="text-3xl font-bold">Cupones</h1>
-        <p className="text-muted-foreground mt-1">
-          Crea y gestiona códigos de descuento
+        <p className="mt-1 text-muted-foreground">
+          Códigos de cortesía y descuento para organizadores
         </p>
       </div>
 
-      {/* Summary */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{coupons.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Disponibles</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold text-green-500">
-              {availableCount}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Usados</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold text-muted-foreground">
-              {usedCount}
-            </p>
-          </CardContent>
-        </Card>
+      {/* Las tarjetas son botones: tocar una aplica su filtro. */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatTile
+          icon={Ticket}
+          label="Total"
+          value={c.counts.total}
+          accent="blue"
+          onClick={() => c.setFilter("todos")}
+          active={c.filter === "todos"}
+        />
+        <StatTile
+          icon={CheckCircle2}
+          label="Disponibles"
+          value={c.counts.disponibles}
+          hint={c.counts.disponibles === 0 ? "No queda ninguno para dar" : "Listos para entregar"}
+          accent="green"
+          onClick={() => c.setFilter("disponibles")}
+          active={c.filter === "disponibles"}
+        />
+        <StatTile
+          icon={CircleSlash}
+          label="Usados"
+          value={c.counts.usados}
+          accent="default"
+          onClick={() => c.setFilter("usados")}
+          active={c.filter === "usados"}
+        />
+        <StatTile
+          icon={AlertTriangle}
+          label="Quemados"
+          value={c.counts.quemados}
+          hint="Usados, pero su torneo ya no existe"
+          accent={c.counts.quemados > 0 ? "amber" : "default"}
+          onClick={() => c.setFilter("quemados")}
+          active={c.filter === "quemados"}
+        />
       </div>
 
-      {/* Create coupon */}
+      {/* Crear */}
       <Card>
-        <CardHeader>
-          <CardDescription>Crear nuevo cupón</CardDescription>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Crear cupones</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-2">
-              <Label className="text-xs">Código</Label>
-              <div className="flex gap-1">
-                <Input
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  placeholder="TORNEO2024"
-                  className="h-9"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="h-9 w-9 flex-shrink-0"
-                  onClick={generateCode}
-                  title="Generar código"
-                >
-                  <Ticket className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-2">
               <Label className="text-xs">Tipo</Label>
-              <Select
-                value={type}
-                onValueChange={(v) => setType(v as CouponType)}
-              >
+              <Select value={type} onValueChange={(v) => setType(v as CouponType)}>
                 <SelectTrigger className="h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="free_tournament">
-                    Torneo Gratis
-                  </SelectItem>
+                  <SelectItem value="free_tournament">Torneo gratis</SelectItem>
                   <SelectItem value="percentage">Descuento %</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
             {type === "percentage" && (
               <div className="space-y-2">
-                <Label className="text-xs">Porcentaje (%)</Label>
+                <Label className="text-xs">Porcentaje</Label>
                 <Input
                   type="number"
-                  min="1"
+                  min={1}
                   max={100}
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
@@ -234,87 +201,202 @@ function CouponsContent() {
                 />
               </div>
             )}
+
+            <div className="space-y-2">
+              <Label className="text-xs">Cuántos</Label>
+              <Input
+                type="number"
+                min={1}
+                max={MAX_LOTE}
+                value={qty}
+                onChange={(e) => setQty(e.target.value)}
+                className="h-9"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs">
+                {enLote ? "Códigos" : "Código"}
+              </Label>
+              {enLote ? (
+                <div className="flex h-9 items-center rounded-md border border-dashed px-3 text-xs text-muted-foreground">
+                  <Wand2 className="mr-1.5 size-3.5" />
+                  Se generan solos
+                </div>
+              ) : (
+                <div className="flex gap-1">
+                  <Input
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    placeholder="COPA2026"
+                    className="h-9 font-mono"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="size-9 shrink-0"
+                    onClick={() => setCode(generateCode())}
+                    title="Generar código"
+                  >
+                    <Wand2 className="size-3.5" />
+                  </Button>
+                </div>
+              )}
+            </div>
+
             <div className="flex items-end">
-              <Button
-                onClick={handleCreate}
-                disabled={creating || !code.trim()}
-                className="w-full h-9"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Crear
+              <Button onClick={handleCreate} disabled={creating} className="h-9 w-full">
+                {creating ? (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : (
+                  <Plus className="mr-2 size-4" />
+                )}
+                Crear {enLote ? cantidad : ""}
               </Button>
             </div>
           </div>
+
+          {/* Los recién creados se muestran juntos y se pueden copiar de una
+              sola vez: es justo lo que uno necesita para pegarlos en WhatsApp. */}
+          {recien.length > 0 && (
+            <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-green-700 dark:text-green-500">
+                  {recien.length === 1 ? "Cupón creado" : `${recien.length} cupones creados`}
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => copy(recien.join("\n"), "Todos copiados")}
+                >
+                  <Copy className="mr-1 size-3" />
+                  Copiar todos
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {recien.map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => copy(r)}
+                    className="rounded bg-background px-2 py-1 font-mono text-xs font-bold hover:bg-muted"
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Coupon list */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Cupones creados</h2>
-        {loading ? (
-          <p className="text-muted-foreground text-sm">Cargando...</p>
-        ) : coupons.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            No hay cupones creados
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {coupons.map((coupon) => (
-              <div
-                key={coupon.id}
-                className="flex items-center justify-between border rounded-lg p-4"
-              >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <button
-                    onClick={() => copyCode(coupon.code)}
-                    className="font-mono font-bold text-sm bg-muted px-2 py-1 rounded hover:bg-muted/80 transition-colors flex items-center gap-1 flex-shrink-0"
-                    title="Copiar código"
-                  >
-                    {coupon.code}
-                    <Copy className="h-3 w-3 text-muted-foreground" />
-                  </button>
-                  <Badge
-                    variant="outline"
-                    className={
-                      coupon.type === "free_tournament"
-                        ? "bg-green-500/10 text-green-600 border-green-500/20"
-                        : "bg-amber-500/10 text-amber-600 border-amber-500/20"
-                    }
-                  >
-                    {coupon.type === "free_tournament"
-                      ? "Torneo Gratis"
-                      : `${coupon.value}% OFF`}
-                  </Badge>
-                  {coupon.used_by ? (
-                    <span className="text-xs text-muted-foreground truncate">
-                      Usado por{" "}
-                      <span className="font-medium">
-                        {coupon.users?.name || "..."}
-                      </span>
-                      {coupon.tournaments?.name && (
-                        <> en {coupon.tournaments.name}</>
-                      )}
-                    </span>
-                  ) : (
-                    <Badge className="bg-green-500/10 text-green-600 border-green-500/20">
-                      Disponible
-                    </Badge>
-                  )}
-                </div>
-                {!coupon.used_by && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 flex-shrink-0"
-                    onClick={() => handleDelete(coupon.id, coupon.code)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
-            ))}
+      {/* Lista */}
+      <div className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <FilterChips value={c.filter} onChange={c.setFilter} options={filtros} />
+          <SearchBox
+            value={c.search}
+            onChange={c.setSearch}
+            placeholder="Buscar código…"
+          />
+        </div>
+
+        {c.filter === "quemados" && c.counts.quemados > 0 && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-muted-foreground">
+            Estos códigos figuran usados pero su torneo no existe: o se borró, o
+            la creación falló después de quemar el cupón. No le sirven a nadie y
+            tampoco se pueden volver a dar.
           </div>
         )}
+
+        {c.loading ? (
+          <ListSkeleton />
+        ) : c.rows.length === 0 ? (
+          <EmptyState
+            text={
+              c.search
+                ? `Ningún cupón coincide con "${c.search}"`
+                : "No hay cupones en este filtro"
+            }
+          />
+        ) : (
+          <div className="space-y-2">
+            {c.rows.map((cup) => {
+              const quemado = cup.used_by && !cup.tournament_id;
+              return (
+                <div
+                  key={cup.id}
+                  className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                >
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => copy(cup.code)}
+                      className="flex shrink-0 items-center gap-1 rounded bg-muted px-2 py-1 font-mono text-sm font-bold transition-colors hover:bg-muted/70"
+                      title="Copiar código"
+                    >
+                      {cup.code}
+                      <Copy className="size-3 text-muted-foreground" />
+                    </button>
+
+                    <Badge
+                      variant="outline"
+                      className={
+                        cup.type === "free_tournament"
+                          ? "border-green-500/20 bg-green-500/10 text-green-600"
+                          : "border-amber-500/20 bg-amber-500/10 text-amber-600"
+                      }
+                    >
+                      {cup.type === "free_tournament" ? "Torneo gratis" : `${cup.value}% OFF`}
+                    </Badge>
+
+                    {!cup.used_by ? (
+                      <Badge className="border-green-500/20 bg-green-500/10 text-green-600">
+                        Disponible
+                      </Badge>
+                    ) : quemado ? (
+                      <span className="flex min-w-0 max-w-full items-center gap-1 text-xs text-amber-600">
+                        <AlertTriangle className="size-3 shrink-0" />
+                        <span className="truncate">
+                          Quemado sin torneo · {cup.users?.name ?? "—"}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="min-w-0 max-w-full truncate text-xs text-muted-foreground">
+                        {cup.users?.name ?? "—"} · {cup.tournaments?.name}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
+                    <span className="text-[11px] text-muted-foreground">
+                      {(cup.used_at ?? cup.created_at).slice(0, 10)}
+                    </span>
+                    {!cup.used_by && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        onClick={() => handleDelete(cup.id, cup.code)}
+                        title="Eliminar"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <ListFooter
+          shown={c.rows.length}
+          total={c.total}
+          loading={c.loadingMore}
+          onMore={c.loadMore}
+          noun="cupones"
+        />
       </div>
     </div>
   );
