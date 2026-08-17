@@ -83,6 +83,37 @@ uniformes todo el tiempo si no se les dice.
 3. **Guárdala con el nombre exacto** de la tabla de más abajo.
 4. Mándamelas y yo las conecto y las comprimo.
 
+
+### Cómo se conecta una foto al código
+
+Esto vivía en `fotos-de-tarjetas.md`, que se borró al terminar el grueso del
+set. Se conserva acá porque hace falta cada vez que se suma una foto nueva
+—baloncesto, por ejemplo— y son sólo dos pasos:
+
+1. Poner el `.jpg` en `public/sports/`, ya recortado a 8:3 y comprimido.
+2. Agregar su entrada en `SPORT_IMAGES`, en `src/data/sport-images.ts`:
+
+```ts
+volleyball: [
+  { key: "volleyball-mamas-1", file: "volleyball-mamas-1.jpg",
+    label: "Mamás", category: "femenino" },
+],
+```
+
+Ningún componente cambia. Un deporte con la lista vacía cae al degradado y no
+se rompe nada.
+
+- **`key`** es lo que se guarda en la base (`tournaments.card_image`). **No se
+  puede cambiar** una vez que un organizador la eligió, o su torneo vuelve al
+  degradado sin avisar.
+- **`category`** es `general` | `masculino` | `femenino` | `infantil`. Sólo
+  agrupa el selector; las categorías finas ("Mamás", "Padres") viven en el
+  `label`.
+- El organizador la elige en **Configurar torneo → Información → Foto de la
+  tarjeta**. A los torneos ajenos hay que asignarles la foto por SQL: la
+  policy "Creador edita torneo" no deja ni al superadmin tocar un torneo que
+  no es suyo.
+
 ### Qué revisar en cada una
 
 - ¿Se entiende el deporte en miniatura?
