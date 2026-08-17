@@ -86,6 +86,9 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
   const [baseballExpanded, setBaseballExpanded] = useState(false);
   // "Ver más" inline para la tabla defensiva (mismo comportamiento).
   const [fieldingExpanded, setFieldingExpanded] = useState(false);
+  // "Ver más" inline para Sanciones. Era la única tabla que se pintaba
+  // entera: con 40 tarjetas empujaba todo lo de abajo fuera de la pantalla.
+  const [cardsExpanded, setCardsExpanded] = useState(false);
   // Diálogo para elegir top N al descargar PDF sin filtro de equipo.
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfTopN, setPdfTopN] = useState<string>("10");
@@ -116,9 +119,29 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
     : cardEntries.filter((c) => !c.paid);
   // El filtro de equipo también aplica a sanciones — si el organizer
   // está mirando un equipo específico, le sirve ver solo sus tarjetas.
-  const visibleCards = hasFilter
+  const visibleCardsFiltered = hasFilter
     ? visibleCardsAll.filter((c) => c.teamId === selectedTeamId)
     : visibleCardsAll;
+
+  // Las SIN PAGAR primero. Son las que el organizador tiene que cobrar y las
+  // únicas que ve el público; si el corte del preview las deja abajo,
+  // mostrar sólo las primeras cinco sería peor que no cortar nada.
+  const visibleCardsSorted = useMemo(
+    () =>
+      [...visibleCardsFiltered].sort((a, b) =>
+        a.paid === b.paid ? 0 : a.paid ? 1 : -1
+      ),
+    [visibleCardsFiltered]
+  );
+
+  // Mismo criterio que las otras tablas: con filtro de equipo se muestran
+  // todas (son pocas), sin filtro va el preview con "Ver más".
+  const visibleCards =
+    hasFilter || cardsExpanded
+      ? visibleCardsSorted
+      : visibleCardsSorted.slice(0, TOP_PREVIEW);
+  const hasMoreCards = !hasFilter && visibleCardsSorted.length > TOP_PREVIEW;
+  const sinPagarCount = visibleCardsSorted.filter((c) => !c.paid).length;
 
   // Non-card leaderboards (exclude yellow_card, red_card, ejection)
   const nonCardLeaderboards = leaderboards.filter(
@@ -261,6 +284,7 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
             // así al volver a "Todos" arrancamos en preview otra vez.
             setBaseballExpanded(false);
             setFieldingExpanded(false);
+            setCardsExpanded(false);
           }}>
             <SelectTrigger className="h-9 w-full sm:w-64">
               <SelectValue placeholder="Filtrar por equipo" />
@@ -291,8 +315,29 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
       {/* Card payment table */}
       {hasCardStats && visibleCards.length > 0 && (
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Sanciones</CardTitle>
+          <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">
+              Sanciones
+              {/* Cuántas quedan sin pagar: es el número que el organizador
+                  busca, y con el preview cortado ya no se puede contar a ojo. */}
+              {canEdit && sinPagarCount > 0 && (
+                <span className="ml-2 text-xs font-normal text-orange-600">
+                  {sinPagarCount} sin pagar
+                </span>
+              )}
+            </CardTitle>
+            {hasMoreCards && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setCardsExpanded((v) => !v)}
+              >
+                {cardsExpanded
+                  ? "Ver menos"
+                  : `Ver más (${visibleCardsSorted.length})`}
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             <Table>
