@@ -75,32 +75,48 @@ De cada campaña, una parte es para los organizadores donde se mostró,
 repartida según la audiencia que puso cada uno. El resto es de la plataforma.
 
 **El porcentaje es un piso, no un número fijo.** Los términos garantizan **al
-menos el 30%**, y hoy se reparte el **50% como promoción de lanzamiento**.
+menos el 30%**; por encima de eso lo define cada campaña y puede cambiar de una
+a otra. Hoy se reparte el **50%**.
 
-Está escrito así a propósito. Con un 50% fijo en los términos, bajarlo alguna
-vez obligaría a que todos volvieran a aceptar y se leería como un recorte. Con
-un piso del 30%, pagar más es un regalo y volver al piso es el fin de una
-promo — una conversación mucho más fácil. Se decidió el 2026-08-25, cuando
-todavía no lo había aceptado casi nadie: era la única semana en que el cambio
-salía gratis.
+Está escrito así a propósito, y resuelve dos cosas de una:
+
+1. **Bajarlo no es un recorte.** Con un 50% fijo en los términos, moverlo
+   obligaba a que todos volvieran a aceptar y se leía como que les quitaron
+   algo. Con un piso, ir bajando hacia el 30% a medida que crezcan las pautas
+   es simplemente cómo funciona.
+2. **Deja lugar para la comisión.** Como el porcentaje de cada campaña puede
+   variar, descontar la comisión del que trajo al anunciante antes de repartir
+   no le exige explicación a nadie: los otros organizadores no ven un recorte,
+   ven la tarifa de esa campaña, que siempre fue propia de cada una.
+
+Se decidió el 2026-08-25, cuando todavía no lo había aceptado casi nadie: era
+la única semana en que el cambio salía gratis.
 
 ### Si el organizador consigue al anunciante, cobra aparte
 
-Una comisión de **al menos el 15%** de lo que ese anunciante pague durante su
-primer año, **además** de lo que le toque por audiencia.
+Una comisión de **al menos el 15%** de todo lo que ese anunciante pague durante
+sus **primeros 6 meses**, contados desde su primera campaña, **además** de lo
+que le toque por audiencia.
+
+Sale **antes del reparto**: una campaña de $100.000 deja $15.000 de comisión y
+se reparte sobre los $85.000 restantes.
 
 Es deliberado que la comisión pese tanto frente al reparto por audiencia: la
 audiencia es abundante —viene gratis con el producto que ya se les vendió— y
 los anunciantes son el cuello de botella. Pagar más por lo que falta que por lo
 que sobra.
 
-⚠️ **Todavía no está construido.** Está en los términos y se opera a mano: el
-organizador avisa, la plataforma cierra la venta y le transfiere la comisión
-junto con su corte. Con pocos organizadores alcanza; cuando haya volumen habrá
-que meterlo al software, y ahí aparece un detalle a resolver — hoy el reparto
-divide la bolsa entre todos los que mostraron la campaña, así que la comisión
-tiene que salir **antes** de ese reparto o de la parte de la plataforma, o el
-que vendió termina cobrando menos que un organizador que no hizo nada.
+Y los 6 meses en vez de un año: suficiente para que le convenga traer un
+anunciante que se quede, sin dejar una obligación abierta para siempre.
+
+⚠️ **Todavía no está construido**, pero se puede operar hoy sin tocar código:
+al cargar lo que cobró la campaña en el panel, se registra el monto **ya sin la
+comisión** ($85.000 en vez de $100.000), y esa plata se le transfiere aparte al
+organizador que la trajo. El reparto calcula bien sobre el resto.
+
+El costo de hacerlo así es que Finanzas registra $85.000 donde el anunciante
+pagó $100.000. Con pocas campañas es asumible; cuando sean varias, la comisión
+tiene que ser su propio registro para que los libros digan la verdad.
 
 Tres cosas que definen todo:
 

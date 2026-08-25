@@ -21,7 +21,7 @@
  * Un cambio de redacción que no altere ninguna regla puede quedarse en la misma
  * versión. Cualquier cambio a lo que se paga, cuándo se paga o qué se exige, no.
  */
-export const MONETIZAR_TERMS_VERSION = "2026-08-v5";
+export const MONETIZAR_TERMS_VERSION = "2026-08-v6";
 
 export interface TermsSection {
   title: string;
@@ -40,7 +40,7 @@ export const MONETIZAR_TERMS: TermsSection[] = [
     title: "Cómo se calcula lo que ganás",
     body: [
       "De lo que paga cada campaña, al menos el 30% se reparte entre TODOS los organizadores en cuyos torneos se mostró, en proporción a la audiencia que puso cada uno.",
-      "Ese 30% es el piso, no el techo. Hoy estamos repartiendo el 50% como promoción de lanzamiento. Si algún día la promoción termina te avisamos antes de que empiece el mes en que aplica, y en ningún caso se reparte menos del 30%.",
+      "Ese 30% es el piso, no el techo: el porcentaje exacto lo define cada campaña, así que puede ser mayor y puede cambiar de una campaña a otra. Lo único que garantizamos es que nunca baja del 30%.",
       "Para que quede claro: no es que ese porcentaje sea todo tuyo. Es lo que se reparte entre todos los que aportaron público a esa campaña, y tu parte depende de cuánto pusiste vos.",
       "El reparto se hace por audiencia, contada en personas por día: si la misma persona ve el aviso tres veces el mismo día, cuenta una sola vez. Así, lo que se premia es traer gente, no traer recargas de página.",
       "Cada campaña reparte solo su propia plata, y solo entre quienes le aportaron audiencia a ella. Una campaña que solo se muestra en torneos de Montería no le paga a un organizador de otra ciudad.",
@@ -50,7 +50,7 @@ export const MONETIZAR_TERMS: TermsSection[] = [
   {
     title: "Si vos conseguís al anunciante, ganás aparte",
     body: [
-      "¿Conocés un negocio al que le sirva mostrarse en tus torneos? Presentanoslo y, si termina pautando, te pagamos una comisión de al menos el 15% de lo que ese anunciante pague durante su primer año con nosotros.",
+      "¿Conocés un negocio al que le sirva mostrarse en tus torneos? Presentanoslo y, si termina pautando, te pagamos una comisión de al menos el 15% de todo lo que ese anunciante pague durante sus primeros 6 meses, contados desde su primera campaña.",
       "Esa comisión es aparte de lo que te toca por audiencia: cobrás las dos cosas. Y no depende de cuánta gente entre a tus torneos ese mes.",
       "Vos solo tenés que pasarnos el contacto. Nosotros hablamos con el negocio, acordamos el precio, cobramos y armamos el aviso. No tenés que manejar plata, ni diseñar nada, ni explicar cómo funciona la plataforma.",
       "Avisanos apenas tengas el contacto, antes de que hablemos con ellos: así queda registrado quién lo trajo. Si dos organizadores presentan al mismo negocio, la comisión es de quien avisó primero.",
