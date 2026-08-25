@@ -43,13 +43,40 @@ ON CONFLICT (tournament_id) DO NOTHING;
 -- ---------------------------------------------------------------------------
 -- PASO C — Verificación
 -- ---------------------------------------------------------------------------
--- Debe salir una fila: el torneo, saldo 70000, abonado 0.
--- (Correr como admin; la función filtra por rol.)
-
-SELECT * FROM get_tournament_debts();
-
--- Y el candado del trigger, para comprobar que funciona. Esto TIENE que fallar
--- con "deja el saldo en negativo" — si pasa, el trigger no quedó instalado:
+-- ⚠️ NO uses `SELECT * FROM get_tournament_debts()` desde el editor SQL: ahí no
+-- hay sesión, `auth.uid()` da NULL y la función devuelve cero filas aunque todo
+-- esté bien. Esa función es para el navegador, con el admin logueado.
 --
---   INSERT INTO tournament_debt_payments (tournament_id, organizer_id, amount_cop)
---   SELECT tournament_id, organizer_id, 999999 FROM tournament_debts;
+-- Desde el editor, la misma cuenta a mano. Debe salir UNA fila:
+-- precio 70000, abonado 0, saldo 70000.
+
+SELECT
+  t.name                                        AS torneo,
+  u.email,
+  t.price                                       AS precio,
+  COALESCE(SUM(p.amount_cop), 0)                AS abonado,
+  t.price - COALESCE(SUM(p.amount_cop), 0)      AS saldo,
+  d.created_by                                  AS marcado_por,
+  d.note
+FROM tournament_debts d
+JOIN tournaments t                        ON t.id = d.tournament_id
+JOIN users u                              ON u.id = d.organizer_id
+LEFT JOIN tournament_debt_payments p      ON p.tournament_id = d.tournament_id
+GROUP BY t.name, u.email, t.price, d.created_by, d.note;
+
+-- `marcado_por` va a salir NULL, y está bien: `auth.uid()` es NULL en el editor.
+-- Cuando esto se haga desde el panel va a quedar tu id.
+
+-- ---------------------------------------------------------------------------
+-- PASO D — Probar el candado
+-- ---------------------------------------------------------------------------
+-- Los triggers SÍ corren desde el editor (a diferencia de RLS, que la conexión
+-- privilegiada se saltea). Este INSERT TIENE QUE FALLAR con "deja el saldo en
+-- negativo". Si en vez de fallar inserta la fila, el trigger no quedó
+-- instalado y hay que revisar la migración.
+
+INSERT INTO tournament_debt_payments (tournament_id, organizer_id, amount_cop)
+SELECT tournament_id, organizer_id, 999999 FROM tournament_debts;
+
+-- Y por las dudas, que no haya quedado nada: debe dar 0.
+SELECT count(*) AS abonos_que_no_deberian_existir FROM tournament_debt_payments;
