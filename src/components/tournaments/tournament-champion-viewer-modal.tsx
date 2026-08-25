@@ -61,7 +61,21 @@ export function TournamentChampionViewerModal({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent
+        className="sm:max-w-2xl"
+        // El modal de publicidad (`components/ads/ad-modal.tsx`) se pinta
+        // ENCIMA de este, con su propio overlay y z-[100]. Como no es un
+        // Dialog de Radix, cualquier click suyo —incluida su X— le llega a
+        // Radix como "click afuera" y cerraba también la foto del campeón:
+        // el espectador tocaba la X del anuncio y perdía el campeón sin
+        // haberlo pedido.
+        //
+        // Cerrar solo a propósito. Quedan las dos salidas de siempre: la X de
+        // la esquina y el botón del pie. Y de paso deja de cerrarse por un
+        // toque mal dado, que en una foto que la gente abre para mirar es más
+        // molesto que útil.
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <div className="flex flex-col items-center gap-2 text-center pt-2">
             <Trophy className="h-12 w-12 text-amber-500" />
