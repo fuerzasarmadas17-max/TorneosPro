@@ -12,6 +12,11 @@
 --      reales, para ver si los saldos que saldrían tienen sentido antes de
 --      construir nada.
 --
+-- ⚠️ EL `saldo` DE ESTA CONSULTA ES ORIENTATIVO. El saldo de verdad, con los
+-- abonos de publicidad descontados, sale de `get_tournament_debts()` desde el
+-- panel de admin. Acá sirve para ver el orden de magnitud y, sobre todo, para
+-- la columna `deuda_registrada` del final.
+--
 -- LA REGLA QUE APLICA
 --   Debe si el torneo tiene un cupón que lo dejó en $0 — `free_tournament`, o
 --   `percentage` con valor 100 — y su dueño no está excluido por política.
@@ -106,7 +111,22 @@ SELECT
     WHEN t.coupon_id = c.id AND c.tournament_id = t.id THEN 'ok, en los dos'
     WHEN t.coupon_id = c.id                            THEN '⚠️ solo en el torneo'
     ELSE '🔴 solo en el cupón — el torneo no sabe que lo tiene'
-  END                                     AS vinculo
+  END                                     AS vinculo,
+
+  -- ⚠️ LA RED QUE CAZA EL FALLO SILENCIOSO.
+  -- Desde el 2026-08-25 todo torneo creado con bono del 100% debe quedar
+  -- registrado en `tournament_debts`. Lo hace `/api/tournaments/debt` al
+  -- crearse el torneo, y esa llamada es best effort: si falla, el organizador
+  -- se queda con su torneo igual y la deuda **no se crea, sin avisar a nadie**.
+  -- Esta columna es la única forma de enterarse.
+  CASE
+    WHEN td.tournament_id IS NOT NULL              THEN 'sí'
+    WHEN t.created_at::date < DATE '2026-08-25'    THEN '— anterior a la regla'
+    WHEN c.type = 'free_tournament'
+      OR (c.type = 'percentage' AND c.value >= 100)
+      THEN '🔴 FALTA — registrarla a mano'
+    ELSE '— no corresponde'
+  END                                     AS deuda_registrada
 
 FROM tournaments t
 -- ⚠️ El vínculo torneo↔cupón vive en DOS lados: `tournaments.coupon_id` y
@@ -123,6 +143,7 @@ JOIN LATERAL (
   LIMIT 1
 ) c ON true
 JOIN users u                       ON u.id = t.created_by
+LEFT JOIN tournament_debts td      ON td.tournament_id = t.id
 LEFT JOIN organization_profiles op ON op.user_id = t.created_by
 LEFT JOIN LATERAL (
   SELECT SUM(p.amount_cop) AS cobrado

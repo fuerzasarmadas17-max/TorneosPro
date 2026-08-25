@@ -39,6 +39,7 @@ import { getTournamentPriceInfo, TournamentPriceInfo, checkFreeTier, FREE_TIER_L
 import { TournamentCostDialog, FORMAT_LABELS } from "./tournament-cost-dialog";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabase";
+import { authHeader } from "@/lib/auth-header";
 
 const INDIVIDUAL_SPORTS: Sport[] = ["tenis", "padel", "ping-pong"];
 
@@ -668,6 +669,43 @@ export function CreateTournamentForm() {
           );
           setCreating(false);
           return;
+        }
+      }
+
+      // Torneo creado con bono del 100% (cupón de cortesía o descuento del
+      // 100%): queda debiendo su precio de lista, y lo que el organizador gane
+      // de publicidad se lo va abonando. Ver
+      // `Por hacer/deuda-contra-publicidad.md`.
+      //
+      // Va por el servidor porque `tournament_debts` sólo la escribe un admin:
+      // si el navegador pudiera insertar ahí, también podría borrar su propia
+      // deuda. La ruta revalida todo —dueño, cupón, precio— y rechaza si el
+      // cupón no deja el torneo en $0, así que este `if` puede ser optimista.
+      //
+      // BEST EFFORT A PROPÓSITO: si falla, el organizador igual se queda con su
+      // torneo. No se le puede romper la creación por un tema de contabilidad
+      // nuestra. El costo es que la deuda se pierde en silencio, y por eso
+      // `consultas/deudas-de-torneos-fiados.sql` marca los torneos con bono del
+      // 100% que no tengan su deuda registrada.
+      if (couponId && !paymentId && !useCredit && newTournament?.id) {
+        try {
+          const res = await fetch("/api/tournaments/debt", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(await authHeader()),
+            },
+            body: JSON.stringify({ tournamentId: newTournament.id }),
+          });
+          if (!res.ok) {
+            console.error(
+              "No se registró la deuda del torneo",
+              newTournament.id,
+              await res.text()
+            );
+          }
+        } catch (e) {
+          console.error("No se registró la deuda del torneo", newTournament.id, e);
         }
       }
 
