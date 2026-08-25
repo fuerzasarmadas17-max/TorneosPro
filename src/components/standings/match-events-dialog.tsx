@@ -134,6 +134,72 @@ function PlayerColumn({
 }
 
 /**
+ * Los sets del partido, con el mismo lenguaje visual que los goles: etiqueta
+ * centrada entre dos líneas, local a la izquierda y visitante a la derecha.
+ *
+ * POR QUÉ SUBIÓ ACÁ
+ * Estaban como una línea de 11px debajo del marcador ("25-20 · 20-25 · 15-10"),
+ * que es donde el fútbol no pone nada. Pero en vóley los parciales SON el
+ * detalle del partido —el equivalente a quién hizo los goles— y ahí se leían
+ * como un pie de página.
+ *
+ * Se pintan aunque no haya ninguna estadística cargada: un partido de vóley sin
+ * tarjetas igual tiene sets, y decir "el organizador no cargó estadísticas"
+ * teniéndolos sería mentir.
+ */
+function SetsBlock({ match }: { match: Match }) {
+  if (!match.sets || match.sets.length === 0) return null;
+
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <span className="h-px flex-1 bg-border" />
+        <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <Volleyball className="h-3.5 w-3.5 text-muted-foreground" />
+          {match.sets.length === 1 ? "Set" : "Sets"}
+        </span>
+        <span className="h-px flex-1 bg-border" />
+      </div>
+
+      <ul className="mt-1.5 space-y-0.5">
+        {match.sets.map((set) => {
+          const localGana = set.homePoints > set.awayPoints;
+          return (
+            <li
+              key={set.setNumber}
+              className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-sm"
+            >
+              {/* El que ganó el set queda en negrita y el otro atenuado, igual
+                  que el marcador de arriba: así se ve de un vistazo cómo fue
+                  el partido sin tener que comparar número por número. */}
+              <span
+                className={cn(
+                  "tabular-nums",
+                  localGana ? "font-semibold" : "text-muted-foreground"
+                )}
+              >
+                {set.homePoints}
+              </span>
+              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Set {set.setNumber}
+              </span>
+              <span
+                className={cn(
+                  "text-right tabular-nums",
+                  localGana ? "text-muted-foreground" : "font-semibold"
+                )}
+              >
+                {set.awayPoints}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/**
  * Modal con el resumen de un partido jugado (goles, asistencias, tarjetas)
  * para quien NO es organizador — el organizador ya tiene la pantalla de
  * carga/edición de resultado.
@@ -222,11 +288,6 @@ export function MatchEventsDialog({
               <span className="text-base text-muted-foreground">-</span>
               <span className={cn(!awayWon && "text-muted-foreground")}>{match.awayScore}</span>
             </div>
-            {match.sets && match.sets.length > 0 && (
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                {match.sets.map((s) => `${s.homePoints}-${s.awayPoints}`).join(" · ")}
-              </p>
-            )}
             {match.walkover && (
               <p className="mt-1 text-[11px] font-medium text-amber-700">
                 Ganado por W
@@ -242,6 +303,11 @@ export function MatchEventsDialog({
           </div>
         </div>
 
+        {/* Los sets primero: en vóley son el detalle del partido, el
+            equivalente a quién hizo los goles. Van fuera del bloque de abajo
+            porque no dependen de que se hayan cargado estadísticas. */}
+        <SetsBlock match={match} />
+
         {loading ? (
           shell("Cargando estadísticas…")
         ) : failed ? (
@@ -254,7 +320,11 @@ export function MatchEventsDialog({
             </Button>
           </div>
         ) : blocks.length === 0 ? (
-          shell("El organizador no cargó estadísticas de este partido.")
+          // Con los sets a la vista no hace falta decir que no hay nada: ya se
+          // está mostrando el detalle del partido. El aviso queda para los
+          // partidos que de verdad no tienen nada cargado.
+          match.sets && match.sets.length > 0 ? null
+            : shell("El organizador no cargó estadísticas de este partido.")
         ) : (
           <div className="space-y-3">
             {blocks.map((block) => (
