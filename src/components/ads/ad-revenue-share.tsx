@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { formatCOP } from "@/lib/pricing";
 import { monthLabel } from "@/lib/month-label";
+import { DebtPayments } from "./debt-payments";
 import {
   computeRevenueShare,
   defaultEligibility,
@@ -573,6 +574,19 @@ export function AdRevenueShare({
               </TableFooter>
             </Table>
           </ScrollRows>
+
+          {/* Los abonos van DESPUÉS del cierre, no dentro: recién acá se sabe
+              cuánto ganó cada uno, que es lo que hace falta para decidir cuánto
+              descontarle. Y así `close_ad_period` no se toca. Se pinta solo si
+              hay alguna deuda viva. */}
+          {periodMonth && (
+            <DebtPayments
+              periodMonth={periodMonth}
+              earnedByOrganizer={Object.fromEntries(
+                settlements.map((s) => [s.organizer_id, s.amount_cop])
+              )}
+            />
+          )}
         </CardContent>
 
         {/* Registrar la transferencia. La referencia es obligatoria y la exige

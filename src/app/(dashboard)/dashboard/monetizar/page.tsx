@@ -17,6 +17,7 @@ import { AudienceThisMonth } from "@/components/monetizar/audience-this-month";
 import { ApprovalNotice } from "@/components/monetizar/approval-notice";
 import { SettlementsHistory } from "@/components/monetizar/settlements-history";
 import { RequirementsProgress } from "@/components/monetizar/requirements-progress";
+import { MyDebts } from "@/components/monetizar/my-debts";
 import { maskAccount } from "@/lib/ad-analytics";
 import { MONETIZAR_ENABLED } from "@/lib/monetizar-flag";
 
@@ -129,6 +130,12 @@ function MonetizarContent() {
       {status && config ? (
         <MonthGoal row={status} config={config} month={month} />
       ) : null}
+
+      {/* Va arriba, antes de las cifras. Aceptó unos términos que dicen que se
+          le descuenta; si su saldo apareciera recién al final —o peor, recién
+          en el primer corte— la pantalla le estaría contradiciendo lo que
+          firmó. Se pinta solo si debe algo. */}
+      <MyDebts />
 
       {error ? (
         <Card>
