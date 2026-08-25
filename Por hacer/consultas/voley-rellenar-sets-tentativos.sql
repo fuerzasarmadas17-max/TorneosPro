@@ -73,6 +73,111 @@ ORDER BY t.name, m.date;
 
 
 -- ###########################################################################
+-- LOS 13 CASOS REALES — diagnóstico del 2026-08-25
+-- ###########################################################################
+--
+-- ✅ RESUELTOS (7) — el SQL está más abajo, listo para correr
+--
+-- | # | Partido | Qué pasó |
+-- |---|---|---|
+-- | 1 | COBRAS vs MERAKY (Fem 2.0) | Sets 25-23 / 15-25 / **15-10**. El tercero a 15 es de desempate: solo existe si el partido fue 2-1, y lo ganó COBRAS. El marcador quedó invertido. |
+-- | 2 | COBRAS vs PITBULL (Fem 2.0) | Igual: tercer set 15-13 ganado por COBRAS. Marcador invertido. |
+-- | 3 | NOVA vs MASTER (Mamás) | SIN SETS, marcador 2-0. |
+-- | 4 | THE FORD vs NOVA (Masc 2.0) | SIN SETS, marcador 2-0. |
+-- | 5 | NOVA vs BALLESTAS (Papás) | SIN SETS, marcador 2-1. |
+-- | 6 | Equipo 14 vs prueba (Mujeres 3) | Torneo de prueba. Marcador en 0-0 y sets cargados. |
+-- | 7 | Salchipapa vs prueba (Mujeres 3) | Igual. |
+--
+-- ❓ NECESITAN DECISIÓN (6) — ver las preguntas al final del bloque
+--
+-- | # | Partido | El problema |
+-- |---|---|---|
+-- | 8 | FALCONS vs AURA (Fem Aprendiz) | Sets 25-18 / 5-25 = 1-1, marcador 0-2. O falta un tercer set, o el primero se tipeó al revés. |
+-- | 9 | BALLESTA vs CARIBE (Mamás) | Un solo set con puntaje **2-0**. Nadie gana un set 2-0: alguien escribió el marcador del partido en la casilla de los puntos. |
+-- | 10 | NOVA vs 360 (Masc 2.0) | Sets 25-23 / 27-25 / 15-14, los tres a NOVA. Imposible: con 2-0 el partido se acaba. El tercero a 15 confirma que fue 2-1, así que 360 ganó uno de los dos primeros. ¿Cuál? |
+-- | 11 | CENTRAL vs THE BOY JAMES (Masc 2.0) | Sets 25-20 / 25-18 (2-0 al local) y marcador 0-2. Inversión limpia: o está mal el marcador, o los parciales se cargaron con las columnas cambiadas. |
+-- | 12 | A 3 TOQUES vs 360 (Masc 2.0) | Sets 27-25 / 23-25 = 1-1, marcador 0-2. Mismo caso que el 8. |
+-- | 13 | PIRATAS vs 360 (Papás) | Dos sets de **25-0** y marcador 2-1. El 25-0 es el parcial reglamentario de un W, pero el partido no está marcado como W. |
+
+
+-- ###########################################################################
+-- SQL DE LOS 7 RESUELTOS — se puede correr todo junto
+-- ###########################################################################
+
+-- ---- 1 y 2: el marcador quedó invertido; los sets mandan -------------------
+UPDATE matches m
+SET home_score = c.gl, away_score = c.gv,
+    winner_id  = CASE WHEN c.gl > c.gv THEN m.home_team_id
+                      WHEN c.gv > c.gl THEN m.away_team_id END,
+    updated_at = now()
+FROM (SELECT COUNT(*) FILTER (WHERE home_points > away_points) AS gl,
+             COUNT(*) FILTER (WHERE away_points > home_points) AS gv
+      FROM volleyball_sets WHERE match_id = '10e5bcc5-8818-489c-92a8-79ac048c30fc') c
+WHERE m.id = '10e5bcc5-8818-489c-92a8-79ac048c30fc';
+
+UPDATE matches m
+SET home_score = c.gl, away_score = c.gv,
+    winner_id  = CASE WHEN c.gl > c.gv THEN m.home_team_id
+                      WHEN c.gv > c.gl THEN m.away_team_id END,
+    updated_at = now()
+FROM (SELECT COUNT(*) FILTER (WHERE home_points > away_points) AS gl,
+             COUNT(*) FILTER (WHERE away_points > home_points) AS gv
+      FROM volleyball_sets WHERE match_id = '6bb24c07-8dcc-4126-a347-1e5a2465e345') c
+WHERE m.id = '6bb24c07-8dcc-4126-a347-1e5a2465e345';
+
+-- ---- 6 y 7: torneo de prueba, marcador en 0-0 ------------------------------
+UPDATE matches m
+SET home_score = c.gl, away_score = c.gv,
+    winner_id  = CASE WHEN c.gl > c.gv THEN m.home_team_id
+                      WHEN c.gv > c.gl THEN m.away_team_id END,
+    updated_at = now()
+FROM (SELECT COUNT(*) FILTER (WHERE home_points > away_points) AS gl,
+             COUNT(*) FILTER (WHERE away_points > home_points) AS gv
+      FROM volleyball_sets WHERE match_id = '10cae8fa-0a4a-4977-a0c1-008edc44584c') c
+WHERE m.id = '10cae8fa-0a4a-4977-a0c1-008edc44584c';
+
+UPDATE matches m
+SET home_score = c.gl, away_score = c.gv,
+    winner_id  = CASE WHEN c.gl > c.gv THEN m.home_team_id
+                      WHEN c.gv > c.gl THEN m.away_team_id END,
+    updated_at = now()
+FROM (SELECT COUNT(*) FILTER (WHERE home_points > away_points) AS gl,
+             COUNT(*) FILTER (WHERE away_points > home_points) AS gv
+      FROM volleyball_sets WHERE match_id = '5b017b8a-745c-4f46-a31d-95242a6990e2') c
+WHERE m.id = '5b017b8a-745c-4f46-a31d-95242a6990e2';
+
+-- ---- 3, 4 y 5: no tenían ningún set ---------------------------------------
+-- Parciales inventados y firmados. Los sets ganados sí son los reales: salen
+-- del marcador.
+
+-- NOVA vs MASTER — 2-0 al local
+INSERT INTO volleyball_sets (match_id, set_number, home_points, away_points, entered_by_name)
+VALUES ('d766d820-9be6-4d6a-b94f-67974895b788', 1, 25, 20, 'PARCIAL TENTATIVO'),
+       ('d766d820-9be6-4d6a-b94f-67974895b788', 2, 25, 20, 'PARCIAL TENTATIVO');
+
+-- THE FORD vs NOVA — 2-0 al local
+INSERT INTO volleyball_sets (match_id, set_number, home_points, away_points, entered_by_name)
+VALUES ('047feaca-e5a4-48ca-8f45-4e577744b140', 1, 25, 20, 'PARCIAL TENTATIVO'),
+       ('047feaca-e5a4-48ca-8f45-4e577744b140', 2, 25, 20, 'PARCIAL TENTATIVO');
+
+-- NOVA vs BALLESTAS — 2-1 al local: pierde el primero y gana los dos siguientes
+INSERT INTO volleyball_sets (match_id, set_number, home_points, away_points, entered_by_name)
+VALUES ('904db137-1740-40b2-9241-fe0443c7d403', 1, 20, 25, 'PARCIAL TENTATIVO'),
+       ('904db137-1740-40b2-9241-fe0443c7d403', 2, 25, 20, 'PARCIAL TENTATIVO'),
+       ('904db137-1740-40b2-9241-fe0443c7d403', 3, 15, 10, 'PARCIAL TENTATIVO');
+
+-- ###########################################################################
+-- LOS 6 QUE FALTAN — pendientes de decisión, ids a mano
+-- ###########################################################################
+--  8  FALCONS vs AURA          4b642d76-662c-4809-869c-995588c74aff
+--  9  BALLESTA vs CARIBE       00a44900-949d-4d63-8319-cfc84a708947
+-- 10  NOVA vs 360              5e2e8a95-4f3c-4e73-9a69-28ffd44100c5
+-- 11  CENTRAL vs THE BOY JAMES 814c4d40-f0d7-40eb-8c96-6943fb2e73af
+-- 12  A 3 TOQUES vs 360        f9d3d8bd-69cd-44c6-bcf8-9eac687b26fb
+-- 13  PIRATAS vs 360           8dd05ed4-7ee5-42e6-8bcf-56a4b32774c2
+
+
+-- ###########################################################################
 -- BLOQUE A — Partido SIN sets: escribir los parciales
 -- ###########################################################################
 -- Copiar el bloque, cambiar el id y los números, y correrlo. UNA VEZ POR
