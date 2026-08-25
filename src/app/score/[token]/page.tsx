@@ -24,6 +24,7 @@ import {
   BASEBALL_DEFENSIVE_STATS,
 } from "@/lib/baseball-scoresheet";
 import { dedupePlayersByName, buildPlayerNameOptions } from "@/lib/name-utils";
+import { validateVolleyballSets } from "@/lib/volleyball-sets";
 import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
 import { PlayerCombobox } from "@/components/forms/player-combobox";
 import { FairPlayPicker } from "@/components/forms/fair-play-picker";
@@ -612,6 +613,10 @@ function MatchScreen({
       : [{ setNumber: 1, homePoints: "", awayPoints: "" }]
   );
   const [submitting, setSubmitting] = useState(false);
+  // Error de validación del formulario, aparte del `error` de carga de la
+  // página. Se muestra en rojo junto al botón: un toast se va solo y el que
+  // está al lado de la cancha, con el celular en una mano, se lo pierde.
+  const [formError, setFormError] = useState<string | null>(null);
   // null = no hay W pendiente de confirmar; true/false = a quién se le daría.
   const [walkoverWinnerIsHome, setWalkoverWinnerIsHome] = useState<boolean | null>(null);
 
@@ -790,7 +795,10 @@ function MatchScreen({
           type: e.type,
         }));
 
-    // Voley: los sets vacíos se ignoran; uno a medio cargar es un error.
+    // Voley: los sets son OBLIGATORIOS y tienen que cuadrar con el marcador.
+    // Un 2-1 son tres sets, un 2-0 son dos. La tabla desempata por ratio de
+    // sets y de puntos, así que un partido cargado a medias le desordena el
+    // torneo al organizador sin que nadie note de dónde salió.
     // El servidor exige enteros 0-99, así que convertimos acá.
     const outSets: { setNumber: number; homePoints: number; awayPoints: number }[] = [];
     if (isVolleyball) {
@@ -805,7 +813,7 @@ function MatchScreen({
           !Number.isInteger(hpNum) || !Number.isInteger(apNum) ||
           hpNum < 0 || apNum < 0 || hpNum > 99 || apNum > 99
         ) {
-          toast.error(`Set ${s.setNumber}: ingresá los puntos de ambos equipos`);
+          setFormError(`Set ${s.setNumber}: ingresá los puntos de los dos equipos.`);
           return;
         }
         outSets.push({
@@ -814,7 +822,14 @@ function MatchScreen({
           awayPoints: apNum,
         });
       }
+
+      const setsError = validateVolleyballSets(hs, as, outSets);
+      if (setsError) {
+        setFormError(setsError);
+        return;
+      }
     }
+    setFormError(null);
 
     setSubmitting(true);
     try {
@@ -1145,13 +1160,23 @@ function MatchScreen({
 
       {/* Save (béisbol guarda desde los botones del paso 2). */}
       {!isBaseball && (
-        <Button
-          onClick={handleSave}
-          disabled={submitting}
-          className="w-full h-12 text-base"
-        >
-          {submitting ? "Guardando..." : "Guardar resultado"}
-        </Button>
+        <div className="space-y-2">
+          {formError && (
+            <p
+              role="alert"
+              className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive"
+            >
+              {formError}
+            </p>
+          )}
+          <Button
+            onClick={handleSave}
+            disabled={submitting}
+            className="w-full h-12 text-base"
+          >
+            {submitting ? "Guardando..." : "Guardar resultado"}
+          </Button>
+        </div>
       )}
 
       {/* W: el rival no se presentó. No hay marcador ni estadísticas que

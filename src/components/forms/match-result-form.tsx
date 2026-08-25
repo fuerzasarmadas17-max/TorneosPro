@@ -420,8 +420,22 @@ export function MatchResultForm({
       const homeSetsWon = completedSets.filter((s) => s.homePoints > s.awayPoints).length;
       const awaySetsWon = completedSets.filter((s) => s.awayPoints > s.homePoints).length;
 
+      // Acá el marcador del partido SALE de los sets, así que no puede
+      // discrepar de ellos — por eso no hace falta `validateVolleyballSets`,
+      // que es para el link del planillero, donde el marcador se escribe a
+      // mano. Lo que sí puede pasar es que no se cargue nada, o que se cargue
+      // un partido a medias.
+      if (completedSets.length === 0) {
+        setError(
+          "Falta el marcador de cada set. En vóley el resultado no se puede guardar sin ellos."
+        );
+        return;
+      }
+
       if (homeSetsWon < setsToWin && awaySetsWon < setsToWin) {
-        setError("El partido no esta decidido aun");
+        setError(
+          `El partido todavía no está decidido: van ${homeSetsWon}-${awaySetsWon} y hace falta que alguno llegue a ${setsToWin} sets.`
+        );
         return;
       }
 

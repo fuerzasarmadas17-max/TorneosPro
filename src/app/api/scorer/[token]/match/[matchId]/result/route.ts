@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSportCategory } from "@/types";
+import { validateVolleyballSets } from "@/lib/volleyball-sets";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import {
   validateScorerToken,
@@ -132,6 +134,34 @@ export async function POST(
       { error: "Juego limpio con equipo ajeno al partido" },
       { status: 400 }
     );
+  }
+
+  // ---- Vóley: los sets son obligatorios y tienen que cuadrar con el marcador.
+  //
+  // Va ACÁ, antes del UPDATE, y no junto al insert de los sets más abajo: si se
+  // validara allá, un envío inválido ya habría dejado el partido marcado como
+  // jugado con marcador y sin sets — exactamente el estado que esto evita.
+  //
+  // Y va en el servidor además del navegador porque un link de planillero es un
+  // endpoint público: quien tenga el token puede mandar lo que quiera.
+  const { data: tournament } = await supabaseAdmin
+    .from("tournaments")
+    .select("sport")
+    .eq("id", match.tournament_id)
+    .single();
+
+  if (tournament && getSportCategory(tournament.sport) === "volleyball") {
+    const setsError = validateVolleyballSets(
+      homeScore,
+      awayScore,
+      (body.sets ?? []).map((s) => ({
+        homePoints: s.homePoints,
+        awayPoints: s.awayPoints,
+      }))
+    );
+    if (setsError) {
+      return NextResponse.json({ error: setsError }, { status: 400 });
+    }
   }
 
   // Determinar winner_id (igual lógica que el form actual: mayor score gana;
