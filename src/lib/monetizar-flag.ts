@@ -4,21 +4,28 @@
  * En `false` la sección no existe para el organizador: no aparece en el menú y
  * entrar a `/dashboard/monetizar` a mano devuelve al dashboard.
  *
- * POR QUÉ ESTÁ APAGADA (2026-08-08)
- * Está construida y desplegada, pero todavía no hay anunciantes pagando. Con la
- * sección visible, un organizador entraría, dejaría su cédula y su cuenta
- * bancaria, y se quedaría esperando una plata que no puede llegar porque no hay
- * de dónde. Prometer un ingreso antes de tener con qué pagarlo es la peor forma
- * de estrenar un programa de plata.
+ * PRENDIDA EL 2026-08-25.
  *
- * Además faltan dos cosas antes de mostrarla: que el dueño revise los términos
- * (`monetizar-terms.ts` es un borrador sin revisión legal) y calibrar los
- * umbrales, que hoy son números puestos sin datos.
+ * Estuvo apagada desde el 2026-08-08 porque no había anunciantes pagando: un
+ * organizador habría entrado, dejado su cédula y su cuenta bancaria, y se
+ * habría quedado esperando una plata que no podía llegar. Ya hay campañas
+ * cobradas, los términos cubren los casos que faltaban (el descuento de los
+ * torneos fiados y que un mes sin publicidad paga da cero) y la sección de
+ * abonos está construida.
  *
- * PARA PRENDERLA: poner `true` y desplegar. No hace falta tocar nada más — la
- * base, la aprobación y el reparto ya están en producción y funcionando.
+ * ⚠️ LO QUE TODAVÍA NO ESTABA AL PRENDERLA — ver
+ * `Por hacer/deuda-contra-publicidad.md` §5:
+ *   - Los umbrales de `monetization_config` siguen sin calibrar (se calibran
+ *     con agosto completo). Mientras tanto es normal que casi nadie clasifique
+ *     y que el progreso se vea bajo.
+ *   - El punto de impuestos y retenciones de los términos no lo revisó un
+ *     contador.
+ *   - Los dos números de los términos —el mínimo de $50.000 para transferir y
+ *     el plazo de 15 días— siguen siendo una propuesta.
+ *
+ * PARA APAGARLA: poner `false` y desplegar. Los datos ya cargados no se pierden.
  *
  * Mismo patrón que `PACKS_TEST_MODE` en `lib/packs.ts`: un solo lugar, para no
  * tener que acordarse de dos.
  */
-export const MONETIZAR_ENABLED = false;
+export const MONETIZAR_ENABLED = true;

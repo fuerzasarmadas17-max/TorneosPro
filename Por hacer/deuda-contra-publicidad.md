@@ -338,10 +338,21 @@ de depender del botón.
 | 4.2 | **Confirmar los dos números** que hoy son propuesta: el mínimo para transferir ($50.000) y el plazo de pago (15 días). Cambiarlos ahora es gratis; después obliga a que todos vuelvan a aceptar. | sí |
 | 4.3 | ~~Botón de aprobar organizadores~~ — **ya existía**. `OrganizerApprovals` está en el panel de admin desde `20260808d`, con los datos bancarios tapados por defecto. | ✅ |
 
-### Bloque 5 — Prender
+### Bloque 5 — Prender ✅ 2026-08-25
 
-`MONETIZAR_ENABLED = true` y desplegar. No hace falta tocar nada más: la base,
-la aprobación y el reparto ya están en producción.
+`MONETIZAR_ENABLED = true`. La sección ya está abierta para los organizadores.
+
+Se prendió con tres cosas del bloque 4 todavía abiertas, por decisión del
+dueño. Quedan acá para no perderlas de vista:
+
+| | Estado |
+|---|---|
+| **Umbrales sin calibrar** | Es normal que casi nadie clasifique y que el progreso se vea bajo. Se calibran con agosto completo (`consultas/organizadores-vs-requisitos.sql`). |
+| **Impuestos sin revisar** | El punto de retenciones de los términos no lo vio un contador. |
+| **Los dos números** | El mínimo de $50.000 y el plazo de 15 días siguen siendo una propuesta. Cambiarlos ahora ya **no es gratis**: obliga a que quien haya aceptado vuelva a aceptar. |
+
+⚠️ Y del bloque 1 sigue pendiente **excluir la cuenta Torneos Pro del
+reparto**. No afecta a la inscripción, pero sí al primer cierre.
 
 ---
 

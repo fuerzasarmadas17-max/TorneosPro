@@ -21,7 +21,7 @@
  * Un cambio de redacción que no altere ninguna regla puede quedarse en la misma
  * versión. Cualquier cambio a lo que se paga, cuándo se paga o qué se exige, no.
  */
-export const MONETIZAR_TERMS_VERSION = "2026-08-v3";
+export const MONETIZAR_TERMS_VERSION = "2026-08-v4";
 
 export interface TermsSection {
   title: string;
@@ -52,6 +52,15 @@ export const MONETIZAR_TERMS: TermsSection[] = [
       "A veces mostramos campañas sin ánimo de lucro: causas sociales, campañas de salud, avisos de la comunidad o de la misma plataforma. Esas no las cobramos, así que no generan pago para nadie.",
       "No te quitan nada de lo que ganás con las campañas que sí pagan. Cada campaña reparte únicamente su propia plata entre quienes le aportaron audiencia a ella, así que una campaña sin cobro no entra en la cuenta de las otras.",
       "En tu pantalla vas a ver estas campañas marcadas, para que sepas por qué aparecen con cero y no las confundas con un anunciante que todavía no ha pagado.",
+    ],
+  },
+  {
+    title: "Puede que un mes no ganes nada, y no es un error",
+    body: [
+      "Solo generás plata cuando en tus torneos se muestra una campaña que un anunciante pagó. Las visitas por sí solas no generan nada: lo que se reparte es lo que pagaron los anunciantes, no las vistas.",
+      "Si en un mes no hubo ninguna campaña paga que llegara a tus torneos —porque no había anunciantes buscando tu zona, o porque las que se mostraron eran campañas sociales sin cobro— ese mes tu corte es cero, por más gente que haya entrado a ver tus torneos.",
+      "No se pierde ni se acumula: cada mes se liquida por su cuenta, con lo que se haya cobrado en ese mes. Que un mes sea cero no afecta al siguiente.",
+      "Tu audiencia igual cuenta para los mínimos que tenés que cumplir, así que no estás perdiendo el tiempo: el mes que aparezca un anunciante en tu zona, ya vas a estar listo para cobrar.",
     ],
   },
   {
@@ -97,7 +106,7 @@ export const MONETIZAR_TERMS: TermsSection[] = [
     body: [
       "A veces te dejamos crear tu torneo sin pagarlo, para que arranques ya y no tengas que esperar a juntar la plata. Cuando eso pasa, ese torneo queda con un saldo pendiente por lo que vale.",
       "Lo que ganás con la publicidad va abonando ese saldo, y te transferimos la diferencia. En cada corte te mostramos cuánto se abonó, a qué torneo, y cuánto te queda por saldar.",
-      "Cuánto se abona cada mes lo definimos nosotros según tu caso. Nunca es más de lo que ganaste ese mes, ni más de lo que queda del saldo.",
+      "Cuánto se abona cada mes lo definimos nosotros según tu caso, o lo acordamos con vos si preferís otro ritmo. Escribinos y lo vemos. Lo que no cambia son los dos límites: nunca se abona más de lo que ganaste ese mes, ni más de lo que queda del saldo.",
       "El abono se hace igual aunque ese mes tu corte no llegue al mínimo para transferir. Así tu saldo baja incluso en los meses en que todavía no te consignamos.",
       "Podés pagar el saldo en efectivo cuando quieras y dejás de tener abonos. Y si tu torneo pasa a un plan más grande porque le agregaste equipos, el saldo sube con él: te cobramos lo que vale el torneo que quedó.",
       "Si en vez de eso lo que te dimos fue un descuento —un 30%, un 50%— eso no es un saldo. Pagaste lo que te pedimos y no queda nada pendiente: cobrás tu publicidad completa desde el primer mes.",
