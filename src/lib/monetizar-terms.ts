@@ -21,7 +21,7 @@
  * Un cambio de redacción que no altere ninguna regla puede quedarse en la misma
  * versión. Cualquier cambio a lo que se paga, cuándo se paga o qué se exige, no.
  */
-export const MONETIZAR_TERMS_VERSION = "2026-08-v2";
+export const MONETIZAR_TERMS_VERSION = "2026-08-v3";
 
 export interface TermsSection {
   title: string;
@@ -90,6 +90,17 @@ export const MONETIZAR_TERMS: TermsSection[] = [
       "Si tu corte del mes es menor a $50.000, no se transfiere ese mes: se acumula y se paga junto con el siguiente que sí llegue al mínimo.",
       "La plata se transfiere únicamente a la cuenta bancaria que vos registrás, y tiene que estar a tu nombre o al de tu organización. No se hacen pagos a cuentas de terceros.",
       "Mantené tus datos al día. Si la transferencia se devuelve porque la cuenta está mal o cerrada, el monto queda pendiente hasta que corrijas los datos.",
+    ],
+  },
+  {
+    title: "Si empezaste sin pagar tu torneo",
+    body: [
+      "A veces te dejamos crear tu torneo sin pagarlo, para que arranques ya y no tengas que esperar a juntar la plata. Cuando eso pasa, ese torneo queda con un saldo pendiente por lo que vale.",
+      "Lo que ganás con la publicidad va abonando ese saldo, y te transferimos la diferencia. En cada corte te mostramos cuánto se abonó, a qué torneo, y cuánto te queda por saldar.",
+      "Cuánto se abona cada mes lo definimos nosotros según tu caso. Nunca es más de lo que ganaste ese mes, ni más de lo que queda del saldo.",
+      "El abono se hace igual aunque ese mes tu corte no llegue al mínimo para transferir. Así tu saldo baja incluso en los meses en que todavía no te consignamos.",
+      "Podés pagar el saldo en efectivo cuando quieras y dejás de tener abonos. Y si tu torneo pasa a un plan más grande porque le agregaste equipos, el saldo sube con él: te cobramos lo que vale el torneo que quedó.",
+      "Si en vez de eso lo que te dimos fue un descuento —un 30%, un 50%— eso no es un saldo. Pagaste lo que te pedimos y no queda nada pendiente: cobrás tu publicidad completa desde el primer mes.",
     ],
   },
   {
