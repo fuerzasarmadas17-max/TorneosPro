@@ -255,90 +255,82 @@ Y si el abono se puso mal, se corrige sin tocar lo que ganó.
 
 ---
 
-## 5. Plan de implementación
+## 5. Camino para prender Monetizar
+
+Todo lo que falta para que la sección quede lista para los organizadores, en
+orden. El interruptor es `MONETIZAR_ENABLED` en `src/lib/monetizar-flag.ts`.
 
 ### Ya hecho — 2026-08-25
 
-- ✅ **Sección "Si empezaste sin pagar tu torneo"** en `monetizar-terms.ts`, con
-  la versión subida a `2026-08-v3`. Al subir la versión, todos los que ya
-  aceptaron van a tener que aceptar de nuevo. Es a propósito.
-- ✅ **El cupón del 100% ya saltea el pago al crear** un torneo
-  (`tournament-cost-dialog.tsx`). Antes salía a cobrar $0 y la creación fallaba
-  con "Faltan campos requeridos".
+- ✅ **Términos** con la sección "Si empezaste sin pagar tu torneo", versión
+  `2026-08-v3`. Salió gratis: nadie los había aceptado todavía.
+- ✅ **El cupón del 100% ya deja crear el torneo.** Antes salía a cobrar $0 y
+  fallaba con "Faltan campos requeridos".
+- ✅ **Las tablas de la deuda y los abonos**, la función del saldo y el candado
+  que impide abonar de más (migración `20260825_deuda_torneos_fiados.sql`).
+- ✅ **El único fiado real marcado** — el de Daniel, $70.000.
+- ✅ **La deuda se registra sola** al crear un torneo con bono del 100%
+  (`/api/tournaments/debt`), con una columna en la consulta de auditoría que
+  caza el fallo silencioso.
 
 ---
 
-### Fase 0 — Antes de escribir una línea de la deuda
+### Bloque 1 — Antes de cerrar agosto
 
-**Nada de esto es construir; es correr y mirar.** Va primero porque *la
-deducción no tiene de dónde descontar hasta que alguien gane plata*, y hoy no
-gana nadie: nadie tiene los datos aprobados y los mínimos están sin calibrar.
-Construir los abonos antes de esto es hacer una pantalla vacía.
-
-| # | Qué | Quién |
+| | Qué | Quién |
 |---|---|---|
-| 0.1 | **Aprobar organizadores.** Están todos en `pending` desde que se activó la lista blanca. No hay botón: es un `UPDATE`. → `consultas/aprobar-organizadores.sql` ✅ escrita | la corre él |
-| 0.2 | **Sacar los fiados que ya existen** con su saldo, y ver cuáles se cobraron por fuera sin soltar el cupón. → `consultas/deudas-de-torneos-fiados.sql` ✅ escrita | la corre y la revisa él |
-| 0.3 | **Calibrar los mínimos** de `monetization_config` con agosto completo. Estaba apuntado para septiembre y agosto cierra ya. → `consultas/organizadores-vs-requisitos.sql`, que ya existía | los dos |
-| 0.4 | **Cerrar agosto de verdad** el 1 de septiembre, sin la capa nueva. | él |
+| 1.1 | **Excluir la cuenta Torneos Pro del reparto.** Hoy `revenue_share_excluded` está en falso, así que la cuenta de la plataforma figuraría como un organizador con derecho a cobrar y se llevaría parte de cada campaña. | SQL, él |
+| 1.2 | **Cargar en el panel lo que cobró cada campaña de agosto.** Sin esto la bolsa da cero y el cierre no reparte nada. No es automático. | él |
 
-⚠️ **0.2 tiene un bloqueante adentro.** Si aparecen torneos que ya pagaron por
-fuera y siguen colgados del cupón, hay que soltarlos **antes** de prender los
-abonos: si no, el sistema les va a descontar plata a organizadores que ya
-pagaron. Es el arreglo de `pago-duvan.md`, y ahora es prerrequisito.
+### Bloque 2 — El 1 de septiembre
 
-⚠️ **0.4 importa más de lo que parece.** El cierre nunca se corrió en serio. Si
-tiene un problema, hay que descubrirlo con el sistema simple y no con los
-abonos encima.
-
----
-
-### Fase 1 — La deuda y los abonos
-
-> 🔑 **La deuda no se guarda: se deriva.**
-> ```
-> saldo(torneo) = tournaments.price − Σ abonos(torneo)
-> ```
-> Un torneo debe si tiene cupón `free_tournament` o `percentage = 100`, y su
-> dueño no está en `revenue_share_excluded`.
-
-De ahí salen tres propiedades gratis:
-
-- **El upgrade sube la deuda solo.** `add-teams-dialog` ya reescribe
-  `tournaments.price` con el nuevo precio de lista.
-- **Pagar en efectivo la borra sola.** El proceso actual suelta el `coupon_id`,
-  y sin cupón el torneo deja de estar en la lista de deudas.
-- **No hay dos números que puedan desincronizarse**, que es el problema de
-  guardar un saldo.
-
-| # | Qué | Detalle |
+| | Qué | Quién |
 |---|---|---|
-| 1.1 | Tabla `tournament_debt_payments` | `tournament_id`, `organizer_id`, `period_month`, `amount_cop`, `note`, `created_by`, `created_at`. Solo abonos de publicidad; el pago en efectivo no va acá porque suelta el cupón. |
-| 1.2 | Función `get_organizer_debts(p_user_id)` | Los torneos que debe y el saldo de cada uno. La usan el panel de cierre y la pantalla del organizador. |
-| 1.3 | UI en el cierre del admin | Por cada organizador con saldo: lo que ganó, sus torneos pendientes, un campo de abono por torneo. Sugerido: la mitad de lo ganado sobre el torneo más viejo. |
-| 1.4 | Los dos topes | Un abono ≤ saldo de ese torneo. La suma de abonos del mes ≤ lo ganado ese mes. |
-| 1.5 | UI del organizador | En su corte: "− $15.000 abonados a Copa Verano — te quedan $85.000". Y el historial por torneo. |
+| 2.1 | **Calibrar los mínimos** de `monetization_config` con agosto completo. → `consultas/organizadores-vs-requisitos.sql`. Antes de que el mes cierre los números engañan. | los dos |
+| 2.2 | **Cerrar agosto de verdad.** Primera vez que se corre el cierre. Va **sin** la capa de abonos: si algo falla, mejor descubrirlo con el sistema simple. | él |
 
-**Dónde se guardan los abonos:** al cerrar el mes, junto con el corte. El monto
-ganado (`ad_settlements.amount_cop`) **no se toca** — es inmutable por trigger y
-tiene que seguir siéndolo. El abono va en su tabla, y la transferencia es la
-resta de los dos. Así un abono mal puesto se corrige sin tocar lo que ganó.
+### Bloque 3 — El código que falta
 
----
+| | Qué |
+|---|---|
+| 3.1 | **Abonos en el cierre (admin).** Después de cerrar, por cada organizador que ganó algo y además debe: lo que ganó, sus torneos pendientes y un campo de abono por torneo. Valida el segundo tope (la suma del mes no pasa de lo ganado); el primero ya lo cuida el trigger. |
+| 3.2 | **Saldar una deuda.** Ver abajo — es un hueco, no una mejora. |
+| 3.3 | **El organizador ve su deuda** en Monetizar desde el primer día, aunque todavía no haya ningún corte. Si entra y no hay ninguna mención de lo que debe hasta el primer cierre, la pantalla le contradice los términos que aceptó. |
+| 3.4 | **El organizador ve el abono** en su corte: "− $15.000 abonados a Copa Verano — te quedan $85.000", y el historial por torneo. |
 
-### Fase 2 — Cobrar el saldo en efectivo
+#### ⚠️ 3.2 — Pagar en efectivo ya no borra la deuda
 
-El botón de cobro que ya está especificado en `pago-duvan.md`
-(`/api/payments/tournament-link`, la página `/pagar/torneo/[id]` y la rama
-`type: "due"` en `fulfill.ts`).
+Cuando la deuda se deducía del cupón, el proceso de cobro la cerraba sola: al
+soltar el `coupon_id`, el torneo desaparecía de la lista de deudores.
 
-⚠️ **Con la deuda encima cambia un detalle: el link tiene que cobrar el SALDO,
-no el precio del torneo.** Si ya abonó $30.000 de publicidad y el link le cobra
-los $100.000 completos, le cobraste dos veces lo mismo.
+**Con la deuda en su propia tabla eso dejó de pasar.** Soltar el cupón no toca
+`tournament_debts`, así que un fiado que paga en efectivo **sigue figurando
+como deudor y se le sigue descontando publicidad**. Es justo el caso que este
+diseño existe para evitar.
 
-Sube de prioridad respecto a lo que decía `pago-duvan.md`: hoy olvidarse de
-correr los dos SQL esconde un ingreso; con los abonos activos, además **le
-sigue descontando plata a alguien que ya pagó**.
+Hay que resolverlo antes de prender la sección. Dos formas:
+
+1. **Mínimo viable:** agregar el `DELETE FROM tournament_debts` a los SQL del
+   cobro manual, documentado junto a los otros dos en `pago-duvan.md`.
+2. **Bien:** un botón "saldar deuda" en el panel, y a futuro que el link de
+   cobro la cierre solo al entrar la plata.
+
+⚠️ Y cuando exista el link de cobro, **tiene que cobrar el SALDO, no el precio
+del torneo.** Si ya abonó $30.000 de publicidad y el link le cobra los $100.000
+completos, se le cobró dos veces.
+
+### Bloque 4 — Antes de prender el interruptor
+
+| | Qué | Bloqueante |
+|---|---|---|
+| 4.1 | **Los términos revisados por el dueño**, y el punto de impuestos y retenciones por un contador. Hay plata y cédulas de por medio. | sí |
+| 4.2 | **Confirmar los dos números** que hoy son propuesta: el mínimo para transferir ($50.000) y el plazo de pago (15 días). Cambiarlos ahora es gratis; después obliga a que todos vuelvan a aceptar. | sí |
+| 4.3 | **Botón de aprobar organizadores** en el panel. Hoy es un `UPDATE` a mano por cada uno. Con la sección abierta van a entrar varios de una. | no, pero duele |
+
+### Bloque 5 — Prender
+
+`MONETIZAR_ENABLED = true` y desplegar. No hace falta tocar nada más: la base,
+la aprobación y el reparto ya están en producción.
 
 ---
 
