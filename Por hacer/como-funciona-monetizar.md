@@ -71,9 +71,36 @@ personas-día — justo en el horario en que la gente revisa resultados.
 
 ## 4. Cómo se reparte
 
-De cada campaña, **la mitad es para los organizadores** donde se mostró,
-repartida según la audiencia que puso cada uno. La otra mitad es de la
-plataforma.
+De cada campaña, una parte es para los organizadores donde se mostró,
+repartida según la audiencia que puso cada uno. El resto es de la plataforma.
+
+**El porcentaje es un piso, no un número fijo.** Los términos garantizan **al
+menos el 30%**, y hoy se reparte el **50% como promoción de lanzamiento**.
+
+Está escrito así a propósito. Con un 50% fijo en los términos, bajarlo alguna
+vez obligaría a que todos volvieran a aceptar y se leería como un recorte. Con
+un piso del 30%, pagar más es un regalo y volver al piso es el fin de una
+promo — una conversación mucho más fácil. Se decidió el 2026-08-25, cuando
+todavía no lo había aceptado casi nadie: era la única semana en que el cambio
+salía gratis.
+
+### Si el organizador consigue al anunciante, cobra aparte
+
+Una comisión de **al menos el 15%** de lo que ese anunciante pague durante su
+primer año, **además** de lo que le toque por audiencia.
+
+Es deliberado que la comisión pese tanto frente al reparto por audiencia: la
+audiencia es abundante —viene gratis con el producto que ya se les vendió— y
+los anunciantes son el cuello de botella. Pagar más por lo que falta que por lo
+que sobra.
+
+⚠️ **Todavía no está construido.** Está en los términos y se opera a mano: el
+organizador avisa, la plataforma cierra la venta y le transfiere la comisión
+junto con su corte. Con pocos organizadores alcanza; cuando haya volumen habrá
+que meterlo al software, y ahí aparece un detalle a resolver — hoy el reparto
+divide la bolsa entre todos los que mostraron la campaña, así que la comisión
+tiene que salir **antes** de ese reparto o de la parte de la plataforma, o el
+que vendió termina cobrando menos que un organizador que no hizo nada.
 
 Tres cosas que definen todo:
 
