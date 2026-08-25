@@ -167,7 +167,70 @@ VALUES ('904db137-1740-40b2-9241-fe0443c7d403', 1, 20, 25, 'PARCIAL TENTATIVO'),
        ('904db137-1740-40b2-9241-fe0443c7d403', 3, 15, 10, 'PARCIAL TENTATIVO');
 
 -- ###########################################################################
--- LOS 6 QUE FALTAN — pendientes de decisión, ids a mano
+-- SQL DE LOS 6 QUE FALTABAN — decididos con el organizador el 2026-08-25
+-- ###########################################################################
+--
+-- Cuatro de los seis resultaron ser la MISMA equivocación: los puntos del set
+-- se cargaron con las columnas al revés. Ahí no hay nada que inventar — se dan
+-- vuelta los números que ya estaban y listo. Por eso esos cuatro NO van
+-- firmados como tentativos: los puntos son los reales, solo estaban del lado
+-- equivocado. Solo el 9 y el 13 llevan valores nuevos.
+--
+-- En todos los casos el MARCADOR del partido se queda como está: era el dato
+-- correcto, y son los sets los que no lo acompañaban.
+
+-- ---- 8. FALCONS vs AURA — 0-2, gana AURA -----------------------------------
+-- El set 1 estaba 25-18 a favor del local, que no pudo ser: ganó AURA.
+-- Se da vuelta. Queda 18-25 , 5-25 = 0-2. ✓
+UPDATE volleyball_sets SET home_points = 18, away_points = 25
+WHERE match_id = '4b642d76-662c-4809-869c-995588c74aff' AND set_number = 1;
+
+-- ---- 9. BALLESTA vs CARIBE — 2-0, gana BALLESTA ----------------------------
+-- Tenía un único set con puntaje "2-0": alguien escribió el marcador del
+-- partido en la casilla de los puntos. Se borra y se cargan los dos reales.
+DELETE FROM volleyball_sets
+WHERE match_id = '00a44900-949d-4d63-8319-cfc84a708947';
+
+INSERT INTO volleyball_sets (match_id, set_number, home_points, away_points, entered_by_name)
+VALUES ('00a44900-949d-4d63-8319-cfc84a708947', 1, 25, 20, 'PARCIAL TENTATIVO'),
+       ('00a44900-949d-4d63-8319-cfc84a708947', 2, 25, 22, 'PARCIAL TENTATIVO');
+
+-- ---- 10. NOVA vs 360 — 2-1, gana NOVA perdiendo el SEGUNDO set -------------
+-- Los tres sets figuraban ganados por NOVA, imposible en un 2-1.
+-- Se da vuelta el segundo. Queda 25-23 , 25-27 , 15-14 = 2-1. ✓
+UPDATE volleyball_sets SET home_points = 25, away_points = 27
+WHERE match_id = '5e2e8a95-4f3c-4e73-9a69-28ffd44100c5' AND set_number = 2;
+
+-- ---- 11. CENTRAL vs THE BOY JAMES — 0-2, gana THE BOY JAMES ----------------
+-- Los dos sets estaban al revés. Se dan vuelta conservando los puntos que ya
+-- había (20 y 18) en lugar de escribir números nuevos: son datos reales, solo
+-- estaban en la columna equivocada. Queda 20-25 , 18-25 = 0-2. ✓
+UPDATE volleyball_sets SET home_points = 20, away_points = 25
+WHERE match_id = '814c4d40-f0d7-40eb-8c96-6943fb2e73af' AND set_number = 1;
+
+UPDATE volleyball_sets SET home_points = 18, away_points = 25
+WHERE match_id = '814c4d40-f0d7-40eb-8c96-6943fb2e73af' AND set_number = 2;
+
+-- ---- 12. A 3 TOQUES vs 360 — 0-2, gana 360 ---------------------------------
+-- El set 1 estaba 27-25 al local. Se da vuelta. Queda 25-27 , 23-25 = 0-2. ✓
+UPDATE volleyball_sets SET home_points = 25, away_points = 27
+WHERE match_id = 'f9d3d8bd-69cd-44c6-bcf8-9eac687b26fb' AND set_number = 1;
+
+-- ---- 13. PIRATAS vs 360 — 2-1, gana PIRATAS. NO fue W ----------------------
+-- Tenía dos sets de 25-0, que es el parcial reglamentario de un W, pero el
+-- partido no fue W. Se borran y se cargan tres con valores creíbles, con el
+-- tercero a 15 porque es el set de desempate.
+DELETE FROM volleyball_sets
+WHERE match_id = '8dd05ed4-7ee5-42e6-8bcf-56a4b32774c2';
+
+INSERT INTO volleyball_sets (match_id, set_number, home_points, away_points, entered_by_name)
+VALUES ('8dd05ed4-7ee5-42e6-8bcf-56a4b32774c2', 1, 25, 20, 'PARCIAL TENTATIVO'),
+       ('8dd05ed4-7ee5-42e6-8bcf-56a4b32774c2', 2, 22, 25, 'PARCIAL TENTATIVO'),
+       ('8dd05ed4-7ee5-42e6-8bcf-56a4b32774c2', 3, 15, 12, 'PARCIAL TENTATIVO');
+
+
+-- ###########################################################################
+-- IDS DE LOS 6, POR SI HAY QUE VOLVER
 -- ###########################################################################
 --  8  FALCONS vs AURA          4b642d76-662c-4809-869c-995588c74aff
 --  9  BALLESTA vs CARIBE       00a44900-949d-4d63-8319-cfc84a708947
