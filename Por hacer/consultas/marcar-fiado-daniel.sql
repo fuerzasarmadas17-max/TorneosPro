@@ -10,6 +10,12 @@
 -- identificador confiable.
 --
 -- Reversible: `DELETE FROM tournament_debts WHERE tournament_id = '...'`.
+--
+-- ⚠️⚠️ CORRER LOS PASOS DE A UNO, SELECCIONANDO CADA BLOQUE.
+-- El editor SQL de Supabase corre todo el script en UNA transacción: si algo
+-- falla al final, se revierte todo lo anterior. El paso D falla A PROPÓSITO
+-- (es la prueba del candado), así que corrido junto con el resto **borra el
+-- INSERT del paso B**. Pasó el 2026-08-25 en la primera corrida.
 
 -- ---------------------------------------------------------------------------
 -- PASO A — Mirá qué se va a marcar, ANTES de marcarlo
@@ -70,13 +76,27 @@ GROUP BY t.name, u.email, t.price, d.created_by, d.note;
 -- ---------------------------------------------------------------------------
 -- PASO D — Probar el candado
 -- ---------------------------------------------------------------------------
+-- 🛑 CORRER ESTO SOLO, SELECCIONÁNDOLO APARTE. Falla a propósito, y si lo
+-- corrés junto con el paso B se revierte la deuda que acabás de crear.
+--
 -- Los triggers SÍ corren desde el editor (a diferencia de RLS, que la conexión
--- privilegiada se saltea). Este INSERT TIENE QUE FALLAR con "deja el saldo en
--- negativo". Si en vez de fallar inserta la fila, el trigger no quedó
--- instalado y hay que revisar la migración.
+-- privilegiada se saltea). Este INSERT TIENE QUE FALLAR con:
+--
+--   El abono de 999999 deja el saldo en negativo: el torneo vale 70000 y ya
+--   lleva 0 abonado (quedan 70000)
+--
+-- Si en vez de fallar inserta la fila, el trigger no quedó instalado.
 
 INSERT INTO tournament_debt_payments (tournament_id, organizer_id, amount_cop)
 SELECT tournament_id, organizer_id, 999999 FROM tournament_debts;
 
--- Y por las dudas, que no haya quedado nada: debe dar 0.
-SELECT count(*) AS abonos_que_no_deberian_existir FROM tournament_debt_payments;
+-- ---------------------------------------------------------------------------
+-- PASO E — Confirmar que la deuda sigue ahí
+-- ---------------------------------------------------------------------------
+-- Después del paso D, volvé a correr el SELECT del paso C. Si quedó vacío, la
+-- transacción se llevó puesto el INSERT: corré solo el paso B otra vez.
+
+SELECT count(*) AS deudas,
+       (SELECT count(*) FROM tournament_debt_payments) AS abonos
+FROM tournament_debts;
+-- Esperado: deudas = 1, abonos = 0.
