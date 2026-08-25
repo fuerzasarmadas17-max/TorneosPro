@@ -146,3 +146,13 @@ export function paidInMonth(
   }
   return out;
 }
+
+/** Lo abonado en cada mes, por mes. Para restarlo del corte en el histórico. */
+export function paidByMonth(payments: DebtPayment[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const p of payments) {
+    if (!p.periodMonth) continue;
+    out[p.periodMonth] = (out[p.periodMonth] ?? 0) + p.amountCop;
+  }
+  return out;
+}

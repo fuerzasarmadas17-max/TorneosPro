@@ -18,6 +18,7 @@ import { ApprovalNotice } from "@/components/monetizar/approval-notice";
 import { SettlementsHistory } from "@/components/monetizar/settlements-history";
 import { RequirementsProgress } from "@/components/monetizar/requirements-progress";
 import { MyDebts } from "@/components/monetizar/my-debts";
+import { useTournamentDebts, paidByMonth } from "@/hooks/use-tournament-debts";
 import { maskAccount } from "@/lib/ad-analytics";
 import { MONETIZAR_ENABLED } from "@/lib/monetizar-flag";
 
@@ -43,6 +44,11 @@ function MonetizarContent() {
 
   const { info, onboarded, needsReaccept, loading: payoutLoading, refetch } =
     usePayoutInfo();
+  // Se pide una sola vez acá y se reparte: la tarjeta de deudas y el histórico
+  // tienen que mostrar exactamente los mismos números, y dos consultas
+  // separadas son dos oportunidades de que difieran.
+  const { debts, payments: debtPayments, loading: debtsLoading } =
+    useTournamentDebts();
   const {
     audience,
     settlements,
@@ -135,7 +141,7 @@ function MonetizarContent() {
           le descuenta; si su saldo apareciera recién al final —o peor, recién
           en el primer corte— la pantalla le estaría contradiciendo lo que
           firmó. Se pinta solo si debe algo. */}
-      <MyDebts />
+      <MyDebts debts={debts} payments={debtPayments} loading={debtsLoading} />
 
       {error ? (
         <Card>
@@ -156,6 +162,7 @@ function MonetizarContent() {
             <SettlementsHistory
               settlements={settlements}
               campaignNames={campaignNames}
+              abonosByMonth={paidByMonth(debtPayments)}
             />
           </TabsContent>
         </Tabs>

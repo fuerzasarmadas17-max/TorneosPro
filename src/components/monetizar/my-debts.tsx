@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { HandCoins } from "lucide-react";
 import { formatCOP } from "@/lib/pricing";
-import { useTournamentDebts } from "@/hooks/use-tournament-debts";
+import type { TournamentDebt, DebtPayment } from "@/hooks/use-tournament-debts";
 import { monthLabel } from "@/lib/month-label";
 
 /**
@@ -26,9 +26,15 @@ import { monthLabel } from "@/lib/month-label";
  * organizadores les cambian el nombre a sus torneos, y un historial con el
  * nombre viejo le muestra algo que no reconoce.
  */
-export function MyDebts() {
-  const { debts, payments, loading } = useTournamentDebts();
-
+export function MyDebts({
+  debts,
+  payments,
+  loading,
+}: {
+  debts: TournamentDebt[];
+  payments: DebtPayment[];
+  loading: boolean;
+}) {
   if (loading || debts.length === 0) return null;
 
   const vivas = debts.filter((d) => d.balanceCop > 0);

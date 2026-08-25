@@ -40,9 +40,12 @@ const STATUS_STYLE: Record<MySettlement["status"], string> = {
 export function SettlementsHistory({
   settlements,
   campaignNames,
+  abonosByMonth = {},
 }: {
   settlements: MySettlement[];
   campaignNames: Record<string, string>;
+  /** Lo que se abonó a torneos por pagar en cada mes. */
+  abonosByMonth?: Record<string, number>;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -93,8 +96,22 @@ export function SettlementsHistory({
                       {monthLabel(s.periodMonth)}
                     </span>
                   </TableCell>
+                  {/* El monto es lo que GANÓ, congelado, y no se toca nunca.
+                      Si ese mes se le abonó algo a un torneo por pagar, la
+                      resta va debajo — callarla acá dejaría al histórico
+                      diciendo una cifra y a su cuenta bancaria otra. */}
                   <TableCell className="text-right font-medium tabular-nums">
                     {formatCOP(s.amountCop)}
+                    {(abonosByMonth[s.periodMonth] ?? 0) > 0 && (
+                      <span className="block text-[11px] font-normal text-muted-foreground">
+                        − {formatCOP(abonosByMonth[s.periodMonth])} a tu torneo
+                        <br />
+                        te transferimos{" "}
+                        {formatCOP(
+                          Math.max(0, s.amountCop - abonosByMonth[s.periodMonth])
+                        )}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <Badge

@@ -289,35 +289,33 @@ orden. El interruptor es `MONETIZAR_ENABLED` en `src/lib/monetizar-flag.ts`.
 | 2.1 | **Calibrar los mínimos** de `monetization_config` con agosto completo. → `consultas/organizadores-vs-requisitos.sql`. Antes de que el mes cierre los números engañan. | los dos |
 | 2.2 | **Cerrar agosto de verdad.** Primera vez que se corre el cierre. Va **sin** la capa de abonos: si algo falla, mejor descubrirlo con el sistema simple. | él |
 
-### Bloque 3 — El código que falta
+### Bloque 3 — El código ✅ hecho el 2026-08-25
 
-| | Qué |
-|---|---|
-| 3.1 | **Abonos en el cierre (admin).** Después de cerrar, por cada organizador que ganó algo y además debe: lo que ganó, sus torneos pendientes y un campo de abono por torneo. Valida el segundo tope (la suma del mes no pasa de lo ganado); el primero ya lo cuida el trigger. |
-| 3.2 | **Saldar una deuda.** Ver abajo — es un hueco, no una mejora. |
-| 3.3 | **El organizador ve su deuda** en Monetizar desde el primer día, aunque todavía no haya ningún corte. Si entra y no hay ninguna mención de lo que debe hasta el primer cierre, la pantalla le contradice los términos que aceptó. |
-| 3.4 | **El organizador ve el abono** en su corte: "− $15.000 abonados a Copa Verano — te quedan $85.000", y el historial por torneo. |
+| | Qué | |
+|---|---|---|
+| 3.1 | **Abonos en el cierre.** Sección nueva en el panel, después de cerrar: por cada organizador con deuda, lo que ganó, sus torneos pendientes y un campo por torneo. | ✅ |
+| 3.2 | **Saldar en efectivo.** Botón "Pagó en efectivo" que registra un abono por el saldo restante. | ✅ |
+| 3.3 | **El organizador ve su saldo** desde el primer día, antes de que exista ningún corte. | ✅ |
+| 3.4 | **El organizador ve los abonos**: el historial por torneo, y en el Histórico la resta debajo del monto. | ✅ |
 
-#### ⚠️ 3.2 — Pagar en efectivo ya no borra la deuda
+**Los abonos van después de cerrar, no durante.** No se puede decidir cuánto
+abonarle hasta saber cuánto ganó, y eso lo produce el cierre. El efecto
+secundario es el que más importa: **`close_ad_period` no se tocó.**
 
-Cuando la deuda se deducía del cupón, el proceso de cobro la cerraba sola: al
-soltar el `coupon_id`, el torneo desaparecía de la lista de deudores.
+**Saldar registra un abono, no borra la deuda.** Borrar la fila se llevaría por
+delante el historial de lo que ya se le había descontado de su publicidad, que
+es justo lo que hay que poder mostrarle si pregunta. Y evita otra migración: el
+campo del mes ya aceptaba vacío para ajustes fuera de un cierre.
 
-**Con la deuda en su propia tabla eso dejó de pasar.** Soltar el cupón no toca
-`tournament_debts`, así que un fiado que paga en efectivo **sigue figurando
-como deudor y se le sigue descontando publicidad**. Es justo el caso que este
-diseño existe para evitar.
+**Los dos topes:** el primero (no pasar del saldo del torneo) lo cuida el
+trigger de la base. El segundo (que los abonos del mes no superen lo ganado) lo
+valida el panel, que es donde por fin se sabe cuánto ganó.
 
-Hay que resolverlo antes de prender la sección. Dos formas:
-
-1. **Mínimo viable:** agregar el `DELETE FROM tournament_debts` a los SQL del
-   cobro manual, documentado junto a los otros dos en `pago-duvan.md`.
-2. **Bien:** un botón "saldar deuda" en el panel, y a futuro que el link de
-   cobro la cierre solo al entrar la plata.
-
-⚠️ Y cuando exista el link de cobro, **tiene que cobrar el SALDO, no el precio
-del torneo.** Si ya abonó $30.000 de publicidad y el link le cobra los $100.000
-completos, se le cobró dos veces.
+⚠️ **Queda pendiente lo del link de cobro.** Cuando se construya
+(`pago-duvan.md`), tiene que cobrar el **saldo** y no el precio del torneo: si
+ya abonó $30.000 de publicidad y el link le cobra los $100.000 completos, se le
+cobró dos veces. Y al entrar la plata debería registrar el abono solo, en vez
+de depender del botón.
 
 ### Bloque 4 — Antes de prender el interruptor
 
