@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, ExternalLink, MessageCircle } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
 import { adCapReached, recordAdShown } from "@/lib/ad-frequency";
@@ -146,12 +147,33 @@ export function AdModal({ tournamentId }: AdModalProps) {
 
   const ctas = buildCtas(ad);
 
-  return (
+  // ------------------------------------------------------------------------
+  // POR QUÉ ESTE MODAL VA EN UN PORTAL Y SE DEFIENDE DE RADIX
+  // ------------------------------------------------------------------------
+  // Este no es un Dialog de Radix, es una capa propia. Cuando encima del torneo
+  // hay además un Dialog de Radix abierto —el de la foto del campeón, que se
+  // abre solo al entrar a un torneo terminado— pasaban dos cosas, y las dos se
+  // veían como "cerrar el anuncio me cierra el campeón":
+  //
+  //   1. Radix, en modo modal, le pone `pointer-events: none` al `body`. Este
+  //      modal vive dentro del body, así que heredaba esa regla y su X dejaba
+  //      de recibir clicks: el toque ATRAVESABA el anuncio y aterrizaba en el
+  //      fondo del Dialog, que es justo lo que lo cierra.
+  //   2. Aunque llegara a recibirlo, Radix escucha `pointerdown` en el
+  //      document y cualquier click de acá le cuenta como "click afuera".
+  //
+  // Las tres defensas de abajo son independientes a propósito: portal al body
+  // para quedar realmente encima, `pointer-events` propios para no heredar el
+  // bloqueo, y cortar la propagación para que el document nunca se entere.
+  const layer = (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="pointer-events-auto fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="Publicidad"
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
     >
       <div className="relative w-full max-w-sm">
         {/* Botón de cierre: cuenta regresiva → X a los 3s. */}
@@ -212,4 +234,11 @@ export function AdModal({ tournamentId }: AdModalProps) {
       </div>
     </div>
   );
+
+  // `document.body` recién existe en el navegador. Montarlo directo como hijo
+  // del body lo deja después del portal de Radix en el DOM, que es la otra
+  // mitad de quedar por encima.
+  return typeof document === "undefined"
+    ? null
+    : createPortal(layer, document.body);
 }
