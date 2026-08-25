@@ -1,0 +1,104 @@
+-- ============================================================================
+-- Paso 0.2 del plan: qué torneos fiados hay hoy y cuánto se debe por cada uno
+-- ----------------------------------------------------------------------------
+-- Para correr a mano en el editor SQL de Supabase. Solo lee, no toca nada.
+-- Ver `Por hacer/deuda-contra-publicidad.md`.
+--
+-- Hace dos cosas a la vez:
+--
+--   1. Es la AUDITORÍA de `pago-duvan.md`: cuáles ya pagaron por fuera y nadie
+--      les soltó el cupón.
+--   2. Es la VISTA PREVIA de la deuda: aplica la regla nueva a los datos
+--      reales, para ver si los saldos que saldrían tienen sentido antes de
+--      construir nada.
+--
+-- LA REGLA QUE APLICA
+--   Debe si el torneo tiene un cupón que lo dejó en $0 — `free_tournament`, o
+--   `percentage` con valor 100 — y su dueño no está excluido por política.
+--   Un descuento de 30% o 50% NO genera deuda: ese pagó lo que se le pidió.
+--
+--   saldo = precio de lista actual del torneo − lo que ya abonó
+--
+-- Todavía no existe la tabla de abonos, así que acá "lo ya abonado" es solo lo
+-- que entró por `payments`. Cuando exista, se le suma ese lado.
+--
+-- ⚠️ `t.price` significa cosas distintas según cómo se creó el torneo: para los
+-- de cortesía es el precio de LISTA (lo crea el cliente), para los pagados por
+-- Wompi es lo que entró. Acá solo miramos los de cortesía, así que siempre es
+-- el precio de lista — que es exactamente lo que se debe.
+
+SELECT
+  COALESCE(op.organization_name, u.name)  AS organizador,
+  u.email,
+  t.name                                  AS torneo,
+  t.created_at::date                      AS creado,
+  t.plan,
+  t.tier,
+  c.code                                  AS cupon,
+  CASE
+    WHEN c.type = 'free_tournament'            THEN 'Torneo gratis'
+    WHEN c.type = 'percentage' AND c.value >= 100 THEN 'Descuento 100%'
+    ELSE 'Descuento ' || c.value || '%'
+  END                                     AS bono,
+
+  -- ¿Genera deuda con la regla nueva?
+  CASE
+    WHEN COALESCE(u.revenue_share_excluded, false) THEN 'no — cuenta excluida'
+    WHEN c.type = 'free_tournament'
+      OR (c.type = 'percentage' AND c.value >= 100) THEN 'SI'
+    ELSE 'no — pagó con descuento'
+  END                                     AS genera_deuda,
+
+  t.price                                 AS precio_lista,
+  COALESCE(pg.cobrado, 0)                 AS ya_cobrado,
+
+  -- El saldo que mostraría el sistema hoy.
+  CASE
+    WHEN COALESCE(u.revenue_share_excluded, false) THEN 0
+    WHEN c.type = 'free_tournament'
+      OR (c.type = 'percentage' AND c.value >= 100)
+      THEN GREATEST(0, t.price - COALESCE(pg.cobrado, 0))
+    ELSE 0
+  END                                     AS saldo,
+
+  -- Señales para revisar a mano.
+  CASE
+    WHEN COALESCE(pg.cobrado, 0) > 0
+      THEN '🔴 ya pagó y sigue con cupón — soltarlo (ver pago-duvan.md)'
+    WHEN t.plan = 'free'
+      THEN '⚠️ plan free: ponerlo en paid antes de soltar el cupón'
+    ELSE ''
+  END                                     AS revisar
+
+FROM tournaments t
+JOIN coupons c                     ON c.id = t.coupon_id
+JOIN users u                       ON u.id = t.created_by
+LEFT JOIN organization_profiles op ON op.user_id = t.created_by
+LEFT JOIN LATERAL (
+  SELECT SUM(p.amount_cop) AS cobrado
+  FROM payments p
+  WHERE p.tournament_id = t.id AND p.status = 'approved'
+) pg ON true
+ORDER BY genera_deuda DESC, saldo DESC, t.created_at DESC;
+
+-- ============================================================
+-- CÓMO LEERLA
+-- ============================================================
+--
+-- | Lo que ves | Qué significa |
+-- |---|---|
+-- | `genera_deuda = SI`, `ya_cobrado = 0` | Fiado de verdad. Ese saldo es lo que va a empezar a abonarse con publicidad. |
+-- | `genera_deuda = SI`, `ya_cobrado > 0` | 🔴 Ya pagó por fuera y nadie soltó el cupón. **Arreglar antes de prender los abonos**, o le vas a descontar plata a alguien que ya pagó. |
+-- | `genera_deuda = no — pagó con descuento` | Cortesía real (premio de referido, descuento comercial). No debe nada. |
+-- | `genera_deuda = no — cuenta excluida` | Prueba, demo o socio. Nunca cobra publicidad, así que una deuda ahí no bajaría nunca. |
+--
+-- LO QUE HAY QUE DECIDIR MIRANDO ESTO
+--
+--   1. ¿Los saldos de la columna `saldo` son los que esperabas? Si alguno está
+--      muy alto, probablemente el torneo subió de plan y la deuda subió con él
+--      — eso es correcto, pero conviene verlo antes de que lo vea él.
+--   2. ¿Hay filas en 🔴? Ésas se arreglan primero, con los dos UPDATE de
+--      `pago-duvan.md`. La lista se vacía sola a medida que se resuelven.
+--   3. ¿Aparece algún torneo que vos considerabas regalado de verdad y que acá
+--      sale con deuda? Si pasa seguido, hace falta el campo "fiado vs. regalo"
+--      que se descartó por ahora.

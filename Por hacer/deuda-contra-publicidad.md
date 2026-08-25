@@ -252,10 +252,15 @@ Construir los abonos antes de esto es hacer una pantalla vacía.
 
 | # | Qué | Quién |
 |---|---|---|
-| 0.1 | **Aprobar organizadores.** Están todos en `pending` desde que se activó la lista blanca. No hay botón: es un `UPDATE`. | SQL mío, lo corre él |
-| 0.2 | **Sacar la lista de fiados que ya existen** y validarla contra la realidad: cuáles se cobraron por fuera y nadie soltó el cupón. La consulta está en `pago-duvan.md`. | SQL mío, la revisa él |
-| 0.3 | **Calibrar los mínimos** de `monetization_config` con agosto completo. Estaba apuntado para septiembre y agosto cierra ya. | los dos |
+| 0.1 | **Aprobar organizadores.** Están todos en `pending` desde que se activó la lista blanca. No hay botón: es un `UPDATE`. → `consultas/aprobar-organizadores.sql` ✅ escrita | la corre él |
+| 0.2 | **Sacar los fiados que ya existen** con su saldo, y ver cuáles se cobraron por fuera sin soltar el cupón. → `consultas/deudas-de-torneos-fiados.sql` ✅ escrita | la corre y la revisa él |
+| 0.3 | **Calibrar los mínimos** de `monetization_config` con agosto completo. Estaba apuntado para septiembre y agosto cierra ya. → `consultas/organizadores-vs-requisitos.sql`, que ya existía | los dos |
 | 0.4 | **Cerrar agosto de verdad** el 1 de septiembre, sin la capa nueva. | él |
+
+⚠️ **0.2 tiene un bloqueante adentro.** Si aparecen torneos que ya pagaron por
+fuera y siguen colgados del cupón, hay que soltarlos **antes** de prender los
+abonos: si no, el sistema les va a descontar plata a organizadores que ya
+pagaron. Es el arreglo de `pago-duvan.md`, y ahora es prerrequisito.
 
 ⚠️ **0.4 importa más de lo que parece.** El cierre nunca se corrió en serio. Si
 tiene un problema, hay que descubrirlo con el sistema simple y no con los
