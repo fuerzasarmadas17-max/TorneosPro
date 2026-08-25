@@ -82,10 +82,32 @@ SELECT
     WHEN t.plan = 'free'
       THEN '⚠️ plan free: ponerlo en paid antes de soltar el cupón'
     ELSE ''
-  END                                     AS revisar
+  END                                     AS revisar,
+
+  -- Dónde está escrito el vínculo con el cupón. 'solo en el cupón' significa
+  -- que `tournaments.coupon_id` quedó vacío: el torneo no sabe que tiene cupón,
+  -- y todo lo que lee de ahí (Finanzas, `computeUpgradeQuote`) lo trata como
+  -- pagado a precio completo.
+  CASE
+    WHEN t.coupon_id = c.id AND c.tournament_id = t.id THEN 'ok, en los dos'
+    WHEN t.coupon_id = c.id                            THEN '⚠️ solo en el torneo'
+    ELSE '🔴 solo en el cupón — el torneo no sabe que lo tiene'
+  END                                     AS vinculo
 
 FROM tournaments t
-JOIN coupons c                     ON c.id = t.coupon_id
+-- ⚠️ El vínculo torneo↔cupón vive en DOS lados: `tournaments.coupon_id` y
+-- `coupons.tournament_id`. Al crear se escriben los dos, pero pueden quedar
+-- desparejos (un cupón reparado a mano por SQL, un rollback a medias). La
+-- primera versión de esta consulta solo miraba `t.coupon_id` y por eso se
+-- perdía torneos con cupón — pasó el 2026-08-25 con "SANTO COFFEE MASCULINO".
+-- Se busca por los dos lados, prefiriendo el que apunta el torneo.
+JOIN LATERAL (
+  SELECT cc.*
+  FROM coupons cc
+  WHERE cc.id = t.coupon_id OR cc.tournament_id = t.id
+  ORDER BY (cc.id = t.coupon_id) DESC
+  LIMIT 1
+) c ON true
 JOIN users u                       ON u.id = t.created_by
 LEFT JOIN organization_profiles op ON op.user_id = t.created_by
 LEFT JOIN LATERAL (
