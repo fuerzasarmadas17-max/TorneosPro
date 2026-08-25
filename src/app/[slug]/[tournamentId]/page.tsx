@@ -149,7 +149,20 @@ export default function ProfileTournamentPage() {
           {user.organizationProfile.organizationName}
         </Link>
       </Button>
-      <TournamentDetail tournament={tournament} canEdit={false} orgSponsors={user.organizationProfile.sponsors} />
+      {/* `organizer` da el escudo del encabezado. Sin él, la caja del logo cae
+          al emoji del deporte (🏐, ⚽), que es lo que se veía en esta ruta:
+          la otra vista del torneo sí lo pasaba —lo resuelve el SSR— y esta no,
+          aunque acá el perfil de la organización ya está cargado y a mano. */}
+      <TournamentDetail
+        tournament={tournament}
+        canEdit={false}
+        orgSponsors={user.organizationProfile.sponsors}
+        organizer={{
+          name: user.organizationProfile.organizationName,
+          slug: user.organizationProfile.slug,
+          logoUrl: user.organizationProfile.logoUrl,
+        }}
+      />
       <AdModal tournamentId={params.tournamentId} />
     </div>
   );
