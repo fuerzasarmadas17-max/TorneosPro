@@ -24,3 +24,17 @@ export function isSaneMatchDate(value: string | null | undefined): boolean {
 
 export const INVALID_MATCH_DATE_MESSAGE =
   "La fecha no es válida. Revisa el año (debe tener 4 dígitos).";
+
+/** Hoy, en formato de fecha de partido (yyyy-mm-dd) y en la zona horaria del
+ *  navegador.
+ *
+ *  A propósito NO usa `toISOString()`, que devuelve UTC: en Colombia (UTC-5)
+ *  cualquier cosa hecha después de las 7 de la tarde quedaría fechada al día
+ *  siguiente. Es el mismo error que hubo que corregir en el reparto de
+ *  publicidad (migración `20260808e_dia_colombiano`), y acá se vería peor: un
+ *  partido resuelto anoche apareciendo mañana. */
+export function todayMatchDate(): string {
+  const d = new Date();
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+}

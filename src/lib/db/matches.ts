@@ -82,7 +82,11 @@ export async function updateMatchResult(
   /** Equipo que se llevó el Juego Limpio, o null para quitárselo a quien lo
    *  tuviera. `undefined` no toca la columna: los flujos que no manejan juego
    *  limpio (W automático por descalificación) no deben pisar el premio. */
-  fairPlayTeamId?: string | null
+  fairPlayTeamId?: string | null,
+  /** Fecha a escribirle al partido. `undefined` no toca la columna, que es lo
+   *  que hacen todos los flujos normales: cargar un resultado no cambia cuándo
+   *  se jugó. Solo la usa la descalificación, que le pone la fecha del día. */
+  date?: string
 ): Promise<boolean> {
   const { error } = await client
     .from("matches")
@@ -95,6 +99,7 @@ export async function updateMatchResult(
       ...(fairPlayTeamId !== undefined
         ? { fair_play_team_id: fairPlayTeamId }
         : {}),
+      ...(date !== undefined ? { date } : {}),
     })
     .eq("id", matchId);
 

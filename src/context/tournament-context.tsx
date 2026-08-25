@@ -22,6 +22,7 @@ import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
 import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
+import { todayMatchDate } from "@/lib/match-date";
 import { isSaneMatchDate } from "@/lib/match-date";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/auth-context";
@@ -527,6 +528,15 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     // misma regla que usan el botón de W del organizador y el del anotador.
     const rule = getWalkoverRule(tournament.sport, tournament.bestOf);
 
+    // A los partidos que se dan por perdidos se les escribe la fecha de HOY, o
+    // sea la de la descalificación. Si conservaran la que tenían programada, el
+    // calendario mostraría partidos ya terminados en fechas que todavía no
+    // llegaron — que es exactamente como se veía antes.
+    //
+    // La fecha programada no era un dato real de todos modos: esos partidos
+    // nunca se jugaron. El día en que se resolvieron sí lo es.
+    const hoy = todayMatchDate();
+
     // 2. TODOS los partidos no jugados del DQ contra un rival NO descalificado
     //    se dan por ganados al rival (walkover). Los ya jugados se conservan.
     const walkovers = tournament.matches
@@ -562,7 +572,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         undefined,
         w.sets,
         undefined,
-        true
+        true,
+        undefined,
+        hoy
       );
       if (w.match.phase === "playoff" && w.match.nextMatchId) {
         const nextMatch = tournament.matches.find((m) => m.id === w.match.nextMatchId);
@@ -595,6 +607,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                 status: "completed" as const,
                 ...(w.sets ? { sets: w.sets } : {}),
                 walkover: true,
+                date: hoy,
               }
             : m;
         });
