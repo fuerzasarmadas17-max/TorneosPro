@@ -675,7 +675,7 @@ export function CreateTournamentForm() {
       // Torneo creado con bono del 100% (cupón de cortesía o descuento del
       // 100%): queda debiendo su precio de lista, y lo que el organizador gane
       // de publicidad se lo va abonando. Ver
-      // `Por hacer/deuda-contra-publicidad.md`.
+      // `Por hacer/como-funciona-monetizar.md`.
       //
       // Va por el servidor porque `tournament_debts` sólo la escribe un admin:
       // si el navegador pudiera insertar ahí, también podría borrar su propia

@@ -12,7 +12,7 @@ import { supabase } from "@/lib/supabase";
  * la del organizador leen exactamente lo mismo y no hay dos versiones de la
  * cuenta que puedan diferir.
  *
- * Ver `Por hacer/deuda-contra-publicidad.md`.
+ * Ver `Por hacer/como-funciona-monetizar.md`.
  */
 
 export interface TournamentDebt {

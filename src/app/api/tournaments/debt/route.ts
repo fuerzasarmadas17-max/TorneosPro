@@ -7,7 +7,7 @@ import { requireUser } from "@/lib/auth/require-user";
  *
  * Marca un torneo recién creado como fiado: deja la fila en `tournament_debts`
  * para que lo que el organizador gane de publicidad le vaya abonando el precio
- * del torneo. Ver `Por hacer/deuda-contra-publicidad.md`.
+ * del torneo. Ver `Por hacer/como-funciona-monetizar.md`.
  *
  * POR QUÉ ES UNA RUTA DE SERVIDOR
  * `tournament_debts` sólo la escribe un admin, y el torneo lo crea el

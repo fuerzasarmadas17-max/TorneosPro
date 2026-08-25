@@ -2,7 +2,7 @@
 -- Paso 0.2 del plan: qué torneos fiados hay hoy y cuánto se debe por cada uno
 -- ----------------------------------------------------------------------------
 -- Para correr a mano en el editor SQL de Supabase. Solo lee, no toca nada.
--- Ver `Por hacer/deuda-contra-publicidad.md`.
+-- Ver `Por hacer/como-funciona-monetizar.md`.
 --
 -- Hace dos cosas a la vez:
 --

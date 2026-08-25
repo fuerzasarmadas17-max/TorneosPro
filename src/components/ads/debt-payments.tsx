@@ -30,7 +30,7 @@ import {
  * va en su propia tabla y la transferencia es la resta de los dos, así un abono
  * mal cargado se corrige sin tocar la cifra que el organizador ya vio.
  *
- * Ver `Por hacer/deuda-contra-publicidad.md`.
+ * Ver `Por hacer/como-funciona-monetizar.md`.
  */
 
 interface Props {

@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Torneos fiados: la deuda y sus abonos contra el reparto de publicidad
 -- ----------------------------------------------------------------------------
--- Paso 1 de la Fase 1 de `Por hacer/deuda-contra-publicidad.md`.
+-- Paso 1 de la Fase 1 de `Por hacer/como-funciona-monetizar.md`.
 --
 -- QUÉ RESUELVE
 -- Cuando se le fía un torneo a un organizador, ese torneo queda debiendo su

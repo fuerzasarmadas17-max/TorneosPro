@@ -7,15 +7,18 @@ punta a punta.
 Para la matemática del reparto en detalle, ver `como-funciona-el-reparto.md`.
 Para el detalle técnico y las decisiones, `monetizacion-analitica-publicidad.md`.
 
-**Última actualización:** 2026-08-24
+**Última actualización:** 2026-08-25
 
-> ℹ️ **Qué de esto ya está desplegado.**
-> Todo lo de las secciones 1 a 5, 7 y 8 funciona hoy. La **sección 6 (torneos
-> fiados y regalados)** está decidida pero todavía no construida —su
-> especificación es `deuda-contra-publicidad.md`—. Los umbrales de la sección 5
-> están puestos sin datos y se recalibran con agosto completo. Los dos números
-> de la sección 8 (mínimo para transferir y plazo) siguen sin confirmar, y los
-> términos no los revisó un abogado.
+> ℹ️ **Todo lo que dice este documento está en producción.** La sección se abrió
+> a los organizadores el 2026-08-25 (`MONETIZAR_ENABLED`).
+>
+> Tres cosas siguen abiertas y conviene tenerlas a la vista:
+> **(1)** los umbrales de la sección 5 se pusieron sin datos y se calibran con
+> agosto completo — mientras tanto es normal que casi nadie clasifique;
+> **(2)** el punto de impuestos y retenciones de los términos no lo revisó un
+> contador; **(3)** el mínimo de $50.000 y el plazo de 15 días de la sección 8
+> siguen siendo una propuesta, y cambiarlos ahora obliga a que todos vuelvan a
+> aceptar los términos.
 
 ---
 
@@ -87,6 +90,21 @@ comunidad) no se cobran, así que no reparten. No le quitan nada a nadie —cada
 campaña reparte lo suyo— pero sí gastan uno de los 7 avisos del día. El
 organizador las ve marcadas, para que no las confunda con un anunciante que
 todavía no pagó.
+
+### Un mes puede dar cero, y no es un error
+
+Lo que se reparte es lo que pagaron los anunciantes, **no las vistas**. Si en un
+mes no hubo ninguna campaña paga que llegara a los torneos de un organizador
+—porque no había anunciantes buscando su zona, o porque las que se mostraron
+eran sociales— su corte es cero por más audiencia que haya tenido.
+
+No se acumula para el mes siguiente: cada mes se liquida por su cuenta. Pero su
+audiencia **sí cuenta para los mínimos**, así que no pierde el mes: cuando
+aparezca un anunciante en su zona ya va a estar listo para cobrar.
+
+Está escrito en los términos, sección "Puede que un mes no ganes nada, y no es
+un error". Importa decirlo: con poca publicidad vendida, el primer mes en cero
+es el caso normal, y sin avisarlo se lee como que el sistema falló.
 
 Los montos cierran exactos con la bolsa: cada uno recibe su parte entera y los
 pesos sobrantes se reparten de a uno. Si al multiplicar a mano da $1 de
@@ -172,8 +190,10 @@ publicidad, así que una deuda ahí no bajaría nunca.
 con su propio saldo, y cada abono se imputa a un torneo concreto.
 
 Cuánto abonar lo decide el dueño **mes a mes, caso por caso**, viendo el saldo y
-los abonos anteriores. No hay porcentaje fijo: viene sugerida la mitad sobre el
-torneo más viejo y se puede cambiar.
+los abonos anteriores. No hay porcentaje fijo. Los términos también dejan
+abierto **acordarlo con el organizador** si prefiere otro ritmo; lo que no se
+negocia son los dos límites: nunca más de lo que ganó ese mes, nunca más de lo
+que queda del saldo.
 
 El organizador lo ve así en su corte del mes:
 
@@ -202,6 +222,42 @@ Por eso se promete así:
 | "Te fío el torneo y la publicidad me lo va pagando" | "Cuando empieces a cobrar publicidad, eso te va bajando lo que debés" |
 
 Sirve de gancho y de cobro pasivo. **No reemplaza el cobro en efectivo.**
+
+### Cómo se opera, mes a mes
+
+1. Se **cierra el mes** como siempre. El cierre no sabe nada de deudas: calcula
+   y congela lo que ganó cada uno, y ahí termina su trabajo.
+2. Debajo del corte aparece **"Abonos a torneos fiados"**, con cada organizador
+   que ganó algo y además debe: lo que ganó, sus torneos pendientes y un campo
+   por torneo.
+3. Se cargan los abonos. Si alguno pagó en efectivo, el botón **"Pagó en
+   efectivo"** salda el resto de una.
+4. El **archivo para el banco** se genera con lo que ganó **menos lo abonado**.
+   Los que quedaron en cero no salen en el archivo.
+
+**Lo que ganó no se toca nunca.** Es inmutable por regla de la base, y es la
+cifra que el organizador ve en su histórico. El abono vive aparte y la
+transferencia es la resta de los dos, así un abono mal cargado se corrige sin
+tocar el número que él ya vio.
+
+### La deuda se marca a mano, no se deduce del cupón
+
+Un cupón de cortesía significa *"no pagó"*, que **no** es lo mismo que
+*"me debe"*. Se verificó contra producción el 2026-08-25: de 16 torneos con bono
+del 100% vigente, 15 eran regalos y solo uno era deuda real.
+
+Desde esa fecha, **todo torneo creado con un bono del 100% registra su deuda
+automáticamente** (`/api/tournaments/debt`, al crearse). Los 15 regalos
+anteriores quedaron como estaban.
+
+⚠️ Ese registro es *best effort*: si la llamada falla, el organizador se queda
+con su torneo igual y la deuda **no se crea, sin avisar a nadie**. La columna
+`deuda_registrada` de `consultas/deudas-de-torneos-fiados.sql` es la red que lo
+caza. Conviene correrla de vez en cuando.
+
+⚠️ **Y pagar en efectivo no borra la deuda solo.** Hay que usar el botón. El día
+que exista el link de cobro (`pago-duvan.md`), tiene que cobrar el **saldo** y
+no el precio del torneo, o se le cobra dos veces lo que ya abonó con publicidad.
 
 ---
 
@@ -273,3 +329,22 @@ Si alguna no cuadra, es un bug:
 | Suma de aportes ≥ personas-día distintas de la campaña | nunca al revés |
 | El abono nunca supera lo ganado en el mes ni el saldo de la deuda | |
 | Lo que ganó no cambia nunca; lo que se abonó es lo único editable | |
+
+---
+
+## 11. Por qué no se hizo de otra forma
+
+Decisiones ya tomadas sobre la deuda de los torneos fiados, con el motivo, para
+no volver a discutirlas.
+
+| Idea | Por qué no |
+|---|---|
+| **Que las vistas de un torneo fiado no cuenten** | Se puede, pero es un muro: el organizador no ve avance. Descontar es progreso y se explica mejor. |
+| **Excluir el torneo fiado del reparto** | No hay forma limpia. Las personas-día se cuentan por organizador, no por torneo: quien ve dos torneos del mismo organizador el mismo día vale 1, y ese 1 no se puede partir entre uno fiado y uno pagado. |
+| **Deducir la deuda del cupón de cortesía** | Probado contra producción: 15 de 16 cortesías eran regalos. El cupón dice "no pagó", no "me debe". |
+| **Bloquear el reparto hasta que pague su primer torneo** | Más simple, pero binario: no deja mostrarle cuánto de la deuda cubrió su audiencia. |
+| **Descontar un 50% fijo** | Quedó solo como sugerencia editable. El monto se decide caso por caso. |
+| **Guardar el monto de la deuda** | Se deriva de `tournaments.price` menos los abonos. Guardarlo crearía dos números que tendrían que coincidir para siempre — y así la deuda sube sola cuando el torneo sube de plan. |
+| **Una columna `es_fiado` en `tournaments`** | La policy "Creador edita torneo" deja que el organizador actualice su propio torneo: la deuda sería editable por el deudor. Va en tabla aparte. |
+| **Cargar los abonos durante el cierre** | No se puede decidir cuánto abonarle hasta saber cuánto ganó, y eso lo produce el cierre. Además obligaba a tocar `close_ad_period`, que es la función que valida y congela la plata. |
+| **Borrar la deuda al pagar en efectivo** | Se llevaría por delante el historial de lo que ya se le había descontado de su publicidad. Se registra un abono por el saldo restante. |

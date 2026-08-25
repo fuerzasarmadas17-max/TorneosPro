@@ -14,7 +14,7 @@
  * abonos está construida.
  *
  * ⚠️ LO QUE TODAVÍA NO ESTABA AL PRENDERLA — ver
- * `Por hacer/deuda-contra-publicidad.md` §5:
+ * `Por hacer/como-funciona-monetizar.md` §5:
  *   - Los umbrales de `monetization_config` siguen sin calibrar (se calibran
  *     con agosto completo). Mientras tanto es normal que casi nadie clasifique
  *     y que el progreso se vea bajo.
