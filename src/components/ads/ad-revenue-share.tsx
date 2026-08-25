@@ -35,6 +35,7 @@ import {
 import { formatCOP } from "@/lib/pricing";
 import { monthLabel } from "@/lib/month-label";
 import { DebtPayments } from "./debt-payments";
+import { useTournamentDebts, paidInMonth } from "@/hooks/use-tournament-debts";
 import {
   computeRevenueShare,
   defaultEligibility,
@@ -289,6 +290,23 @@ export function AdRevenueShare({
     return map;
   }, [rows]);
 
+  const {
+    debts,
+    payments: debtPayments,
+    loading: debtsLoading,
+    refetch: refetchDebts,
+  } = useTournamentDebts();
+
+  // Lo que se le abonó a cada organizador contra sus torneos fiados en este
+  // mes. Se resta de lo que se le TRANSFIERE, pero nunca de `amount_cop`: eso
+  // es lo que ganó, está congelado por trigger, y es la cifra que él ve en su
+  // histórico. Acá arriba con los otros hooks porque más abajo hay returns
+  // tempranos.
+  const abonado = useMemo(
+    () => (periodMonth ? paidInMonth(debtPayments, periodMonth) : {}),
+    [debtPayments, periodMonth]
+  );
+
   const closed = settlements.length > 0;
   const closable = isMonthClosable(periodMonth);
 
@@ -340,10 +358,13 @@ export function AdRevenueShare({
   }
 
   // ---- Estado de la tanda de pagos ----
+  const aTransferirDe = (s: AdSettlement) =>
+    Math.max(0, s.amount_cop - (abonado[s.organizer_id] ?? 0));
+
   const paidCount = settlements.filter((s) => s.status === "paid").length;
   const pendingCop = settlements
     .filter((s) => s.status !== "paid")
-    .reduce((a, s) => a + s.amount_cop, 0);
+    .reduce((a, s) => a + aTransferirDe(s), 0);
 
   /**
    * Las filas del archivo para el banco: los cortes APROBADOS y todavía sin
@@ -366,9 +387,15 @@ export function AdRevenueShare({
         bank: p.bank,
         accountType: p.accountType,
         accountNumber: p.accountNumber,
-        amountCop: s.amount_cop,
+        // EL NETO, no lo que ganó. Si acá fuera `s.amount_cop`, cargarías el
+        // abono en pantalla y después le transferirías igual la plata entera:
+        // el descuento no existiría en la práctica.
+        amountCop: aTransferirDe(s),
       };
-    });
+    })
+    // Al que se le abonó todo no hay nada que transferirle, y una fila en $0 en
+    // el archivo del banco es una transferencia rechazada.
+    .filter((r) => r.amountCop > 0);
 
   function downloadBatch() {
     // BOM al inicio para que Excel en español no rompa las tildes.
@@ -522,6 +549,17 @@ export function AdRevenueShare({
                       </TableCell>
                       <TableCell className="text-right tabular-nums font-medium">
                         {formatCOP(s.amount_cop)}
+                        {(abonado[s.organizer_id] ?? 0) > 0 && (
+                          // Lo que ganó arriba, lo que se le transfiere abajo.
+                          // Mostrar solo el neto descuadraría contra el corte
+                          // congelado; mostrar solo el bruto haría transferir
+                          // de más.
+                          <span className="block text-[11px] font-normal text-muted-foreground">
+                            − {formatCOP(abonado[s.organizer_id])} abonado
+                            <br />
+                            transferir {formatCOP(aTransferirDe(s))}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="text-[11px]">
@@ -568,6 +606,14 @@ export function AdRevenueShare({
                   <TableCell colSpan={3}>Total del mes</TableCell>
                   <TableCell className="text-right tabular-nums font-semibold">
                     {formatCOP(payable)}
+                    {settlements.some((s) => (abonado[s.organizer_id] ?? 0) > 0) && (
+                      <span className="block text-[11px] font-normal text-muted-foreground">
+                        transferir{" "}
+                        {formatCOP(
+                          settlements.reduce((a, s) => a + aTransferirDe(s), 0)
+                        )}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell colSpan={2} />
                 </TableRow>
@@ -585,6 +631,10 @@ export function AdRevenueShare({
               earnedByOrganizer={Object.fromEntries(
                 settlements.map((s) => [s.organizer_id, s.amount_cop])
               )}
+              debts={debts}
+              payments={debtPayments}
+              loading={debtsLoading}
+              refetch={refetchDebts}
             />
           )}
         </CardContent>

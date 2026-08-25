@@ -311,6 +311,19 @@ campo del mes ya aceptaba vacío para ajustes fuera de un cierre.
 trigger de la base. El segundo (que los abonos del mes no superen lo ganado) lo
 valida el panel, que es donde por fin se sabe cuánto ganó.
 
+#### El archivo para el banco tiene que llevar el neto
+
+Se detectó el 2026-08-25, después de armar la pantalla: `batchRows` usaba
+`amount_cop`, o sea que se cargaba el abono en pantalla y **el archivo del
+banco seguía diciendo la cifra entera**. El descuento no habría existido en la
+práctica. Ya está corregido: el archivo lleva lo que ganó menos lo abonado, y
+las filas que quedan en $0 no se exportan (una transferencia de cero es un
+rechazo del banco).
+
+En la tabla del mes cerrado se muestran las dos cifras: arriba lo que ganó,
+abajo lo que hay que transferirle. Mostrar solo el neto descuadraría contra el
+corte congelado; mostrar solo el bruto haría transferir de más.
+
 ⚠️ **Queda pendiente lo del link de cobro.** Cuando se construya
 (`pago-duvan.md`), tiene que cobrar el **saldo** y no el precio del torneo: si
 ya abonó $30.000 de publicidad y el link le cobra los $100.000 completos, se le
@@ -323,7 +336,7 @@ de depender del botón.
 |---|---|---|
 | 4.1 | **Los términos revisados por el dueño**, y el punto de impuestos y retenciones por un contador. Hay plata y cédulas de por medio. | sí |
 | 4.2 | **Confirmar los dos números** que hoy son propuesta: el mínimo para transferir ($50.000) y el plazo de pago (15 días). Cambiarlos ahora es gratis; después obliga a que todos vuelvan a aceptar. | sí |
-| 4.3 | **Botón de aprobar organizadores** en el panel. Hoy es un `UPDATE` a mano por cada uno. Con la sección abierta van a entrar varios de una. | no, pero duele |
+| 4.3 | ~~Botón de aprobar organizadores~~ — **ya existía**. `OrganizerApprovals` está en el panel de admin desde `20260808d`, con los datos bancarios tapados por defecto. | ✅ |
 
 ### Bloque 5 — Prender
 

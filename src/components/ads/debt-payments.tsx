@@ -9,9 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Loader2, HandCoins } from "lucide-react";
 import { formatCOP } from "@/lib/pricing";
 import {
-  useTournamentDebts,
   paidInMonth,
   type TournamentDebt,
+  type DebtPayment,
 } from "@/hooks/use-tournament-debts";
 
 /**
@@ -38,11 +38,23 @@ interface Props {
   periodMonth: string;
   /** Lo que ganó cada organizador en este corte, por id. */
   earnedByOrganizer: Record<string, number>;
+  debts: TournamentDebt[];
+  payments: DebtPayment[];
+  loading: boolean;
+  /** Refresca las deudas del panel entero: el archivo para el banco también
+   *  depende de ellas, así que no puede quedarse con datos viejos. */
+  refetch: () => void;
 }
 
-export function DebtPayments({ periodMonth, earnedByOrganizer }: Props) {
+export function DebtPayments({
+  periodMonth,
+  earnedByOrganizer,
+  debts,
+  payments,
+  loading,
+  refetch,
+}: Props) {
   const { user } = useAuth();
-  const { debts, payments, loading, refetch } = useTournamentDebts();
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [settling, setSettling] = useState<string | null>(null);
