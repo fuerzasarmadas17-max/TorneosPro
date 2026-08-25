@@ -120,6 +120,53 @@ pautando" es el que hace que traiga el segundo.
 ⚠️ **"No prosperó" hay que decirlo igual.** Es tentador no avisar de los que no
 salieron, pero el que no recibe respuesta asume que no le importó a nadie.
 
+### El mismo tablero, del lado del admin
+
+Los cuatro estados son los mismos, pero acá no son una etiqueta: son **una cola
+de trabajo**. Lo que el panel tiene que responder de un vistazo es *"¿a cuántos
+me falta llamar?"*.
+
+| Estado | Qué significa para el dueño |
+|---|---|
+| **Enviado** | 📞 **Te toca.** Llamar al negocio. |
+| **Contactado** | Ya hablaste. Esperando respuesta o cotización. |
+| **Pautando** | Cerró. Hay que atarlo a la campaña. |
+| **No prosperó** | Cerrado, con el motivo anotado. |
+
+**Cambiar el estado ES avisarle al organizador.** No son dos acciones: al
+moverlo, le llega el mensaje. Si fueran dos, la segunda no se hace nunca y el
+organizador se queda esperando — que es justo lo que mata esta función.
+
+#### Tres cosas que el panel tiene que mostrar sí o sí
+
+**Cuánto lleva esperando.** Un contacto que el organizador entibió se enfría en
+días: él ya le dijo al del negocio *"te van a llamar"*. Si pasan seis días, el
+que queda mal es el organizador, y no te trae otro. La antigüedad en rojo a
+partir de las 48 horas es lo que evita que se pudran en la lista.
+
+**Quién lo trajo.** Es de quien va a ser la comisión, y es a quien hay que
+avisarle en cada cambio.
+
+**Lo que el organizador ya habló.** Por quién preguntar y qué les dijo. Es la
+diferencia entre una llamada en frío y una que arranca con *"me dijo Daniel que
+hablé con usted"*.
+
+#### "No prosperó" pide un motivo, y no es burocracia
+
+Sirve para dos cosas distintas, y las dos valen:
+
+1. **Para el organizador**, que recibe algo útil en vez de un no seco: *"no
+   tienen presupuesto hasta enero"* le dice que puede volver a intentar.
+2. **Para vos**, que es la única investigación de mercado que vas a tener
+   gratis. Si ocho de diez dicen *"muy caro"*, el precio está mal. Si dicen *"no
+   entendí para qué me sirve"*, lo que está mal es cómo lo estás contando.
+
+#### Al pasar a "Pautando"
+
+Ahí hay que atar el contacto a la campaña que se creó, y guardar **la fecha de
+su primera campaña**: es la que arranca el reloj de los 6 meses de comisión. Sin
+ese dato, dentro de medio año nadie va a saber si todavía corresponde pagarla.
+
 ---
 
 ## 7. Lo que hay que cuidar
