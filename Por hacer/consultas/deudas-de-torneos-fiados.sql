@@ -49,9 +49,15 @@ SELECT
   -- ¿Genera deuda con la regla nueva?
   CASE
     WHEN COALESCE(u.revenue_share_excluded, false) THEN 'no — cuenta excluida'
-    WHEN c.type = 'free_tournament'
-      OR (c.type = 'percentage' AND c.value >= 100) THEN 'SI'
-    ELSE 'no — pagó con descuento'
+    WHEN NOT (c.type = 'free_tournament'
+              OR (c.type = 'percentage' AND c.value >= 100))
+      THEN 'no — pagó con descuento'
+    -- Fiado ya resuelto: el proceso de cobro le suelta el `coupon_id` al
+    -- torneo, así que el vínculo queda solo del lado del cupón. Ese rastro es
+    -- justamente la marca de "ya se cobró".
+    WHEN t.coupon_id IS NULL AND COALESCE(pg.cobrado, 0) > 0
+      THEN 'no — fiado ya cobrado'
+    ELSE 'SI'
   END                                     AS genera_deuda,
 
   t.price                                 AS precio_lista,
@@ -68,21 +74,29 @@ SELECT
 
   -- Señales para revisar a mano.
   --
-  -- OJO: "sigue con cupón" solo es anomalía en las CORTESÍAS. Un torneo con
-  -- descuento en % conserva su `coupon_id` a propósito —es donde queda
-  -- registrado el descuento, y de ahí lo lee `computeUpgradeQuote`—, así que
-  -- marcar esos en rojo es un falso positivo. (Lo fue en la primera corrida,
-  -- 2026-08-25: el 15% de Daniel salió en rojo estando bien.)
+  -- OJO CON DOS FALSOS POSITIVOS que tuvo esta consulta:
+  --  1. Un torneo con descuento en % conserva su `coupon_id` a propósito — ahí
+  --     queda registrado el descuento y de ahí lo lee `computeUpgradeQuote`.
+  --  2. Un fiado YA COBRADO queda con `tournaments.coupon_id` en NULL y el
+  --     `coupons.tournament_id` apuntando al torneo. Eso no es desprolijidad:
+  --     es la marca de que el cobro se resolvió bien (2026-08-25: Marceliano,
+  --     Omar, Jesus y Duvan salieron en rojo estando los cuatro correctos).
   CASE
-    WHEN (c.type = 'free_tournament' OR (c.type = 'percentage' AND c.value >= 100))
-         AND COALESCE(pg.cobrado, 0) > 0
+    WHEN NOT (c.type = 'free_tournament'
+              OR (c.type = 'percentage' AND c.value >= 100))
+      THEN CASE WHEN COALESCE(pg.cobrado, 0) = 0
+                THEN '⚠️ descuento sin pago ligado — ¿no pagó, o el pago quedó suelto?'
+                ELSE '' END
+    WHEN t.coupon_id IS NULL AND COALESCE(pg.cobrado, 0) > 0
+      THEN '✅ fiado cobrado y resuelto'
+    WHEN t.coupon_id IS NULL
+      THEN '🔴 le soltaron el cupón sin que entrara plata — revisar'
+    WHEN COALESCE(pg.cobrado, 0) > 0
       THEN '🔴 cortesía ya pagada y sigue con cupón — soltarlo (ver pago-duvan.md)'
-    WHEN c.type = 'percentage' AND c.value < 100 AND COALESCE(pg.cobrado, 0) = 0
-      THEN '⚠️ descuento sin pago ligado — ¿no pagó, o el pago quedó suelto?'
     WHEN t.plan = 'free'
       THEN '⚠️ plan free: ponerlo en paid antes de soltar el cupón'
     ELSE ''
-  END                                     AS revisar,
+    END                                     AS revisar,
 
   -- Dónde está escrito el vínculo con el cupón. 'solo en el cupón' significa
   -- que `tournaments.coupon_id` quedó vacío: el torneo no sabe que tiene cupón,
