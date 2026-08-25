@@ -133,8 +133,13 @@ export function TournamentCostDialog({
         : priceInfo.price
     : priceInfo.price;
 
+  // Un `percentage` de 100 deja el torneo en $0 igual que un `free_tournament`,
+  // así que también tiene que saltear el pago: si sale a cobrar, va a
+  // `create-reference` con monto 0 y esa ruta lo rechaza ("Faltan campos
+  // requeridos"), dejando el torneo sin crear con un error que no explica nada.
   const skipPayment = appliedCoupon
-    ? appliedCoupon.type === "free_tournament"
+    ? appliedCoupon.type === "free_tournament" ||
+      (appliedCoupon.type === "percentage" && appliedCoupon.value >= 100)
     : false;
 
   const handleCreditConfirm = () => {
