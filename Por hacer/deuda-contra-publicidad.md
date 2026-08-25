@@ -82,24 +82,43 @@ por su crecimiento. No es grave —algo cobra— pero es plata que no pensabas
 regalar, y el arreglo es el **cupón con tope de tier** de
 `programa-de-referidos.md` §8.
 
-### No hace falta marcar fiado vs. regalo
+### La deuda se marca a mano — verificado contra producción
 
-Se propuso un campo para distinguirlos. **Ya no hace falta.** Desde que el
-premio de referidos pasó a ser un **descuento en %** (2026-08-25), la regla del
-bono los separa sola:
+Se dio vuelta dos veces. La conclusión final la fijaron los datos.
 
-| Bono | Caso típico | Debe |
-|---|---|---|
-| **100%** | organizador nuevo que arranca sin pagar | el total |
-| **30%, 50%…** | premio de referido, cortesía comercial | nada |
+**Corrida del 2026-08-25.** 22 torneos con cupón. De los 16 con bono del 100%
+vigente, el organizador revisó uno por uno: **solo uno es deuda real.**
 
-Queda un solo caso suelto: **cuentas de prueba, demos y socios**, que a veces
-reciben un torneo con bono del 100%. Esas cuentas están marcadas con
-`users.revenue_share_excluded`, nunca ganan publicidad y por lo tanto nunca
-abonarían — su deuda quedaría clavada para siempre inflando el "me deben".
+| | |
+|---|---|
+| Deuda real | **1** — "MASCULINO 1 🏐🏆🔥 2edicion 2026" (Daniel Rodríguez), $70.000 |
+| Regalos con bono del 100% | 15 |
+| Fiados ya cobrados y resueltos | 4 — Duvan, Jesus, Omar, Marceliano |
+| Descuentos en % (no deben nada) | 2 |
 
-**No acumular deuda para cuentas con `revenue_share_excluded`.** Es un filtro
-sobre algo que ya existe, y evita tener que agregar un campo.
+**El cupón encuentra la deuda, pero trae 15 regalos con ella.** Un cupón de
+cortesía significa *"no pagó"*, que no es lo mismo que *"me debe"*. No hay
+ninguna otra columna que los separe: los 16 son idénticos en la base.
+
+⚠️ **Por eso la deuda se crea explícitamente, en el momento de fiar.** Es lo que
+se había propuesto, después se sacó pensando que la regla del bono alcanzaba, y
+los datos mostraron que no. No se deduce de nada.
+
+Lo que **sí** se sigue derivando es el monto:
+`saldo = tournaments.price − Σ abonos`, con la marca diciendo únicamente *este
+torneo es fiado*.
+
+### El backlog es de un solo torneo
+
+No hay que limpiar nada ni tener conversaciones incómodas con nadie. Y los
+cuatro fiados que ya se cobraron salieron los cuatro bien: la preocupación de
+`pago-duvan.md` —que alguien se olvidara de correr los SQL y quedara
+invisible— no se materializó ni una vez.
+
+⚠️ **Pero el único deudor es Daniel, uno de los organizadores más grandes.** Va
+a clasificar. Así que los abonos **tienen que estar antes de prender
+`MONETIZAR_ENABLED`**, o entra y ve sus ganancias completas sin ninguna mención
+de lo que debe.
 
 ---
 
@@ -148,6 +167,12 @@ En su corte del mes:
 
 Y en cada torneo que debe, el historial de abonos con fecha. Lo que lo mantiene
 enganchado es ver el saldo bajar, no saber qué fracción se le tomó.
+
+> **No guardar el nombre del torneo en el abono; resolverlo por `tournament_id`
+> al mostrarlo.** Los organizadores les cambian el nombre — el único fiado real
+> que hay hoy pasó de "SANTO COFFEE MASCULINO 🏐🏆🔥 SENIOR" a "MASCULINO 1
+> 🏐🏆🔥 2edicion 2026". Un historial con el nombre viejo le muestra un torneo
+> que él ya no reconoce.
 
 ⚠️ **No usar la palabra "bolsa" en esta pantalla.** En el reparto "bolsa"
 significa la mitad de lo que pagó una campaña, no lo que ganó él. Si acá dice
