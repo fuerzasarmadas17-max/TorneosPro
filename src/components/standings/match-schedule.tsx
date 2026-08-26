@@ -433,12 +433,11 @@ function MatchDisplay({
                 <span className="font-bold text-lg tabular-nums">{match.awayScore}</span>
               )}
             </div>
-            {/* Sets (if any) */}
-            {isCompleted && match.sets && match.sets.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Sets: {match.sets.map((s) => `${s.homePoints}-${s.awayPoints}`).join(", ")}
-              </p>
-            )}
+            {/* Los parciales de vóley NO van acá: viven en "Ver detalle", donde
+                se muestran como bloque propio con el ganador de cada set
+                resaltado. En el listado eran una línea de texto apretada que
+                le robaba aire al marcador, que es lo único que se busca al
+                recorrer la lista. */}
             {/* Action row — round/group/status moved up to the card header,
                 so this row only holds the score CTA. Mostramos el botón
                 tanto para partidos `scheduled` (carga inicial) como
@@ -473,11 +472,6 @@ function MatchDisplay({
                   <span className="font-bold tabular-nums whitespace-nowrap">
                     {match.homeScore} - {match.awayScore}
                   </span>
-                  {match.sets && match.sets.length > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      {match.sets.map((s) => `${s.homePoints}-${s.awayPoints}`).join(", ")}
-                    </p>
-                  )}
                 </div>
               ) : (
                 <span className="text-muted-foreground text-sm">vs</span>
