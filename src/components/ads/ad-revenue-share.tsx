@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/dialog";
 import { formatCOP } from "@/lib/pricing";
 import { monthLabel } from "@/lib/month-label";
+import { buildRequirements } from "@/lib/monetizar-requirements";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { DebtPayments } from "./debt-payments";
 import { useTournamentDebts, paidInMonth } from "@/hooks/use-tournament-debts";
 import {
@@ -111,6 +113,9 @@ export function AdRevenueShare({
   const [settlements, setSettlements] = useState<AdSettlement[]>([]);
   /** Quién clasifica para monetizar. `null` = no se pudo cargar. */
   const [monetization, setMonetization] = useState<MonetizationStatus | null>(null);
+  // Qué organizador tiene abierto el detalle de requisitos, en la tabla de los
+  // que no clasificaron.
+  const [openReq, setOpenReq] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [closing, setClosing] = useState(false);
   /** A dónde transferirle a cada organizador, por `user_id`. Se carga acá y no
@@ -963,22 +968,98 @@ export function AdRevenueShare({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {noCobran.map((o) => (
-                    <TableRow key={o.organizerId}>
-                      <TableCell className="font-medium">
-                        {o.organizerName || "Organizador sin nombre"}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {o.reason}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {o.personDaysAcrossCampaigns.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums font-medium">
-                        {formatCOP(wouldBeTotal(o))}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {noCobran.flatMap((o) => {
+                    // Los requisitos se arman con la MISMA función que usa la
+                    // pantalla del organizador. Si acá se armara aparte, tarde o
+                    // temprano el panel diría una cosa y él vería otra — y esa
+                    // discusión, con plata de por medio, no se gana.
+                    const row = monetization?.organizers.find(
+                      (m) => m.organizer_id === o.organizerId
+                    );
+                    const reqs =
+                      row && monetization
+                        ? buildRequirements(row, monetization.config)
+                        : [];
+                    const open = openReq === o.organizerId;
+
+                    return [
+                      <TableRow
+                        key={o.organizerId}
+                        className={reqs.length > 0 ? "cursor-pointer" : undefined}
+                        onClick={() =>
+                          reqs.length > 0 &&
+                          setOpenReq(open ? null : o.organizerId)
+                        }
+                      >
+                        <TableCell className="font-medium">
+                          <span className="flex items-center gap-1.5">
+                            {reqs.length > 0 &&
+                              (open ? (
+                                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              ) : (
+                                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              ))}
+                            {o.organizerName || "Organizador sin nombre"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {o.reason}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {o.personDaysAcrossCampaigns.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums font-medium">
+                          {formatCOP(wouldBeTotal(o))}
+                        </TableCell>
+                      </TableRow>,
+
+                      open ? (
+                        <TableRow
+                          key={o.organizerId + ":req"}
+                          className="hover:bg-transparent"
+                        >
+                          <TableCell colSpan={4} className="bg-muted/30">
+                            <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+                              Lo mismo que ve él en su pantalla
+                            </p>
+                            <ul className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+                              {reqs.map((r) => {
+                                const ok = r.current >= r.target;
+                                return (
+                                  <li
+                                    key={r.label}
+                                    className="flex items-baseline justify-between gap-3 text-xs"
+                                  >
+                                    <span
+                                      className={
+                                        ok
+                                          ? "text-muted-foreground"
+                                          : "font-medium text-destructive"
+                                      }
+                                    >
+                                      {ok ? "✓" : "✗"} {r.label}
+                                    </span>
+                                    <span className="shrink-0 tabular-nums text-muted-foreground">
+                                      {r.boolean
+                                        ? ok
+                                          ? "sí"
+                                          : "no"
+                                        : `${r.current.toLocaleString()} / ${r.target.toLocaleString()}`}
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                            {row?.payout_status === "rejected" && row.rejection_reason && (
+                              <p className="mt-2 text-xs text-destructive">
+                                Datos de pago rechazados: {row.rejection_reason}
+                              </p>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ) : null,
+                    ];
+                  })}
                 </TableBody>
                 <TableFooter>
                   <TableRow>
