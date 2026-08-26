@@ -32,6 +32,19 @@
 -- OJO con personas-día: sale de `page_views`, no de impresiones de publicidad,
 -- porque la puerta no puede depender de que le hayas asignado una campaña.
 --
+-- ⚠️ CORREGIDA EL 2026-08-25 — EL DÍA AHORA ES EL COLOMBIANO
+-- Esta consulta agrupaba por `created_at::date`, que es la fecha UTC. La base
+-- corre en UTC y Colombia va 5 horas atrás, así que el día se cortaba a las 7
+-- de la noche: quien entraba a las 6pm y volvía a las 8pm contaba como DOS
+-- personas-día. Y las 7pm es justo cuando la gente revisa resultados.
+--
+-- El sistema ya lo había corregido (migración `20260808e_dia_colombiano`), pero
+-- esta consulta se quedó vieja y devolvía personas-día INFLADAS. Calibrar los
+-- umbrales con esos números habría dejado la barra más alta de lo real.
+--
+-- Si volvés a comparar con una corrida anterior a esta fecha, esperá números
+-- más bajos. No bajó la audiencia: dejó de contarse doble.
+--
 -- Las visitas del propio organizador se excluyen vía `is_authenticated`
 -- (migración 20260729d). Las anteriores a esa fecha tienen NULL —no se sabe— y
 -- se dejan pasar, así que los meses previos a agosto 2026 vienen infladitos.
@@ -40,8 +53,10 @@ WITH params AS (
   -- Mes en curso. Para probar contra un mes cerrado, cambiar por ejemplo a
   -- date_trunc('month', now()) - interval '1 month'.
   SELECT
-    date_trunc('month', now())                        AS mes_desde,
-    date_trunc('month', now()) + interval '1 month'   AS mes_hasta
+    -- Ventana en DÍA COLOMBIANO, no UTC. `co_day` y `co_start` vienen de la
+    -- migración 20260808e y son las mismas que usa `get_monetization_status`.
+    co_start(date_trunc('month', co_day(now()))::date) AS mes_desde,
+    co_start((date_trunc('month', co_day(now())) + interval '1 month')::date) AS mes_hasta
 ),
 
 -- Organizadores = quien tiene al menos un torneo. No se filtra por perfil:
@@ -97,8 +112,8 @@ partidos AS (
 audiencia AS (
   SELECT
     t.created_by AS user_id,
-    COUNT(DISTINCT (pv.visitor_id, pv.created_at::date)) AS personas_dia,
-    COUNT(DISTINCT pv.created_at::date)                  AS dias_con_audiencia,
+    COUNT(DISTINCT (pv.visitor_id, co_day(pv.created_at))) AS personas_dia,
+    COUNT(DISTINCT co_day(pv.created_at))                  AS dias_con_audiencia,
     COUNT(DISTINCT pv.visitor_id)                        AS personas_distintas
   FROM page_views pv
   JOIN tournaments t ON t.id = pv.entity_id
@@ -118,7 +133,7 @@ audiencia AS (
 -- audiencia de arriba está truncada y los umbrales no se pueden calibrar.
 cobertura AS (
   SELECT
-    COUNT(DISTINCT pv.created_at::date) AS dias_con_datos,
+    COUNT(DISTINCT co_day(pv.created_at)) AS dias_con_datos,
     LEAST(
       EXTRACT(day FROM (SELECT mes_hasta FROM params) - interval '1 day')::int,
       EXTRACT(day FROM now())::int
@@ -134,7 +149,7 @@ base AS (
   SELECT
     o.user_id,
     COALESCE(op.organization_name, u.name, '(sin nombre)') AS organizador,
-    u.created_at::date                            AS cuenta_creada,
+    co_day(u.created_at)                          AS cuenta_creada,
     (now() - u.created_at) >= interval '30 days'   AS antiguedad_ok,
     (op.organization_name IS NOT NULL
       AND op.logo_url IS NOT NULL)                AS perfil_ok,
