@@ -963,7 +963,7 @@ export function AdRevenueShare({
                   <TableRow>
                     <TableHead>Organizador</TableHead>
                     <TableHead>Motivo</TableHead>
-                    <TableHead className="text-right">Personas-día</TableHead>
+                    <TableHead className="text-right">Personas-día de publicidad</TableHead>
                     <TableHead className="text-right">Retenido</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1019,8 +1019,25 @@ export function AdRevenueShare({
                           className="hover:bg-transparent"
                         >
                           <TableCell colSpan={4} className="bg-muted/30">
-                            <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
                               Lo mismo que ve él en su pantalla
+                            </p>
+                            {/* Las dos cifras de personas-día conviven acá y no
+                                coinciden nunca. En la pantalla del organizador
+                                no se ven juntas; en este panel sí, y sin este
+                                aviso se lee como que una está mal. */}
+                            <p className="mb-2 text-[11px] text-muted-foreground">
+                              Ojo: las{" "}
+                              <strong className="font-medium">
+                                {o.personDaysAcrossCampaigns.toLocaleString()}
+                              </strong>{" "}
+                              de la columna son personas-día de{" "}
+                              <strong className="font-medium">publicidad</strong>{" "}
+                              sumadas por campaña —definen cuánto cobra—. Las de
+                              acá abajo son{" "}
+                              <strong className="font-medium">visitas al torneo</strong>,
+                              una por persona y día, y son las que definen si
+                              clasifica. Nunca dan igual.
                             </p>
                             <ul className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
                               {reqs.map((r) => {
