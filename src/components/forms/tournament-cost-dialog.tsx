@@ -21,6 +21,7 @@ import { TOURNAMENT_PACKS, pricePerCredit } from "@/lib/packs";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { Loader2, X } from "lucide-react";
+import { WhatsappPaymentHelp } from "@/components/ui/whatsapp-payment-help";
 
 export const FORMAT_LABELS: Record<TournamentFormat, string> = {
   elimination: "Eliminacion Directa",
@@ -433,6 +434,16 @@ export function TournamentCostDialog({
                 </Button>
               )}
             </div>
+          )}
+
+          {/* Salida para el que no quiere pagar con tarjeta. Sólo cuando hay
+              algo real que cobrar: con cupón o crédito no hay pasarela de por
+              medio y ofrecerle otro medio de pago sería confundirlo. */}
+          {!skipPayment && effectiveCost > 0 && (
+            <WhatsappPaymentHelp
+              detalle={`el torneo "${tournamentName}" (${teamCount} equipos)`}
+              monto={formatCOP(effectiveCost)}
+            />
           )}
         </DialogContent>
       </Dialog>

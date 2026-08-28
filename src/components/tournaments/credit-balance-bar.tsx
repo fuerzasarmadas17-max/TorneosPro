@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { formatCOP } from "@/lib/pricing";
 import { authHeader } from "@/lib/auth-header";
 import { redirectToWompiCheckout, paymentReturnUrl } from "@/lib/payments/wompi-redirect";
+import { WhatsappPaymentHelp } from "@/components/ui/whatsapp-payment-help";
 import { TOURNAMENT_PACKS, pricePerCredit, PACKS_TEST_MODE } from "@/lib/packs";
 import { useAuth } from "@/context/auth-context";
 import { useTournamentCredits } from "@/hooks/use-tournament-credits";
@@ -131,6 +132,17 @@ export function CreditBalanceBar() {
           {buying && <Loader2 className="h-4 w-4 animate-spin" />}
           {total > 0 ? "Comprar más" : "Comprar paquete"}
         </Button>
+
+        {/* El paquete es el producto más caro y el que más se cae: en agosto
+            dos organizadores lo intentaron y ninguno completó. La salida por
+            WhatsApp ocupa toda la fila para que no quede escondida al lado
+            del botón. */}
+        <div className="w-full">
+          <WhatsappPaymentHelp
+            detalle={`el ${PACK.label.toLowerCase()}`}
+            monto={formatCOP(PACK.priceCop)}
+          />
+        </div>
       </CardContent>
     </Card>
   );

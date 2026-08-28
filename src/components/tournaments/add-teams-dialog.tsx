@@ -33,6 +33,7 @@ import {
   generateIncrementalMatchesForGroup,
 } from "@/data/helpers";
 import { redirectToWompiCheckout, paymentReturnUrl } from "@/lib/payments/wompi-redirect";
+import { WhatsappPaymentHelp } from "@/components/ui/whatsapp-payment-help";
 import { Tournament, Team, TournamentGroup } from "@/types";
 import { toast } from "sonner";
 import { Loader2, Plus } from "lucide-react";
@@ -534,7 +535,7 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
                       ? "jugadores"
                       : "equipos"}
                   . Sin grupo asignado, el partido contra los otros equipos no
-                  se genera y queda como "pendiente" para siempre.
+                  se genera y queda como &quot;pendiente&quot; para siempre.
                 </p>
               )}
             </div>
@@ -569,6 +570,17 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
               </Button>
             </div>
           </>
+        )}
+
+        {/* Una sola vez para los dos pasos del diálogo: mientras haya algo que
+            cobrar, la salida por WhatsApp está a la vista. Dos de los siete
+            intentos caídos de agosto eran justo esto — upgrades de $30.000
+            para meter uno o dos equipos más. */}
+        {needsUpgrade && cobro > 0 && (
+          <WhatsappPaymentHelp
+            detalle={`agregar ${count} equipo${count === 1 ? "" : "s"} al torneo "${tournament.name}"`}
+            monto={formatCOP(cobro)}
+          />
         )}
       </DialogContent>
     </Dialog>
