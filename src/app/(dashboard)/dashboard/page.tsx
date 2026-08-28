@@ -63,8 +63,12 @@ function DashboardContent() {
 
   return (
     <div className="container mx-auto max-w-6xl px-4 py-8 space-y-6">
-      {/* Encabezado */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* Encabezado.
+          `max-w-4xl` para que quede a la misma anchura que el contenido de las
+          dos pestañas de abajo. Sin eso el encabezado usaba los 6xl del
+          contenedor y en desktop el botón "Crear torneo" quedaba flotando a la
+          derecha, bastante más afuera de donde termina todo lo demás. */}
+      <div className="flex max-w-4xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight">Hola, {user?.name}</h1>
           <p className="text-sm text-muted-foreground">
