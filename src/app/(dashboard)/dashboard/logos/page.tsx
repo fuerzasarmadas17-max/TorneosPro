@@ -21,7 +21,7 @@ function LogosContent() {
   if (user?.role === "admin") return null;
 
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-8">
+    <div className="container mx-auto px-4 py-8">
       <div className="mb-6 space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">Logos</h1>
         <p className="text-sm text-muted-foreground">

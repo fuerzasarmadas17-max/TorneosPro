@@ -20,7 +20,7 @@ function SettingsContent() {
 
   // Mismo layout que "Crear Torneo": el form es dueño de su propio Card.
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-8">
+    <div className="container mx-auto px-4 py-8">
       <OrganizationProfileForm />
     </div>
   );

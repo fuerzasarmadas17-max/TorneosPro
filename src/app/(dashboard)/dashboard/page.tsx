@@ -62,7 +62,7 @@ function DashboardContent() {
   };
 
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-8 space-y-6">
+    <div className="container mx-auto px-4 py-8 space-y-6">
       {/* Encabezado. Sin ancho propio: usa el del contenedor, igual que las
           dos pestañas de abajo. Así el botón "Crear torneo" queda alineado con
           el borde derecho de todo el contenido y no flotando por su cuenta. */}
