@@ -299,6 +299,9 @@ export interface VolleyballStandingsEntry {
   teamId: string;
   played: number;
   won: number;
+  /** Partidos que quedaron con la serie igualada (1-1, 2-2). Solo pasa en
+   *  grupos y liga: en playoffs el empate no se permite. */
+  drawn: number;
   lost: number;
   setsFor: number;
   setsAgainst: number;

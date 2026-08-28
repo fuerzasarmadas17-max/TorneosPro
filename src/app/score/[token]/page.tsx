@@ -24,7 +24,11 @@ import {
   BASEBALL_DEFENSIVE_STATS,
 } from "@/lib/baseball-scoresheet";
 import { dedupePlayersByName, buildPlayerNameOptions } from "@/lib/name-utils";
-import { validateVolleyballSets } from "@/lib/volleyball-sets";
+import {
+  setsForScore,
+  validateVolleyballSets,
+  volleyballDrawAllowed,
+} from "@/lib/volleyball-sets";
 import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
 import { PlayerCombobox } from "@/components/forms/player-combobox";
 import { FairPlayPicker } from "@/components/forms/fair-play-picker";
@@ -55,6 +59,8 @@ interface ScorerMatch {
   date: string | null;
   time: string | null;
   venue: string | null;
+  /** "group" | "playoff" | null. Solo vóley la usa: en playoffs no hay empate. */
+  phase: string | null;
   resultEnteredByName: string | null;
   /** Equipo que ganó el Juego Limpio, null si no se le dio a nadie. */
   fairPlayTeamId: string | null;
@@ -604,13 +610,11 @@ function MatchScreen({
   // Los puntos se guardan como texto: con number el campo arranca en 0 y no se
   // puede vaciar para escribir encima (todo intento vuelve a 0).
   const [sets, setSets] = useState(() =>
-    match.sets.length > 0
-      ? match.sets.map((s) => ({
-          setNumber: s.set_number,
-          homePoints: String(s.home_points),
-          awayPoints: String(s.away_points),
-        }))
-      : [{ setNumber: 1, homePoints: "", awayPoints: "" }]
+    match.sets.map((s) => ({
+      setNumber: s.set_number,
+      homePoints: String(s.home_points),
+      awayPoints: String(s.away_points),
+    }))
   );
   const [submitting, setSubmitting] = useState(false);
   // Error de validación del formulario, aparte del `error` de carga de la
@@ -697,20 +701,36 @@ function MatchScreen({
     setEventEntries((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const addSet = () => {
-    setSets((prev) => [
-      ...prev,
-      { setNumber: prev.length + 1, homePoints: "", awayPoints: "" },
-    ]);
-  };
-
   const updateSet = (idx: number, patch: Partial<{ homePoints: string; awayPoints: string }>) => {
     setSets((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
   };
 
-  const removeSet = (idx: number) => {
-    setSets((prev) => prev.filter((_, i) => i !== idx).map((s, i) => ({ ...s, setNumber: i + 1 })));
-  };
+  // Vóley: las filas de sets salen del marcador, no de un botón "Agregar".
+  // Un 2-1 son tres filas, un 1-1 son dos. Antes había que acordarse de
+  // agregarlas a mano y era el error más común de la planilla.
+  const volleyHome = /^\d+$/.test(homeScore) ? parseInt(homeScore) : null;
+  const volleyAway = /^\d+$/.test(awayScore) ? parseInt(awayScore) : null;
+  // Se topa en el máximo del formato para no pintar cincuenta casillas por un
+  // dedazo; el marcador imposible lo rechaza igual la validación al guardar.
+  const volleyMaxSets = Math.ceil((tournament.bestOf ?? 3) / 2) * 2 - 1;
+  const volleyRawSets =
+    volleyHome !== null && volleyAway !== null
+      ? setsForScore(volleyHome, volleyAway)
+      : 0;
+  const volleyTotalSets = volleyRawSets > volleyMaxSets ? 0 : volleyRawSets;
+  const drawAllowed = volleyballDrawAllowed(tournament.format, match.phase);
+
+  useEffect(() => {
+    if (!isVolleyball) return;
+    setSets((prev) => {
+      if (prev.length === volleyTotalSets) return prev;
+      return Array.from({ length: volleyTotalSets }, (_, i) => ({
+        setNumber: i + 1,
+        homePoints: prev[i]?.homePoints ?? "",
+        awayPoints: prev[i]?.awayPoints ?? "",
+      }));
+    });
+  }, [isVolleyball, volleyTotalSets]);
 
   /**
    * W (walkover): un equipo no se presentó. Manda el marcador reglamentario
@@ -823,7 +843,10 @@ function MatchScreen({
         });
       }
 
-      const setsError = validateVolleyballSets(hs, as, outSets);
+      const setsError = validateVolleyballSets(hs, as, outSets, {
+        setsToWin: Math.ceil((tournament.bestOf ?? 3) / 2),
+        allowDraw: drawAllowed,
+      });
       if (setsError) {
         setFormError(setsError);
         return;
@@ -1022,12 +1045,14 @@ function MatchScreen({
       {/* Volleyball sets */}
       {isVolleyball && (
         <div className="space-y-2 rounded-lg border bg-card p-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">Sets</p>
-            <Button size="sm" variant="outline" onClick={addSet} disabled={sets.length >= 9}>
-              <Plus className="h-3 w-3 mr-1" /> Agregar
-            </Button>
-          </div>
+          <p className="text-sm font-medium">Sets</p>
+          <p className="text-xs text-muted-foreground">
+            {volleyTotalSets === 0
+              ? `Escribí arriba cuántos sets ganó cada equipo y acá aparecen las casillas.${
+                  drawAllowed ? " Puede quedar empatado." : ""
+                }`
+              : `Puntos de cada set (25-23, 25-20, …)`}
+          </p>
           {sets.map((s, i) => (
             <div key={i} className="flex items-center gap-2">
               <Badge variant="secondary" className="shrink-0">Set {s.setNumber}</Badge>
@@ -1054,11 +1079,6 @@ function MatchScreen({
                 onFocus={(e) => e.target.select()}
                 className="text-center"
               />
-              {sets.length > 1 && (
-                <Button size="sm" variant="ghost" onClick={() => removeSet(i)}>
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              )}
             </div>
           ))}
         </div>

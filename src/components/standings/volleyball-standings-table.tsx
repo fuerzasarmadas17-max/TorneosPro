@@ -62,6 +62,12 @@ function ScoringRulesDialog({ bestOf }: { bestOf: 3 | 5 }) {
                       <td className="text-center px-3 py-2 font-bold text-green-600">2 pts</td>
                       <td className="text-center px-3 py-2 text-yellow-600">1 pt</td>
                     </tr>
+                    <tr className="border-t">
+                      <td className="px-3 py-2">Empate 1–1 o 2–2</td>
+                      <td className="text-center px-3 py-2 text-yellow-600" colSpan={2}>
+                        1 pt para cada uno
+                      </td>
+                    </tr>
                   </>
                 ) : (
                   <>
@@ -75,6 +81,12 @@ function ScoringRulesDialog({ bestOf }: { bestOf: 3 | 5 }) {
                       <td className="text-center px-3 py-2 font-bold text-green-600">2 pts</td>
                       <td className="text-center px-3 py-2 text-yellow-600">1 pt</td>
                     </tr>
+                    <tr className="border-t">
+                      <td className="px-3 py-2">Empate 1–1</td>
+                      <td className="text-center px-3 py-2 text-yellow-600" colSpan={2}>
+                        1 pt para cada uno
+                      </td>
+                    </tr>
                   </>
                 )}
               </tbody>
@@ -87,6 +99,7 @@ function ScoringRulesDialog({ bestOf }: { bestOf: 3 | 5 }) {
           <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
             <span className="font-mono font-medium">PJ</span><span>Partidos jugados</span>
             <span className="font-mono font-medium">PG</span><span>Partidos ganados</span>
+            <span className="font-mono font-medium">PE</span><span>Partidos empatados (serie igualada, solo en grupos y liga)</span>
             <span className="font-mono font-medium">PP</span><span>Partidos perdidos</span>
             <span className="font-mono font-medium">SF</span><span>Sets a favor</span>
             <span className="font-mono font-medium">SC</span><span>Sets en contra</span>
@@ -148,6 +161,7 @@ export function VolleyballStandingsTable({
             <TableHead>Equipo</TableHead>
             <TableHead className="text-center w-10">PJ</TableHead>
             <TableHead className="text-center w-10">PG</TableHead>
+            <TableHead className="text-center w-10">PE</TableHead>
             <TableHead className="text-center w-10">PP</TableHead>
             <TableHead className="text-center w-10">SF</TableHead>
             <TableHead className="text-center w-10">SC</TableHead>
@@ -175,6 +189,7 @@ export function VolleyballStandingsTable({
                 </TableCell>
                 <TableCell className="text-center">{entry.played}</TableCell>
                 <TableCell className="text-center">{entry.won}</TableCell>
+                <TableCell className="text-center">{entry.drawn}</TableCell>
                 <TableCell className="text-center">{entry.lost}</TableCell>
                 <TableCell className="text-center">{entry.setsFor}</TableCell>
                 <TableCell className="text-center">

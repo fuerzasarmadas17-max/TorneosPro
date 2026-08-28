@@ -38,6 +38,7 @@ function buildEntries(
       teamId,
       played: 0,
       won: 0,
+      drawn: 0,
       lost: 0,
       setsFor: 0,
       setsAgainst: 0,
@@ -83,6 +84,19 @@ function buildEntries(
     }
 
     // Ranking points
+    //
+    // El empate (1-1, 2-2) existe en los relámpagos de dos y tres días: se
+    // corta el partido con la serie igualada. Vale 1 punto para cada uno, que
+    // es lo mismo que ya se lleva el que pierde 2-1 — el resto del reparto
+    // (3 / 2 / 1 / 0) queda exactamente igual que siempre.
+    if (match.homeScore === match.awayScore) {
+      home.drawn++;
+      away.drawn++;
+      home.points += 1;
+      away.points += 1;
+      continue;
+    }
+
     const homeWon = match.homeScore > match.awayScore;
     if (homeWon) {
       home.won++;

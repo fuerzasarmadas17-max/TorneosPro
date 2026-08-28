@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +38,11 @@ import {
 } from "@/lib/baseball-scoresheet";
 import { dedupePlayersByName, buildPlayerNameOptions, normalizePlayerName } from "@/lib/name-utils";
 import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
+import {
+  setsForScore,
+  validateVolleyballSets,
+  volleyballDrawAllowed,
+} from "@/lib/volleyball-sets";
 import { fetchTeamsByIds } from "@/lib/db/teams";
 import { PlayerCombobox } from "./player-combobox";
 import { FairPlayPicker } from "./fair-play-picker";
@@ -116,7 +121,8 @@ export function MatchResultForm({
   // dropdown de goleador aun cuando el equipo no tenga roster cargado. Es solo
   // la fuente de sugerencias: NO se modifica la plantilla, así que importar la
   // planilla oficial más tarde no genera jugadores duplicados.
-  const tournamentMatches = getTournamentById(match.tournamentId)?.matches ?? [];
+  const tournament = getTournamentById(match.tournamentId);
+  const tournamentMatches = tournament?.matches ?? [];
   const eventNamesForTeam = (teamId: string) =>
     tournamentMatches.flatMap((m) =>
       (m.events ?? []).filter((e) => e.teamId === teamId).map((e) => e.playerName)
@@ -155,19 +161,16 @@ export function MatchResultForm({
     Record<string, PlayerStats>
   >(() => buildScoresheetData(match.events ?? [], match.awayTeamId));
 
-  // Volleyball set scores state — precargar los sets ya cargados o
-  // arrancar con la cantidad de bestOf si es la primera vez.
+  // Volleyball: los sets salen del marcador que escribe el organizador arriba.
+  // Un 2-1 son tres casillas, un 1-1 son dos. Precargamos lo que ya esté
+  // guardado; si es la primera vez arranca vacío y las casillas aparecen recién
+  // cuando hay un marcador que diga cuántas van.
   const [setScores, setSetScores] = useState<Array<{ home: string; away: string }>>(
-    () => {
-      const existing = match.sets ?? [];
-      if (existing.length > 0) {
-        return existing.map((s) => ({
-          home: String(s.homePoints),
-          away: String(s.awayPoints),
-        }));
-      }
-      return Array.from({ length: bestOf || 3 }, () => ({ home: "", away: "" }));
-    }
+    () =>
+      (match.sets ?? []).map((s) => ({
+        home: String(s.homePoints),
+        away: String(s.awayPoints),
+      }))
   );
 
 
@@ -214,15 +217,45 @@ export function MatchResultForm({
     }));
   };
 
-  // Volleyball: compute sets won from setScores
-  const computedHomeSets = setScores.filter(
-    (s) => s.home !== "" && s.away !== "" && parseInt(s.home) > parseInt(s.away)
-  ).length;
-  const computedAwaySets = setScores.filter(
-    (s) => s.home !== "" && s.away !== "" && parseInt(s.away) > parseInt(s.home)
-  ).length;
-  const volleyballMatchDecided =
-    computedHomeSets >= setsToWin || computedAwaySets >= setsToWin;
+  // Vóley: el marcador manda y los sets se acomodan solos.
+  //
+  // Antes era al revés (se cargaba set por set y el marcador salía de ahí), y
+  // eso obligaba a jugar el partido entero en la cabeza antes de escribir nada.
+  // Ahora el organizador pone "quedó 2-1" y abajo le aparecen las tres casillas
+  // que faltan llenar.
+  const volleyHome = /^\d+$/.test(homeScore) ? parseInt(homeScore) : null;
+  const volleyAway = /^\d+$/.test(awayScore) ? parseInt(awayScore) : null;
+  // Sets que se van a jugar según el marcador escrito. Se topa en el máximo
+  // posible del formato (3 sets en un "mejor de 3") para no pintar cincuenta
+  // casillas si alguien se equivoca de tecla; ese marcador imposible igual lo
+  // rechaza la validación al guardar, con su mensaje.
+  const maxSets = setsToWin * 2 - 1;
+  const volleyRawSets =
+    volleyHome !== null && volleyAway !== null
+      ? setsForScore(volleyHome, volleyAway)
+      : 0;
+  const volleyImposible = volleyRawSets > maxSets;
+  const volleyTotalSets = volleyImposible ? 0 : volleyRawSets;
+
+  // El empate no se permite en playoffs: ahí alguien tiene que pasar de ronda.
+  const drawAllowed = volleyballDrawAllowed(tournament?.format, match.phase);
+  const volleyIsDraw =
+    volleyHome !== null && volleyAway !== null &&
+    volleyHome === volleyAway && volleyTotalSets > 0;
+
+  // Estirar o recortar las casillas cuando cambia el marcador, sin perder lo
+  // ya escrito: pasar de 2-1 a 2-0 borra la tercera, volver a 2-1 la trae vacía.
+  useEffect(() => {
+    if (!isVolleyball) return;
+    setSetScores((prev) => {
+      if (prev.length === volleyTotalSets) return prev;
+      const next = Array.from(
+        { length: volleyTotalSets },
+        (_, i) => prev[i] ?? { home: "", away: "" }
+      );
+      return next;
+    });
+  }, [isVolleyball, volleyTotalSets]);
 
   const updateSetScore = (index: number, side: "home" | "away", value: string) => {
     setSetScores((prev) => {
@@ -390,54 +423,41 @@ export function MatchResultForm({
   const handleSave = () => {
     setError("");
 
-    // Volleyball: validate and save set-by-set
+    // Vóley: el marcador lo escribe el organizador y los sets tienen que
+    // cuadrar con él. La regla es la MISMA que corren el link del planillero y
+    // el servidor — vive en lib/volleyball-sets.ts justo para que los tres
+    // digan lo mismo y no haya un camino más permisivo que otro.
     if (isVolleyball) {
+      if (volleyHome === null || volleyAway === null) {
+        setError("Cargá el resultado del partido en sets (por ejemplo 2-1).");
+        return;
+      }
+
       const completedSets: VolleyballSet[] = [];
       for (let i = 0; i < setScores.length; i++) {
         const s = setScores[i];
-        if (s.home === "" && s.away === "") continue;
         const hp = parseInt(s.home);
         const ap = parseInt(s.away);
-        if (isNaN(hp) || isNaN(ap)) {
-          setError(`Set ${i + 1}: ingresa marcadores validos`);
-          return;
-        }
-        if (hp < 0 || ap < 0) {
-          setError(`Set ${i + 1}: los marcadores no pueden ser negativos`);
-          return;
-        }
-        if (hp === ap) {
-          setError(`Set ${i + 1}: un set no puede terminar en empate`);
+        if (s.home === "" || s.away === "" || isNaN(hp) || isNaN(ap)) {
+          setError(`Set ${i + 1}: faltan los puntos de alguno de los dos equipos.`);
           return;
         }
         completedSets.push({ setNumber: i + 1, homePoints: hp, awayPoints: ap });
-        // Stop processing after a team wins enough sets
-        const homeWon = completedSets.filter((cs) => cs.homePoints > cs.awayPoints).length;
-        const awayWon = completedSets.filter((cs) => cs.awayPoints > cs.homePoints).length;
-        if (homeWon >= setsToWin || awayWon >= setsToWin) break;
       }
 
-      const homeSetsWon = completedSets.filter((s) => s.homePoints > s.awayPoints).length;
-      const awaySetsWon = completedSets.filter((s) => s.awayPoints > s.homePoints).length;
-
-      // Acá el marcador del partido SALE de los sets, así que no puede
-      // discrepar de ellos — por eso no hace falta `validateVolleyballSets`,
-      // que es para el link del planillero, donde el marcador se escribe a
-      // mano. Lo que sí puede pasar es que no se cargue nada, o que se cargue
-      // un partido a medias.
-      if (completedSets.length === 0) {
-        setError(
-          "Falta el marcador de cada set. En vóley el resultado no se puede guardar sin ellos."
-        );
+      const setsError = validateVolleyballSets(
+        volleyHome,
+        volleyAway,
+        completedSets,
+        { setsToWin, allowDraw: drawAllowed }
+      );
+      if (setsError) {
+        setError(setsError);
         return;
       }
 
-      if (homeSetsWon < setsToWin && awaySetsWon < setsToWin) {
-        setError(
-          `El partido todavía no está decidido: van ${homeSetsWon}-${awaySetsWon} y hace falta que alguno llegue a ${setsToWin} sets.`
-        );
-        return;
-      }
+      const homeSetsWon = volleyHome;
+      const awaySetsWon = volleyAway;
 
       // Build events from card/stat entries (yellow cards, red cards, etc.)
       const events: MatchEvent[] = eventEntries
@@ -553,68 +573,102 @@ export function MatchResultForm({
             </div>
           )}
 
-          {/* Volleyball: set-by-set entry */}
+          {/* Vóley: primero el marcador en sets, y las casillas salen de ahí */}
           {isVolleyball ? (
             <div className="space-y-4">
-              <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
-                <p className="text-sm font-semibold text-center truncate">
-                  {homeTeam?.name || "TBD"}
-                </p>
-                <span />
-                <p className="text-sm font-semibold text-center truncate">
-                  {awayTeam?.name || "TBD"}
-                </p>
+              <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-end">
+                <div className="space-y-2">
+                  <Label className="text-center block font-semibold truncate">
+                    {homeTeam?.name || "TBD"}
+                  </Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={homeScore}
+                    onChange={(e) => setHomeScore(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.preventDefault();
+                    }}
+                    className="text-center text-2xl h-14 font-bold"
+                  />
+                </div>
+                <span className="pb-4 text-xl text-muted-foreground">-</span>
+                <div className="space-y-2">
+                  <Label className="text-center block font-semibold truncate">
+                    {awayTeam?.name || "TBD"}
+                  </Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={awayScore}
+                    onChange={(e) => setAwayScore(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.preventDefault();
+                    }}
+                    className="text-center text-2xl h-14 font-bold"
+                  />
+                </div>
               </div>
-              {setScores.map((set, i) => {
-                // Hide sets after a team already won
-                const homeSoFar = setScores
-                  .slice(0, i)
-                  .filter((s) => s.home !== "" && s.away !== "" && parseInt(s.home) > parseInt(s.away)).length;
-                const awaySoFar = setScores
-                  .slice(0, i)
-                  .filter((s) => s.home !== "" && s.away !== "" && parseInt(s.away) > parseInt(s.home)).length;
-                if (homeSoFar >= setsToWin || awaySoFar >= setsToWin) return null;
 
-                return (
-                  <div key={i} className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
-                    <Input
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      value={set.home}
-                      onChange={(e) => updateSetScore(i, "home", e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") e.preventDefault();
-                      }}
-                      className="text-center text-lg h-12"
-                    />
-                    <span className="text-sm text-muted-foreground font-medium w-12 text-center">
-                      Set {i + 1}
-                    </span>
-                    <Input
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      value={set.away}
-                      onChange={(e) => updateSetScore(i, "away", e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") e.preventDefault();
-                      }}
-                      className="text-center text-lg h-12"
-                    />
-                  </div>
-                );
-              })}
-              <div className="text-center">
-                <span className="text-2xl font-bold">
-                  {computedHomeSets} - {computedAwaySets}
-                </span>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {volleyballMatchDecided
-                    ? `Partido decidido`
-                    : `Gana el primero en llegar a ${setsToWin} sets`}
-                </p>
-              </div>
+              <p
+                className={
+                  volleyImposible
+                    ? "text-center text-xs text-destructive"
+                    : "text-center text-xs text-muted-foreground"
+                }
+              >
+                {volleyImposible
+                  ? `Un partido a ${maxSets} sets no puede terminar ${volleyHome}-${volleyAway}.`
+                  : volleyTotalSets === 0
+                  ? `Sets ganados por cada equipo. Gana el primero en llegar a ${setsToWin}${
+                      drawAllowed ? `, y puede quedar empatado` : ""
+                    }.`
+                  : volleyIsDraw
+                  ? `Empate: ${volleyTotalSets} sets para cargar.`
+                  : `${volleyTotalSets} ${
+                      volleyTotalSets === 1 ? "set" : "sets"
+                    } para cargar.`}
+              </p>
+
+              {/* Las casillas de puntos: una por set jugado, ni más ni menos */}
+              {volleyTotalSets > 0 && (
+                <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                  {setScores.map((set, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={set.home}
+                        onChange={(e) => updateSetScore(i, "home", e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.preventDefault();
+                        }}
+                        className="text-center text-lg h-12 bg-background"
+                      />
+                      <span className="text-sm text-muted-foreground font-medium w-12 text-center">
+                        Set {i + 1}
+                      </span>
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={set.away}
+                        onChange={(e) => updateSetScore(i, "away", e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.preventDefault();
+                        }}
+                        className="text-center text-lg h-12 bg-background"
+                      />
+                    </div>
+                  ))}
+                  <p className="text-center text-[11px] text-muted-foreground">
+                    Puntos de cada set (25-23, 25-20, …)
+                  </p>
+                </div>
+              )}
             </div>
           ) : (
             /* Standard score inputs */

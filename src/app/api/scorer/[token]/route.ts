@@ -49,7 +49,7 @@ export async function GET(
     supabaseAdmin
       .from("matches")
       .select(
-        "id, tournament_id, round, match_number, home_team_id, away_team_id, home_score, away_score, status, date, time, venue, result_entered_by_name, fair_play_team_id, match_events(id, match_id, team_id, player_name, type, position, paid), volleyball_sets(set_number, home_points, away_points)"
+        "id, tournament_id, round, match_number, home_team_id, away_team_id, home_score, away_score, status, phase, date, time, venue, result_entered_by_name, fair_play_team_id, match_events(id, match_id, team_id, player_name, type, position, paid), volleyball_sets(set_number, home_points, away_points)"
       )
       .in("id", link.match_ids),
   ]);
@@ -118,6 +118,8 @@ export async function GET(
       homeScore: m.home_score,
       awayScore: m.away_score,
       status: m.status,
+      // Vóley: el empate se permite en grupos y liga, no en playoffs.
+      phase: m.phase ?? null,
       date: m.date,
       time: m.time,
       venue: m.venue,

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSportCategory } from "@/types";
-import { validateVolleyballSets } from "@/lib/volleyball-sets";
+import {
+  validateVolleyballSets,
+  volleyballDrawAllowed,
+} from "@/lib/volleyball-sets";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import {
   validateScorerToken,
@@ -109,7 +112,7 @@ export async function POST(
   // ya filtra, pero verificamos por si alguien manipuló la DB).
   const { data: match, error: matchErr } = await supabaseAdmin
     .from("matches")
-    .select("id, tournament_id, home_team_id, away_team_id")
+    .select("id, tournament_id, home_team_id, away_team_id, phase")
     .eq("id", matchId)
     .single();
   if (matchErr || !match) {
@@ -146,7 +149,7 @@ export async function POST(
   // endpoint público: quien tenga el token puede mandar lo que quiera.
   const { data: tournament } = await supabaseAdmin
     .from("tournaments")
-    .select("sport")
+    .select("sport, format, best_of")
     .eq("id", match.tournament_id)
     .single();
 
@@ -157,7 +160,13 @@ export async function POST(
       (body.sets ?? []).map((s) => ({
         homePoints: s.homePoints,
         awayPoints: s.awayPoints,
-      }))
+      })),
+      {
+        setsToWin: Math.ceil((tournament.best_of ?? 3) / 2),
+        // El empate va en grupos y liga, no en playoffs. Se decide con lo que
+        // dice la base, no con lo que mande el navegador.
+        allowDraw: volleyballDrawAllowed(tournament.format, match.phase),
+      }
     );
     if (setsError) {
       return NextResponse.json({ error: setsError }, { status: 400 });
