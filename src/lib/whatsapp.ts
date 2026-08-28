@@ -27,3 +27,13 @@ export function whatsappPagoUrl(params: {
   const texto = `${quien} Estoy comprando ${params.detalle} por ${params.monto} en Torneos Pro y quiero pagar por otro medio (Nequi o transferencia).`;
   return `https://wa.me/${WHATSAPP_SOPORTE}?text=${encodeURIComponent(texto)}`;
 }
+
+/**
+ * Link de ayuda general, sin nada que ver con un cobro. Se usa en el botón
+ * flotante del panel del organizador y en el modal de bienvenida.
+ */
+export function whatsappAyudaUrl(nombre?: string | null): string {
+  const quien = nombre?.trim() ? `Hola, soy ${nombre.trim()}.` : "Hola.";
+  const texto = `${quien} Estoy usando Torneos Pro y necesito una mano.`;
+  return `https://wa.me/${WHATSAPP_SOPORTE}?text=${encodeURIComponent(texto)}`;
+}
