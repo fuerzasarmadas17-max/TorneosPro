@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { MatchEventType, Tournament, getStatDefinition, getSportCategory } from "@/types";
+import { Match, MatchEventType, Tournament, TournamentGroup, getStatDefinition, getSportCategory } from "@/types";
 import { normalizePlayerName } from "@/lib/name-utils";
 
 // Apariciones al plato requeridas por partido jugado para calificar al
@@ -14,6 +14,55 @@ const QUALIFY_RATE = 2.7;
 // recibe pocas bolas aunque sea titular. Por eso la base es "participó en
 // suficientes juegos", no "manejó suficientes lances".
 const DEFENSE_QUALIFY_PCT = 0.6;
+
+/**
+ * Tramo del torneo sobre el que se calculan las estadísticas.
+ *
+ * En béisbol/softbol/wiffleball la postemporada arranca DESDE CERO: un jonrón
+ * de playoffs no cuenta para el título de bateo de la temporada regular. El
+ * corte va sobre la lista de partidos y no sobre los totales, porque un
+ * promedio no se puede partir después: si alguien batea .400 en la regular y
+ * .200 en playoffs, su promedio de postemporada es .200, no una resta.
+ *
+ * `undefined` = todo el torneo junto, que es como se comportaba antes de
+ * existir esto y como siguen viéndolo los deportes que no separan temporadas.
+ */
+export type StatsSegment = "regular" | "postemporada";
+
+/**
+ * Fase de cada grupo, por id. `tournament_groups.phase` es el ÚNICO lugar
+ * donde vive el número de fase: `matches.phase` sólo distingue `"group"` de
+ * `"playoff"`, así que un partido de la fase 2 de grupos está etiquetado
+ * igual que uno de la fase 1. Sin este mapa, filtrar por `match.phase` metería
+ * toda la fase 2 dentro de la temporada regular sin que se note.
+ */
+function groupPhaseFrom(
+  groups: TournamentGroup[] | undefined
+): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const g of groups ?? []) m.set(g.id, g.phase ?? 1);
+  return m;
+}
+
+/** Postemporada = playoffs, o grupos de fase 2 en adelante. */
+function isPostseasonMatch(match: Match, phases: Map<string, number>): boolean {
+  if (match.phase === "playoff") return true;
+  if (match.groupId) return (phases.get(match.groupId) ?? 1) >= 2;
+  return false;
+}
+
+/**
+ * Con qué pestaña abrir: la que está en juego. Si ya se jugó algo de
+ * postemporada abre ahí, si no en regular, para que el organizador no tenga
+ * que buscar dónde está parado.
+ */
+export function currentSegment(tournament: Tournament): StatsSegment {
+  const phases = groupPhaseFrom(tournament.groups);
+  const started = tournament.matches.some(
+    (m) => m.status === "completed" && isPostseasonMatch(m, phases)
+  );
+  return started ? "postemporada" : "regular";
+}
 
 export interface PlayerStatEntry {
   playerName: string;
@@ -67,7 +116,7 @@ export interface BaseballPlayerStats {
   // PA = apariciones al plato aproximadas (AB + BB). Se muestra en la tabla.
   pa: number;
   // ¿Califica al ranking? Estándar MLB: necesita QUALIFY_RATE apariciones al
-  // plato por cada partido que jugó su equipo (acumulado en todo el torneo).
+  // plato por cada partido que jugó su equipo dentro del tramo que se mira.
   // Los que no califican no encabezan el ranking; se ordenan por OPS puro
   // solo entre los calificados, evitando que un OPS inflado en muestra chica
   // se trepe a la cima. El umbral crece solo a medida que avanzan los juegos.
@@ -88,9 +137,27 @@ export interface BaseballFieldingStats {
   qualified: boolean;    // participó en >= DEFENSE_QUALIFY_PCT de los juegos del equipo
 }
 
-export function useTournamentStats(tournament: Tournament) {
+export function useTournamentStats(
+  tournament: Tournament,
+  segment?: StatsSegment
+) {
   return useMemo(() => {
     const enabledStats = tournament.enabledStats || [];
+
+    // Recorte del tramo, UNA sola vez y acá arriba: de este punto para abajo
+    // todo el hook trabaja sobre `matches` y nunca sobre `tournament.matches`.
+    // Filtrar dentro de cada bucle sería la forma segura de olvidarse de uno
+    // (hay cuatro) y dejar una estadística mezclando los dos tramos.
+    const groups = tournament.groups;
+    const allMatches = tournament.matches;
+    const matches = (() => {
+      if (!segment) return allMatches;
+      const phases = groupPhaseFrom(groups);
+      const wantPost = segment === "postemporada";
+      return allMatches.filter(
+        (m) => isPostseasonMatch(m, phases) === wantPost
+      );
+    })();
 
     // Clave de agrupación de estadísticas: por `player_id` cuando existe, si no
     // por nombre normalizado + equipo (fallback para eventos sin id: viejos sin
@@ -134,7 +201,7 @@ export function useTournamentStats(tournament: Tournament) {
       teamMaps.set(statKey, m);
     }
 
-    for (const match of tournament.matches) {
+    for (const match of matches) {
       if (match.status !== "completed") continue;
 
       // Computed stats from scores
@@ -199,7 +266,7 @@ export function useTournamentStats(tournament: Tournament) {
 
     // Collect individual card entries
     const cardEntries: CardEntry[] = [];
-    for (const match of tournament.matches) {
+    for (const match of matches) {
       if (match.status !== "completed" || !match.events) continue;
       for (const event of match.events) {
         if (event.type === "yellow_card" || event.type === "red_card" || event.type === "ejection" || event.type === "blue_card") {
@@ -275,20 +342,23 @@ export function useTournamentStats(tournament: Tournament) {
     // Partidos en que cada jugador participó (tuvo >= 1 evento). Base del
     // umbral de calificación DEFENSIVA.
     const playerGames = new Map<string, number>();
-    // Partidos completados por equipo (acumulado en todo el torneo, incluye
-    // fase de grupos + playoffs). Es la base del umbral de calificación al
-    // ranking, estilo MLB (apariciones al plato por partido jugado).
+    // Partidos completados por equipo, contados SOLO dentro del tramo que se
+    // está mirando (`matches` ya viene recortado). Es la base de los dos
+    // umbrales de calificación: el de bateo (QUALIFY_RATE) y el defensivo
+    // (DEFENSE_QUALIFY_PCT). Si esto contara el torneo entero, en postemporada
+    // la tabla saldría vacía: con 3 juegos de playoffs nadie alcanzaría un
+    // mínimo pensado para una temporada completa.
     const teamGames = new Map<string, number>();
 
     if (isBaseball) {
-      for (const match of tournament.matches) {
+      for (const match of matches) {
         if (match.status !== "completed") continue;
         if (match.homeTeamId)
           teamGames.set(match.homeTeamId, (teamGames.get(match.homeTeamId) || 0) + 1);
         if (match.awayTeamId)
           teamGames.set(match.awayTeamId, (teamGames.get(match.awayTeamId) || 0) + 1);
       }
-      for (const match of tournament.matches) {
+      for (const match of matches) {
         if (match.status !== "completed" || !match.events) continue;
         // Jugadores ya contados como "participó" en ESTE partido, para no
         // sumar el mismo juego dos veces al tener varios eventos.
@@ -401,5 +471,14 @@ export function useTournamentStats(tournament: Tournament) {
     });
 
     return { leaderboards, hasStats, cardEntries, baseballPlayerStats, baseballFieldingStats };
-  }, [tournament.matches, tournament.enabledStats, tournament.teamIds, tournament.sport]);
+    // `tournament.groups` va en las dependencias porque de ahí sale la fase de
+    // cada partido; sin él, cambiar de pestaña no recalcularía nada.
+  }, [
+    tournament.matches,
+    tournament.groups,
+    tournament.enabledStats,
+    tournament.teamIds,
+    tournament.sport,
+    segment,
+  ]);
 }

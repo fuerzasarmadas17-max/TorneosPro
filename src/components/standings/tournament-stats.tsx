@@ -27,7 +27,12 @@ import {
 } from "@/components/ui/select";
 import { Filter, Download } from "lucide-react";
 import { Tournament, getSportCategory } from "@/types";
-import { useTournamentStats, CardEntry } from "@/hooks/use-tournament-stats";
+import {
+  useTournamentStats,
+  currentSegment,
+  CardEntry,
+  StatsSegment,
+} from "@/hooks/use-tournament-stats";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { TableWatermark } from "./table-watermark";
 import { useTournaments } from "@/context/tournament-context";
@@ -68,13 +73,74 @@ const shortHeader = (statKey: string, fallback: string) =>
 
 const fmt = (v: number) => v.toFixed(3).replace(/^0/, "");
 
+// Tarjetas y expulsiones no se pintan como leaderboard: van a la tabla de
+// Sanciones, que además le esconde al público las que ya están pagadas. Por
+// eso se excluyen de "¿hay estadísticas para mostrar?" y se cuentan aparte.
+const CARD_STAT_KEYS: string[] = [
+  "yellow_card",
+  "red_card",
+  "ejection",
+  "blue_card",
+];
+
 interface TournamentStatsProps {
   tournament: Tournament;
   canEdit?: boolean;
 }
 
 export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
-  const { leaderboards, hasStats, cardEntries, baseballPlayerStats, baseballFieldingStats } = useTournamentStats(tournament);
+  // Tramo (temporada regular / postemporada). En béisbol, softbol y
+  // wiffleball la postemporada arranca desde cero: los partidos de la fase
+  // regular no se arrastran. El selector sólo aparece cuando hay una
+  // postemporada de verdad — si no, una pestaña siempre vacía confundiría
+  // más de lo que ayuda — y se abre en el tramo que esté en juego.
+  //
+  // Limitado a la familia del béisbol A PROPÓSITO. La regla "la segunda fase
+  // arranca en cero" es una convención de béisbol/softbol, no de todos los
+  // deportes: en volley y fútbol el goleador del torneo se cuenta entero, y
+  // al 2026-08-28 hay tres torneos de esos con fase 2 en curso que verían sus
+  // estadísticas partidas sin que nadie lo pidiera. Si algún día se quiere
+  // para otro deporte, se saca esta condición y nada más.
+  //
+  // Y la condición fuerte: el selector aparece SÓLO si la postemporada tiene
+  // algo que mostrar. No alcanza con "existe la fase" — la app crea la llave
+  // vacía (semifinales + final sin equipos) apenas se arma el torneo, y
+  // además el organizador puede jugar la postemporada sin cargarle ninguna
+  // estadística. En los dos casos la pantalla queda como está hoy, sin
+  // pestañas, en vez de ofrecer un botón que lleva a una tabla vacía.
+  const postseason = useTournamentStats(tournament, "postemporada");
+  // Se mide con las mismas reglas de visibilidad que la pantalla: el público
+  // sólo ve las sanciones sin pagar, así que una postemporada cuyas únicas
+  // expulsiones ya están pagadas no le muestra nada y no le abre la pestaña.
+  const postseasonCards = canEdit
+    ? postseason.cardEntries
+    : postseason.cardEntries.filter((c) => !c.paid);
+  //
+  // Ojo con `hasStats` a secas: incluye el leaderboard de expulsiones, que la
+  // pantalla NO dibuja (va a Sanciones). Una postemporada con una sola
+  // expulsión ya pagada daría `hasStats === true` y abriría una pestaña que
+  // al público le sale vacía. Por eso acá se miran sólo los leaderboards que
+  // de verdad se pintan, más las sanciones ya filtradas por visibilidad.
+  const postseasonHasVisibleStats = postseason.leaderboards.some(
+    (lb) =>
+      !CARD_STAT_KEYS.includes(lb.statKey) &&
+      (lb.leaders.length > 0 || lb.teamLeaders.length > 0)
+  );
+  const showSegments =
+    getSportCategory(tournament.sport) === "baseball" &&
+    (postseasonHasVisibleStats ||
+      postseasonCards.length > 0 ||
+      postseason.baseballPlayerStats.length > 0 ||
+      postseason.baseballFieldingStats.length > 0);
+  // El tramo elegido a mano gana; mientras no se elija ninguno, se sigue al
+  // que está en juego. No se puede fijar el inicial con `useState(() => ...)`
+  // porque los partidos llegan en una segunda carga: en el primer render el
+  // torneo todavía no los tiene y la pestaña quedaría clavada en "regular"
+  // aunque la postemporada ya haya empezado.
+  const [chosenSegment, setChosenSegment] = useState<StatsSegment | null>(null);
+  const segment = chosenSegment ?? currentSegment(tournament);
+  const { leaderboards, hasStats, cardEntries, baseballPlayerStats, baseballFieldingStats } =
+    useTournamentStats(tournament, showSegments ? segment : undefined);
   const { getTeamById, updateEventPaid } = useTournaments();
   // Which leaderboard is being shown expanded in the dialog.
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -89,9 +155,43 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
   // "Ver más" inline para Sanciones. Era la única tabla que se pintaba
   // entera: con 40 tarjetas empujaba todo lo de abajo fuera de la pantalla.
   const [cardsExpanded, setCardsExpanded] = useState(false);
+  // Las sanciones ya cobradas se le esconden al organizador por defecto. Sin
+  // esto la lista sólo crece: al mes 3 la mitad son cobros viejos y hay que
+  // bajar por toda la tabla para encontrar lo que falta cobrar. No se borra
+  // nada — la tarjeta sigue en el partido y se ve en "Ver detalle".
+  const [showPaidCards, setShowPaidCards] = useState(false);
   // Diálogo para elegir top N al descargar PDF sin filtro de equipo.
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfTopN, setPdfTopN] = useState<string>("10");
+
+  const segmentLabel = segment === "regular" ? "Temporada regular" : "Postemporada";
+
+  // Cambiar de tramo resetea los "Ver más": el top de un tramo no tiene por
+  // qué seguir expandido en el otro, donde suele haber muchas menos filas.
+  const changeSegment = (next: StatsSegment) => {
+    setChosenSegment(next);
+    setBaseballExpanded(false);
+    setFieldingExpanded(false);
+    setCardsExpanded(false);
+  };
+
+  const segmentTabs = showSegments ? (
+    <div className="inline-flex gap-0.5 rounded-md border p-0.5">
+      {(["regular", "postemporada"] as StatsSegment[]).map((s) => (
+        <Button
+          key={s}
+          type="button"
+          size="sm"
+          variant={segment === s ? "default" : "ghost"}
+          className="h-8"
+          aria-pressed={segment === s}
+          onClick={() => changeSegment(s)}
+        >
+          {s === "regular" ? "Temporada regular" : "Postemporada"}
+        </Button>
+      ))}
+    </div>
+  ) : null;
 
   const isBaseball = getSportCategory(tournament.sport) === "baseball";
   const showBaseballTable = isBaseball && baseballPlayerStats.length > 0;
@@ -119,9 +219,19 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
     : cardEntries.filter((c) => !c.paid);
   // El filtro de equipo también aplica a sanciones — si el organizer
   // está mirando un equipo específico, le sirve ver solo sus tarjetas.
+  // `visibleCardsAll` responde "¿existe alguna sanción?" y por eso sigue
+  // incluyendo las pagadas: es lo que decide si la pantalla tiene contenido.
+  // `listedCards` es lo que se lista de verdad, ya sin las cobradas.
+  const paidCardsCount = canEdit
+    ? visibleCardsAll.filter((c) => c.paid).length
+    : 0;
+  const listedCards =
+    canEdit && !showPaidCards
+      ? visibleCardsAll.filter((c) => !c.paid)
+      : visibleCardsAll;
   const visibleCardsFiltered = hasFilter
-    ? visibleCardsAll.filter((c) => c.teamId === selectedTeamId)
-    : visibleCardsAll;
+    ? listedCards.filter((c) => c.teamId === selectedTeamId)
+    : listedCards;
 
   // Las SIN PAGAR primero. Son las que el organizador tiene que cobrar y las
   // únicas que ve el público; si el corte del preview las deja abajo,
@@ -143,9 +253,27 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
   const hasMoreCards = !hasFilter && visibleCardsSorted.length > TOP_PREVIEW;
   const sinPagarCount = visibleCardsSorted.filter((c) => !c.paid).length;
 
+  // Mismo botón en los dos lugares donde puede quedar escondida una sanción
+  // pagada: la tabla y la tarjeta de "todas pagadas".
+  const paidCardsToggle =
+    canEdit && paidCardsCount > 0 ? (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 text-xs"
+        aria-pressed={showPaidCards}
+        onClick={() => setShowPaidCards((v) => !v)}
+      >
+        {showPaidCards
+          ? "Ocultar pagadas"
+          : `Ver pagadas (${paidCardsCount})`}
+      </Button>
+    ) : null;
+
+
   // Non-card leaderboards (exclude yellow_card, red_card, ejection)
   const nonCardLeaderboards = leaderboards.filter(
-    (lb) => lb.statKey !== "yellow_card" && lb.statKey !== "red_card" && lb.statKey !== "ejection" && lb.statKey !== "blue_card"
+    (lb) => !CARD_STAT_KEYS.includes(lb.statKey)
   );
 
   // Aplicar el filtro de equipo a cada leaderboard. Filtramos las
@@ -219,16 +347,21 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
 
   if (!hasStats && visibleCardsAll.length === 0 && !showBaseballTable && !showFieldingTable) {
     return (
-      <Card>
-        <CardContent className="py-8 text-center">
-          <p className="text-muted-foreground">
-            No hay estadisticas registradas aun.
-          </p>
-          <p className="text-muted-foreground text-sm mt-1">
-            Agrega eventos al ingresar resultados de partidos.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        {segmentTabs}
+        <Card>
+          <CardContent className="py-8 text-center">
+            <p className="text-muted-foreground">
+              No hay estadisticas registradas aun.
+            </p>
+            <p className="text-muted-foreground text-sm mt-1">
+              {showSegments
+                ? "Las estadisticas del otro tramo estan en la otra pestana."
+                : "Agrega eventos al ingresar resultados de partidos."}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -264,12 +397,17 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
       {
         filterTeamId: hasFilter ? selectedTeamId : null,
         topN,
+        // Sin esto el PDF de la postemporada saldría titulado igual que el
+        // de la temporada completa, con números que no cuadran con nada.
+        segmentLabel: showSegments ? segmentLabel : null,
       }
     );
   };
 
   return (
     <div className="space-y-6">
+      {segmentTabs}
+
       {/* Filtro de equipo + botón de descarga PDF (organizer only).
           Aplica a sanciones + cards + tabla béisbol. El botón PDF
           respeta el filtro: con filtro descarga directo todas las
@@ -326,18 +464,21 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
                 </span>
               )}
             </CardTitle>
-            {hasMoreCards && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => setCardsExpanded((v) => !v)}
-              >
-                {cardsExpanded
-                  ? "Ver menos"
-                  : `Ver más (${visibleCardsSorted.length})`}
-              </Button>
-            )}
+            <div className="flex items-center gap-1">
+              {paidCardsToggle}
+              {hasMoreCards && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setCardsExpanded((v) => !v)}
+                >
+                  {cardsExpanded
+                    ? "Ver menos"
+                    : `Ver más (${visibleCardsSorted.length})`}
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
@@ -424,8 +565,9 @@ export function TournamentStats({ tournament, canEdit }: TournamentStatsProps) {
           expulsiones activas (sin pagar); si no hay, no se le muestra nada. */}
       {canEdit && hasCardStats && visibleCards.length === 0 && cardEntries.length > 0 && !hasFilter && (
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Sanciones</CardTitle>
+            {paidCardsToggle}
           </CardHeader>
           <CardContent className="py-4 text-center">
             <p className="text-sm text-muted-foreground">

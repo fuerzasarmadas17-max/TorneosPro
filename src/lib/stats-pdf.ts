@@ -12,6 +12,11 @@ export interface StatsPdfOptions {
   /** Top N a incluir por cada leaderboard cuando NO hay filtro de
    *  equipo. Con filtro este valor se ignora. */
   topN?: number;
+  /** Tramo del torneo que se está exportando ("Temporada regular" /
+   *  "Postemporada"), o null en los torneos que no separan temporadas.
+   *  Las cifras ya vienen recortadas desde el hook; esto es sólo para que
+   *  el papel diga a qué tramo pertenecen. */
+  segmentLabel?: string | null;
 }
 
 interface StatsData {
@@ -53,7 +58,7 @@ export async function downloadStatsPdf(
   ]);
   const autoTable = autoTableModule.default;
 
-  const { filterTeamId, topN = 10 } = options;
+  const { filterTeamId, topN = 10, segmentLabel } = options;
   const hasFilter = !!filterTeamId;
   const teamName = filterTeamId ? teamsById.get(filterTeamId)?.name ?? "" : "";
 
@@ -72,6 +77,9 @@ export async function downloadStatsPdf(
   doc.setFont("helvetica", "normal");
   doc.setTextColor(100);
   const subtitleLines: string[] = [];
+  if (segmentLabel) {
+    subtitleLines.push(segmentLabel);
+  }
   if (hasFilter && teamName) {
     subtitleLines.push(`Equipo: ${teamName}`);
   } else {
