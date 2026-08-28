@@ -539,7 +539,7 @@ function BusinessContent() {
   const pct = (x: number) => `${Math.round(x * 100)}%`;
 
   return (
-    <div className="container mx-auto max-w-5xl px-4 py-8 space-y-6">
+    <div className="container mx-auto px-4 py-8 space-y-6">
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <TrendingUp className="h-7 w-7" />
