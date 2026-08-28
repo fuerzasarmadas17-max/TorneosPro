@@ -103,7 +103,7 @@ function TournamentsContent() {
   const hasMore = tournaments.length < total;
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
+    <div className="container mx-auto max-w-4xl px-4 py-8 space-y-6">
       <div>
         <h1 className="text-3xl font-bold">
           {isOrganizer ? "Mis Torneos" : "Torneos"}
