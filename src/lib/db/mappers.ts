@@ -150,6 +150,10 @@ export function mapTournament(row: Record<string, unknown>): Tournament {
     playoffFinalFormat:
       (row.playoff_final_format as Tournament["playoffFinalFormat"]) ?? undefined,
     championPhotoUrl: (row.champion_photo_url as string) ?? null,
+    mvpPhotoUrl: (row.mvp_photo_url as string) ?? null,
+    mvpPlayerId: (row.mvp_player_id as string) ?? null,
+    mvpPlayerName: (row.mvp_player_name as string) ?? null,
+    mvpTeamId: (row.mvp_team_id as string) ?? null,
     doubleRoundRobin: (row.double_round_robin as boolean) ?? false,
     enabledStats: (row.enabled_stats as MatchEventType[]) ?? undefined,
     maxPlayersPerTeam: (row.max_players_per_team as number) ?? undefined,
@@ -268,6 +272,10 @@ export function toDbTournament(t: Partial<Tournament>): Record<string, unknown> 
   if (t.playoffFixtureGenerated !== undefined) db.playoff_fixture_generated = t.playoffFixtureGenerated;
   if (t.playoffFinalFormat !== undefined) db.playoff_final_format = t.playoffFinalFormat;
   if (t.championPhotoUrl !== undefined) db.champion_photo_url = t.championPhotoUrl;
+  if (t.mvpPhotoUrl !== undefined) db.mvp_photo_url = t.mvpPhotoUrl;
+  if (t.mvpPlayerId !== undefined) db.mvp_player_id = t.mvpPlayerId;
+  if (t.mvpPlayerName !== undefined) db.mvp_player_name = t.mvpPlayerName;
+  if (t.mvpTeamId !== undefined) db.mvp_team_id = t.mvpTeamId;
   if (t.doubleRoundRobin !== undefined) db.double_round_robin = t.doubleRoundRobin;
   if (t.maxPlayersPerTeam !== undefined) db.max_players_per_team = t.maxPlayersPerTeam;
   if (t.bestOf !== undefined) db.best_of = t.bestOf;

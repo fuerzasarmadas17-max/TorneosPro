@@ -110,7 +110,8 @@ export type MatchEventType =
   | "blue_card"
   | "at_bat" | "walk" | "rbi" | "run_scored"
   | "putout" | "winning_pitcher"
-  | "fair_play";
+  | "fair_play"
+  | "mvp";
 
 export interface MatchEvent {
   id: string;
@@ -176,6 +177,13 @@ export const STAT_CATALOG: StatDefinition[] = [
   // organizador de fútbol la carga y ensuciaba el form de resultado con una
   // fila que nadie llena. En basket y béisbol sí se usa, ahí sigue marcada.
   { key: "assist", label: "Asistencia", pluralLabel: "Asistencias", sportDefaults: ["futbol", "futsal", "microfutbol", "basketball", "beisbol", "softball", "wiffleball"], optInSports: ["futbol", "futsal", "microfutbol"] },
+  // MVP: el mejor jugador del partido. Uno solo, de cualquiera de los dos
+  // equipos, y opcional (hay partidos donde no se elige a nadie). No es
+  // `computed` —sale de un evento de jugador, como el gol— pero tampoco se
+  // carga como los demás: en vez de la fila "agregar jugador" que se puede
+  // repetir, tiene su propio selector (`MvpPicker`), porque es UNO por partido.
+  // Los formularios lo sacan de la lista genérica de stats a propósito.
+  { key: "mvp", label: "MVP", pluralLabel: "MVPs", sportDefaults: ["futbol", "futsal", "microfutbol", "beisbol", "softball", "wiffleball", "volleyball", "basketball"] },
   // Juego Limpio: premio de EQUIPO, no de jugador. En cada partido se lo puede
   // llevar uno de los dos (o ninguno) y vale un punto en la tabla. Por eso es
   // `computed` —no sale de eventos de jugador sino de `match.fairPlayTeamId`—
@@ -400,6 +408,22 @@ export interface Tournament {
    *  centered modal with the photo + champion name on every load of the
    *  tournament detail page. Undefined = no photo uploaded yet. */
   championPhotoUrl?: string | null;
+  /** MVP del torneo: la foto vertical (3:4) del mejor jugador, subida por el
+   *  organizador cuando el torneo termina, y quién es. Se muestra junto al
+   *  campeón, con un botón para pasar de una foto a la otra.
+   *
+   *  El nombre va aparte del id a propósito: `mvpPlayerId` es NULL cuando el
+   *  organizador escribe a alguien que no está inscrito, y también cuando
+   *  borran al jugador de la nómina (ON DELETE SET NULL). En los dos casos la
+   *  foto tiene que seguir teniendo un nombre debajo.
+   *
+   *  Admiten `null` además de `undefined` para poder BORRAR una elección
+   *  previa — `toDbTournament` ignora los `undefined`. Mismo patrón que
+   *  `championPhotoUrl`. */
+  mvpPhotoUrl?: string | null;
+  mvpPlayerId?: string | null;
+  mvpPlayerName?: string | null;
+  mvpTeamId?: string | null;
   doubleRoundRobin?: boolean;
   enabledStats?: MatchEventType[];
   maxPlayersPerTeam?: number;

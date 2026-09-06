@@ -15,6 +15,7 @@ import { PhaseConfigDialog } from "@/components/tournaments/phase-config-dialog"
 import { PhaseCompletionModal } from "@/components/tournaments/phase-completion-modal";
 import { TournamentChampionModal } from "@/components/tournaments/tournament-champion-modal";
 import { TournamentChampionViewerModal } from "@/components/tournaments/tournament-champion-viewer-modal";
+import { TournamentMvpModal } from "@/components/tournaments/tournament-mvp-modal";
 import { PlayoffFinalConfigDialog } from "@/components/tournaments/playoff-final-config-dialog";
 import { MatchSchedule } from "@/components/standings/match-schedule";
 import { ScorerLinksSection } from "@/components/scorer/scorer-links-section";
@@ -72,7 +73,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Download, Settings, MoreVertical, Trash2, Ban, ChevronLeft, ChevronRight, CheckCircle2, Trophy, Plus, RefreshCw, Users } from "lucide-react";
+import { Download, Settings, MoreVertical, Trash2, Ban, ChevronLeft, ChevronRight, CheckCircle2, Trophy, Star, Plus, RefreshCw, Users } from "lucide-react";
 import { toast } from "sonner";
 // xlsx pesa ~700KB y solo se usa cuando el organizador descarga la
 // plantilla de jugadores. Dynamic import dentro del handler para que
@@ -594,6 +595,9 @@ export function TournamentDetail({
   // organizer clicks "Reemplazar foto del campeón" on a tournament that
   // already has one. Resets to false when the modal closes.
   const [championForceUpload, setChampionForceUpload] = useState(false);
+  // MVP del torneo: el organizador elige al jugador y sube su foto. Mismo
+  // momento que la del campeón (torneo terminado), modal aparte.
+  const [showMvpModal, setShowMvpModal] = useState(false);
 
   // Pieza F: one-shot "fase completada" modal. We snapshot which phases are
   // already complete at mount time and only fire the modal when a NEW phase
@@ -952,6 +956,20 @@ export function TournamentDetail({
                : "Subir foto del campeón"}
            </Button>
          )}
+         {/* MVP del torneo: mismo criterio que la foto del campeón — solo el
+             organizador y solo con el torneo terminado. */}
+         {isOrganizer && tournament.status === "completed" && (
+           <Button
+             variant="outline"
+             size="sm"
+             onClick={() => setShowMvpModal(true)}
+           >
+             <Star className="h-4 w-4 mr-2" />
+             {tournament.mvpPhotoUrl || tournament.mvpPlayerName
+               ? "Cambiar el MVP del torneo"
+               : "Subir foto del MVP"}
+           </Button>
+         )}
          {canEdit && (
            <Button
              variant="outline"
@@ -1046,6 +1064,12 @@ export function TournamentDetail({
           photo set, visible to every visitor — logged in or not. The user can
           dismiss it to inspect the bracket / phases. We disable it while the
           organizer's celebration modal is open so they don't stack. */}
+      <TournamentMvpModal
+        open={showMvpModal}
+        onOpenChange={setShowMvpModal}
+        tournament={tournament}
+      />
+
       <TournamentChampionViewerModal
         tournament={tournament}
         disabled={showChampion}

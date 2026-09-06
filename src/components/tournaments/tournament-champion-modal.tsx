@@ -15,13 +15,12 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Trophy, Upload, ImageIcon, Loader2 } from "lucide-react";
+import { Upload, ImageIcon, Loader2 } from "lucide-react";
+import { ChampionHeader } from "@/components/tournaments/tournament-champion-header";
 import { ChampionSponsorsStrip } from "@/components/tournaments/champion-sponsors-strip";
 
 interface TournamentChampionModalProps {
@@ -84,9 +83,10 @@ export function TournamentChampionModal({
           ? null
           : firstFinal.homeTeamId
       : null;
-  const championName = championId
-    ? teams.find((t) => t.id === championId)?.name ?? "El campeón"
-    : "El campeón";
+  const championTeam = championId
+    ? (teams.find((t) => t.id === championId) ?? null)
+    : null;
+  const championName = championTeam?.name ?? "El campeón";
   const runnerUpName = runnerUpId
     ? teams.find((t) => t.id === runnerUpId)?.name ?? null
     : null;
@@ -154,22 +154,31 @@ export function TournamentChampionModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      {/* max-h + scroll: con la fila de logos, la foto, los patrocinadores y
+          los dos botones de subida, el modal pasaba el alto de la pantalla y
+          se cortaba arriba y abajo — el Dialog base no limita el alto y va
+          centrado con translate, así que lo que sobra queda fuera de la
+          pantalla y sin forma de llegar. `dvh` y no `vh` por el navegador del
+          celular, donde la barra de direcciones se come parte del `vh`. */}
+      <DialogContent className="sm:max-w-lg max-h-[90dvh] overflow-y-auto gap-3">
         <DialogHeader>
-          <div className="flex flex-col items-center gap-2 text-center pt-2">
-            <Trophy className="h-12 w-12 text-amber-500" />
-            <DialogTitle className="text-2xl">¡Tenemos campeón!</DialogTitle>
-            <DialogDescription className="text-base">
-              <span className="font-semibold text-foreground">
-                {championName}
-              </span>{" "}
-              se consagró campeón del torneo{" "}
-              <span className="font-semibold text-foreground">
-                {tournament.name}
-              </span>
-              .
-            </DialogDescription>
-          </div>
+          <ChampionHeader
+            title="¡Tenemos campeón!"
+            teamLogoUrl={championTeam?.logoUrl}
+            teamName={championName}
+            description={
+              <>
+                <span className="font-semibold text-foreground">
+                  {championName}
+                </span>{" "}
+                se consagró campeón del torneo{" "}
+                <span className="font-semibold text-foreground">
+                  {tournament.name}
+                </span>
+                .
+              </>
+            }
+          />
         </DialogHeader>
 
         {runnerUpName && (
@@ -179,9 +188,17 @@ export function TournamentChampionModal({
           </p>
         )}
 
-        {/* Preview of the uploaded/persisted photo. Horizontal aspect (16:9). */}
+        {/* Preview of the uploaded/persisted photo. Horizontal aspect (16:9).
+            Cuando el organizador está eligiendo foto, la vista previa va
+            angosta: a lo ancho del modal mide casi 300px de alto y empujaba
+            los botones de subida fuera de la pantalla, que es justo lo que
+            viene a hacer acá. Ya publicada se muestra grande. */}
         {photoUrl && (
-          <div className="relative w-full aspect-video overflow-hidden rounded-lg border bg-muted">
+          <div
+            className={`relative aspect-video overflow-hidden rounded-lg border bg-muted ${
+              showUpload ? "mx-auto w-full max-w-[280px]" : "w-full"
+            }`}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={photoUrl}
@@ -209,7 +226,7 @@ export function TournamentChampionModal({
             <p className="text-sm text-muted-foreground text-center">
               {tournament.championPhotoUrl
                 ? "Reemplazá la foto del equipo campeón."
-                : "Subí una foto horizontal del equipo campeón. Cualquier persona que entre al torneo la verá al cargar."}
+                : "Subí una foto del equipo campeón. La verá cualquiera que entre al torneo."}
             </p>
             <input
               ref={fileInputRef}
@@ -241,7 +258,7 @@ export function TournamentChampionModal({
             </Button>
             <p className="text-xs text-muted-foreground text-center">
               <ImageIcon className="h-3 w-3 inline mr-1" />
-              Formato horizontal recomendado (16:9). Máximo 5MB.
+              Horizontal (16:9). Máximo 12MB.
             </p>
           </div>
         )}

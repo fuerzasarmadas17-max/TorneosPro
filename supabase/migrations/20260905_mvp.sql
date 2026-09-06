@@ -1,0 +1,34 @@
+-- ============================================================================
+-- MVP: el mejor jugador de cada partido
+-- ----------------------------------------------------------------------------
+-- En cada partido se puede elegir UN jugador como MVP —de cualquiera de los dos
+-- equipos, o ninguno—. Lo cargan tanto el organizador como la mesa (link de
+-- planillero), junto con el resultado.
+--
+-- A diferencia del Juego Limpio, que es un premio de EQUIPO y por eso vive como
+-- columna de `matches`, el MVP es de un JUGADOR: va como una fila más en
+-- `match_events` (`type = 'mvp'`), que es exactamente lo que esa tabla guarda.
+-- Eso le da gratis todo lo que ya existe para estadísticas de jugador — el
+-- vínculo estable por `player_id`, la canonización del nombre contra la
+-- plantilla, el resumen del partido y el ranking de "MVPs" del torneo.
+--
+-- Lo único que hace falta en la base es agregar el valor al enum. No hay tabla
+-- nueva, ni columna nueva, ni backfill: los torneos que ya están corriendo
+-- siguen exactamente igual (nunca van a tener un evento de este tipo).
+--
+-- ⚠️ IMPORTANTE: `ALTER TYPE ... ADD VALUE` no puede correr dentro de un bloque
+-- de transacción. Por eso este archivo NO lleva BEGIN/COMMIT — es una sola
+-- línea, se corre sola.
+--
+-- ⚠️ Y VA ANTES DE DESPLEGAR EL CÓDIGO. `mvp` también se guarda dentro de
+-- `tournaments.enabled_stats`, que es una columna de tipo `match_event_type[]`:
+-- si el código sale primero, todo organizador que cree un torneo con el MVP
+-- marcado recibe `invalid input value for enum match_event_type: "mvp"` y el
+-- torneo no se crea. Es el mismo accidente que dejó sin torneo a ACIF el
+-- 2026-08-14 (ver 20260814b_fair_play_enum.sql).
+
+ALTER TYPE match_event_type ADD VALUE IF NOT EXISTS 'mvp';
+
+-- Verificación: tiene que devolver una fila con 'mvp'.
+-- SELECT unnest(enum_range(NULL::match_event_type))::text AS valor
+-- WHERE  unnest(enum_range(NULL::match_event_type))::text = 'mvp';

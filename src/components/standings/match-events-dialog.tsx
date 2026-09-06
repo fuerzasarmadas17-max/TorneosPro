@@ -16,7 +16,7 @@ import { mapMatchEvent } from "@/lib/db/mappers";
 import { getShortName } from "@/lib/name-utils";
 import { cn } from "@/lib/utils";
 import { STAT_CATALOG, type Match, type MatchEvent, type MatchEventType, type Tournament } from "@/types";
-import { Goal, Handshake, ListChecks, Volleyball } from "lucide-react";
+import { Goal, Handshake, ListChecks, Star, Volleyball } from "lucide-react";
 
 /** Un jugador con su cantidad dentro de un tipo de estadística. */
 interface PlayerTally {
@@ -48,6 +48,8 @@ function StatIcon({ type }: { type: MatchEventType }) {
       return <Goal className="h-3.5 w-3.5 text-emerald-600" />;
     case "assist":
       return <Handshake className="h-3.5 w-3.5 text-sky-600" />;
+    case "mvp":
+      return <Star className="h-3.5 w-3.5 text-amber-500" />;
     case "yellow_card":
       return card("bg-amber-400");
     case "red_card":
@@ -101,7 +103,14 @@ function buildBlocks(
     const away = tally(awayTeamId, stat.key);
     if (home.length === 0 && away.length === 0) continue;
 
-    blocks.push({ key: stat.key, label: stat.pluralLabel, home, away });
+    blocks.push({
+      key: stat.key,
+      // El MVP es uno solo por partido: en la ficha va en singular. El plural
+      // ("MVPs") es para el ranking del torneo, donde sí son varios.
+      label: stat.key === "mvp" ? stat.label : stat.pluralLabel,
+      home,
+      away,
+    });
   }
   return blocks;
 }

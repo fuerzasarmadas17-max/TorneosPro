@@ -32,6 +32,7 @@ import {
 import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
 import { PlayerCombobox } from "@/components/forms/player-combobox";
 import { FairPlayPicker } from "@/components/forms/fair-play-picker";
+import { MvpPicker, type MvpSelection } from "@/components/forms/mvp-picker";
 import {
   Dialog,
   DialogContent,
@@ -601,11 +602,15 @@ function MatchScreen({
   const [homeScore, setHomeScore] = useState(match.homeScore?.toString() ?? "");
   const [awayScore, setAwayScore] = useState(match.awayScore?.toString() ?? "");
   const [eventEntries, setEventEntries] = useState<EventEntry[]>(() =>
-    match.events.map((e) => ({
-      type: e.type,
-      teamId: e.team_id,
-      playerName: e.player_name,
-    }))
+    // El MVP es uno por partido y se elige arriba con su propio selector, no
+    // con las filas repetibles de acá abajo. Sin el filtro saldría dos veces.
+    match.events
+      .filter((e) => e.type !== "mvp")
+      .map((e) => ({
+        type: e.type,
+        teamId: e.team_id,
+        playerName: e.player_name,
+      }))
   );
   // Los puntos se guardan como texto: con number el campo arranca en 0 y no se
   // puede vaciar para escribir encima (todo intento vuelve a 0).
@@ -628,11 +633,13 @@ function MatchScreen({
   // planilla que usa el organizador), precargada desde los eventos guardados.
   const rawEvents = useMemo(
     () =>
-      match.events.map((e) => ({
-        teamId: e.team_id,
-        playerName: e.player_name,
-        type: e.type,
-      })),
+      match.events
+        .filter((e) => e.type !== "mvp")
+        .map((e) => ({
+          teamId: e.team_id,
+          playerName: e.player_name,
+          type: e.type,
+        })),
     [match.events]
   );
   // Béisbol: planilla por pasos (1 = equipo local, 2 = visitante).
@@ -673,7 +680,8 @@ function MatchScreen({
   const enabledStats = useMemo(() => {
     return tournament.enabledStats.filter((key) => {
       const def = getStatDefinition(key);
-      return def && !def.computed;
+      // El MVP se carga con su propio selector, no con las filas de stats.
+      return def && !def.computed && key !== "mvp";
     });
   }, [tournament.enabledStats]);
 
@@ -683,6 +691,15 @@ function MatchScreen({
   const [fairPlayTeamId, setFairPlayTeamId] = useState<string | null>(
     match.fairPlayTeamId ?? null
   );
+
+  // MVP del partido: un jugador de cualquiera de los dos equipos, o ninguno.
+  // Se guarda como un evento más (`type: "mvp"`), así que el servidor le
+  // estampa el `player_id` contra la plantilla igual que a un goleador.
+  const showMvp = tournament.enabledStats.includes("mvp");
+  const [mvp, setMvp] = useState<MvpSelection | null>(() => {
+    const e = match.events.find((ev) => ev.type === "mvp");
+    return e ? { teamId: e.team_id, playerName: e.player_name } : null;
+  });
 
   const addEvent = (type: MatchEventType) => {
     setEventEntries((prev) => [
@@ -814,6 +831,16 @@ function MatchScreen({
           playerName: e.playerName.trim(),
           type: e.type,
         }));
+
+    // El MVP se manda junto al resto de los eventos (en béisbol también, que
+    // arma los suyos desde la planilla).
+    if (showMvp && mvp && mvp.playerName.trim()) {
+      outEvents.push({
+        teamId: mvp.teamId,
+        playerName: mvp.playerName.trim(),
+        type: "mvp" as MatchEventType,
+      });
+    }
 
     // Voley: los sets son OBLIGATORIOS y tienen que cuadrar con el marcador.
     // Un 2-1 son tres sets, un 2-0 son dos. La tabla desempata por ratio de
@@ -1093,6 +1120,31 @@ function MatchScreen({
             awayTeamName={away?.name ?? "Visitante"}
             value={fairPlayTeamId}
             onChange={setFairPlayTeamId}
+          />
+        </div>
+      )}
+
+      {showMvp && (
+        <div className="rounded-lg border bg-card p-3">
+          <MvpPicker
+            teams={[
+              ...(match.homeTeamId
+                ? [{
+                    teamId: match.homeTeamId,
+                    teamName: home?.name ?? "Local",
+                    options: homeNameOptions,
+                  }]
+                : []),
+              ...(match.awayTeamId
+                ? [{
+                    teamId: match.awayTeamId,
+                    teamName: away?.name ?? "Visitante",
+                    options: awayNameOptions,
+                  }]
+                : []),
+            ]}
+            value={mvp}
+            onChange={setMvp}
           />
         </div>
       )}

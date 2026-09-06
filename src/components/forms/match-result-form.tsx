@@ -46,6 +46,7 @@ import {
 import { fetchTeamsByIds } from "@/lib/db/teams";
 import { PlayerCombobox } from "./player-combobox";
 import { FairPlayPicker } from "./fair-play-picker";
+import { MvpPicker, type MvpSelection } from "./mvp-picker";
 import {
   Dialog,
   DialogContent,
@@ -91,11 +92,17 @@ export function MatchResultForm({
     match.awayScore != null ? String(match.awayScore) : ""
   );
   const [eventEntries, setEventEntries] = useState<EventEntry[]>(() =>
-    (match.events ?? []).map((e) => ({
-      type: e.type,
-      teamId: e.teamId,
-      playerName: e.playerName,
-    }))
+    // El MVP también es un evento, pero no se carga con las filas repetibles
+    // de abajo (es uno solo por partido): vive en `mvp` y se pinta con su
+    // propio selector. Sin este filtro aparecería dos veces y se duplicaría
+    // al guardar.
+    (match.events ?? [])
+      .filter((e) => e.type !== "mvp")
+      .map((e) => ({
+        type: e.type,
+        teamId: e.teamId,
+        playerName: e.playerName,
+      }))
   );
   const [error, setError] = useState("");
   // Equipo que se lleva el juego limpio, null = a nadie. Arranca con lo que
@@ -103,6 +110,12 @@ export function MatchResultForm({
   const [fairPlayTeamId, setFairPlayTeamId] = useState<string | null>(
     match.fairPlayTeamId ?? null
   );
+  // MVP del partido, null = a nadie. Igual que el juego limpio, arranca con lo
+  // que ya tenga cargado el partido para que corregir un resultado no lo borre.
+  const [mvp, setMvp] = useState<MvpSelection | null>(() => {
+    const e = (match.events ?? []).find((ev) => ev.type === "mvp");
+    return e ? { teamId: e.teamId, playerName: e.playerName } : null;
+  });
   // null = no hay W pendiente de confirmar; true/false = a quién se le daría.
   const [walkoverWinnerIsHome, setWalkoverWinnerIsHome] = useState<boolean | null>(null);
   // 4 pasos de planilla: 1=local ofensiva, 2=local defensiva,
@@ -138,6 +151,7 @@ export function MatchResultForm({
 
   const stats = enabledStats || [];
   const showFairPlay = stats.includes("fair_play");
+  const showMvp = stats.includes("mvp");
   const isBaseball = sport ? getSportCategory(sport) === "baseball" : false;
   const useScoresheet = isBaseball;
   const isVolleyball = sport === "volleyball";
@@ -153,13 +167,16 @@ export function MatchResultForm({
 
   // Scoresheet state for baseball — pre-cargar la matriz player×stat
   // desde `match.events` para que la edición arranque con los datos
-  // ya cargados.
+  // ya cargados. El MVP queda afuera: no es una casilla de la planilla.
+  const scoresheetSourceEvents = (match.events ?? []).filter(
+    (e) => e.type !== "mvp"
+  );
   const [homeScoresheetData, setHomeScoresheetData] = useState<
     Record<string, PlayerStats>
-  >(() => buildScoresheetData(match.events ?? [], match.homeTeamId));
+  >(() => buildScoresheetData(scoresheetSourceEvents, match.homeTeamId));
   const [awayScoresheetData, setAwayScoresheetData] = useState<
     Record<string, PlayerStats>
-  >(() => buildScoresheetData(match.events ?? [], match.awayTeamId));
+  >(() => buildScoresheetData(scoresheetSourceEvents, match.awayTeamId));
 
   // Volleyball: los sets salen del marcador que escribe el organizador arriba.
   // Un 2-1 son tres casillas, un 1-1 son dos. Precargamos lo que ya esté
@@ -420,6 +437,24 @@ export function MatchResultForm({
     router.push(`/tournaments/${match.tournamentId}`);
   };
 
+  // El MVP se guarda como un evento más, así entra al mismo camino que el
+  // resto de las estadísticas: se canoniza el nombre contra la plantilla, se
+  // estampa el `player_id` y —si el jugador no estaba inscrito— aparece el
+  // modal de inscripción, igual que con un goleador nuevo.
+  const withMvp = (events: MatchEvent[]): MatchEvent[] => {
+    if (!showMvp || !mvp || !mvp.playerName.trim()) return events;
+    return [
+      ...events,
+      {
+        id: `evt-${Date.now()}-mvp`,
+        matchId: match.id,
+        teamId: mvp.teamId,
+        playerName: mvp.playerName.trim(),
+        type: "mvp" as MatchEventType,
+      },
+    ];
+  };
+
   const handleSave = () => {
     setError("");
 
@@ -470,7 +505,7 @@ export function MatchResultForm({
           type: entry.type,
         }));
 
-      void saveWithInscription(events, (finalEvents) => {
+      void saveWithInscription(withMvp(events), (finalEvents) => {
         updateMatch(match.tournamentId, match.id, homeSetsWon, awaySetsWon, finalEvents, completedSets, false, showFairPlay ? fairPlayTeamId : undefined);
         toast.success("Resultado guardado");
         router.push(`/tournaments/${match.tournamentId}`);
@@ -507,7 +542,7 @@ export function MatchResultForm({
         }));
     }
 
-    void saveWithInscription(events, (finalEvents) => {
+    void saveWithInscription(withMvp(events), (finalEvents) => {
       // El juego limpio va como `undefined` cuando la stat no está habilitada:
       // así un torneo sin el premio nunca pisa la columna.
       updateMatch(match.tournamentId, match.id, home, away, finalEvents, undefined, false, showFairPlay ? fairPlayTeamId : undefined);
@@ -540,9 +575,12 @@ export function MatchResultForm({
     );
   };
 
-  // Group events by type (exclude computed stats like goals_against)
+  // Group events by type (exclude computed stats like goals_against).
+  // El MVP también queda afuera: es uno por partido y se elige arriba, en su
+  // propio selector, no con filas que se pueden repetir.
   const eventsByType = stats
     .filter((statKey) => !getStatDefinition(statKey)?.computed)
+    .filter((statKey) => statKey !== "mvp")
     .map((statKey) => ({
       statKey,
       def: getStatDefinition(statKey),
@@ -721,6 +759,32 @@ export function MatchResultForm({
                 awayTeamName={awayTeam?.name || "Visitante"}
                 value={fairPlayTeamId}
                 onChange={setFairPlayTeamId}
+              />
+            </>
+          )}
+
+          {showMvp && (
+            <>
+              <Separator />
+              <MvpPicker
+                teams={[
+                  ...(match.homeTeamId
+                    ? [{
+                        teamId: match.homeTeamId,
+                        teamName: homeTeam?.name || "Local",
+                        options: homePlayerOptions,
+                      }]
+                    : []),
+                  ...(match.awayTeamId
+                    ? [{
+                        teamId: match.awayTeamId,
+                        teamName: awayTeam?.name || "Visitante",
+                        options: awayPlayerOptions,
+                      }]
+                    : []),
+                ]}
+                value={mvp}
+                onChange={setMvp}
               />
             </>
           )}
