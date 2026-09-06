@@ -249,4 +249,5 @@ quiere de verdad anotar en vivo o si cargar al final ya les sirve. La entrega 1
 se puede hacer sola y ver qué pasa.
 
 **Diseño:** hay tres propuestas de pantalla en modo oscuro para elegir, hechas
-el 2026-09-06 (carpeta `planilla-volley-propuestas` en el Escritorio del dueño).
+el 2026-09-06, en `Por hacer/planilla-volley-propuestas/` (los `.png` son las
+propuestas; el `LEEME.md` de esa carpeta explica cada una y cómo cambiarlas).

@@ -1,0 +1,96 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<link rel="stylesheet" href="comun.css">
+<style>
+.sets{display:flex;gap:8px;padding:12px 16px 8px}
+.sets .s{flex:1;border:1px solid var(--line);background:var(--navy-2);border-radius:10px;
+  padding:8px 6px;text-align:center}
+.sets .s .l{font-size:9px;color:var(--muted);letter-spacing:.10em}
+.sets .s .r{font-size:16px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+.sets .s.vivo{border-color:var(--gold);background:rgba(223,174,92,.10)}
+.sets .s.vivo .r{color:var(--gold)}
+
+.tabla{margin:6px 16px 0;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.fila{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--navy-2)}
+.fila+.fila{border-top:1px solid var(--line)}
+.fila .nom{flex:1;min-width:0;font-size:15px;font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fila .nom small{display:block;font-size:10px;color:var(--muted);font-weight:400;
+  letter-spacing:.06em;margin-top:2px}
+.fila .pts{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
+.fila.saca .pts{color:var(--gold)}
+.fila .mas{width:62px;height:62px;border-radius:14px;background:var(--gold);color:#101A2E;
+  font-size:34px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.fila .mas.gris{background:var(--navy-3);color:var(--gold);border:1px solid var(--line)}
+
+.rot{margin:12px 16px 0}
+.rot .cab{display:flex;justify-content:space-between;margin-bottom:6px}
+.rot .fila-num{display:flex;gap:6px;margin-bottom:8px}
+.rot .num{flex:1;height:36px;font-size:16px}
+
+.hist{flex:1;margin:10px 16px 4px;border-top:1px solid var(--line);padding-top:6px;overflow:hidden}
+.hist .titulo{font-size:10px;letter-spacing:.10em;color:var(--muted);text-transform:uppercase;margin-bottom:2px}
+.hist .h{display:flex;justify-content:space-between;padding:9px 2px;font-size:12px;color:var(--muted)}
+.hist .h+.h{border-top:1px solid rgba(46,58,85,.5)}
+.hist .h b{color:#fff;font-weight:600}
+.hist .h span{font-variant-numeric:tabular-nums}
+</style></head><body>
+<div class="tel">
+
+  <div class="barra">
+    <div class="t">Copa Santo Coffee · Cancha 2<b>Aura Voley vs Caribe Voley</b></div>
+    <div class="chip"><span class="punto-ok"></span> Guardado</div>
+  </div>
+
+  <div class="sets">
+    <div class="s"><div class="l">SET 1</div><div class="r">25–20</div></div>
+    <div class="s"><div class="l">SET 2</div><div class="r">22–25</div></div>
+    <div class="s vivo"><div class="l">SET 3</div><div class="r">18–16</div></div>
+  </div>
+
+  <div class="tabla">
+    <div class="fila saca">
+      <div class="mas">+</div>
+      <div class="nom">Aura Voley<small>SACA · Nº 7</small></div>
+      <div class="pts">18</div>
+    </div>
+    <div class="fila">
+      <div class="mas gris">+</div>
+      <div class="nom">Caribe Voley<small>RECIBE</small></div>
+      <div class="pts">16</div>
+    </div>
+  </div>
+
+  <div class="rot">
+    <div class="cab"><span class="etq">Aura en cancha</span><span class="etq">Cambio</span></div>
+    <div class="fila-num">
+      <div class="num saca">7</div><div class="num">4</div><div class="num">11</div>
+      <div class="num">2</div><div class="num">5</div><div class="num">9</div>
+    </div>
+    <div class="cab"><span class="etq">Caribe en cancha</span><span class="etq">Cambio</span></div>
+    <div class="fila-num">
+      <div class="num">6</div><div class="num">3</div><div class="num">8</div>
+      <div class="num">12</div><div class="num">10</div><div class="num">1</div>
+    </div>
+  </div>
+
+  <div class="hist">
+    <div class="titulo">Últimos puntos</div>
+    <div class="h"><span>18 – 16</span><b>Punto Aura</b><span>saca 7</span></div>
+    <div class="h"><span>17 – 16</span><b>Punto Caribe</b><span>rotó Caribe</span></div>
+    <div class="h"><span>17 – 15</span><b>Punto Aura</b><span>saca 7</span></div>
+    <div class="h"><span>16 – 15</span><b>Punto Aura</b><span>rotó Aura</span></div>
+    <div class="h"><span>15 – 15</span><b>Punto Caribe</b><span>saca 6</span></div>
+    <div class="h"><span>15 – 14</span><b>Punto Aura</b><span>saca 7</span></div>
+    <div class="h"><span>14 – 14</span><b>Punto Caribe</b><span>rotó Caribe</span></div>
+    <div class="h"><span>14 – 13</span><b>Punto Aura</b><span>saca 4</span></div>
+    <div class="h"><span>13 – 13</span><b>Punto Caribe</b><span>saca 6</span></div>
+    <div class="h"><span>13 – 12</span><b>Punto Aura</b><span>rotó Aura</span></div>
+    <div class="h"><span>12 – 12</span><b>Punto Caribe</b><span>saca 3</span></div>
+  </div>
+
+  <div class="pie">
+    <div class="btn tenue">← Deshacer</div>
+    <div class="btn oro">Cerrar set</div>
+  </div>
+
+</div></body></html>

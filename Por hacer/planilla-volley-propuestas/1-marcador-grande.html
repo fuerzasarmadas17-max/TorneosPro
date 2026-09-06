@@ -1,0 +1,103 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<link rel="stylesheet" href="comun.css">
+<style>
+.marcador{padding:22px 18px 14px;text-align:center}
+.equipos{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.eq{flex:1;min-width:0}
+.eq .n{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eq .p{font-size:88px;line-height:.95;font-weight:800;margin-top:6px;font-variant-numeric:tabular-nums}
+.eq .p.lider{color:var(--gold)}
+.centro{width:78px;padding-top:22px}
+.centro .sets{font-size:26px;font-weight:800;color:#fff}
+.centro .lbl{font-size:10px;color:var(--muted);letter-spacing:.10em;margin-top:2px}
+.saque{margin-top:10px;font-size:12px;color:var(--gold)}
+
+.tap{height:290px;display:flex;gap:12px;padding:6px 16px 14px}
+.tap .z{flex:1;border-radius:18px;border:1px solid var(--line);background:var(--navy-2);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+.tap .z .mas{font-size:54px;font-weight:300;line-height:1;color:var(--gold)}
+.tap .z .txt{font-size:13px;color:var(--muted);text-align:center;padding:0 10px}
+.tap .z.saca{border-color:var(--gold);box-shadow:inset 0 0 0 1px rgba(223,174,92,.35)}
+
+.rot{padding:2px 16px 10px;display:flex;gap:12px}
+.rot .lado{flex:1}
+.rot .cab{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.rot .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.rot .num{height:46px;font-size:21px}
+.ult{flex:1;margin:0 16px 8px;border-top:1px solid var(--line);padding-top:8px;overflow:hidden}
+.ult .titulo{font-size:10px;letter-spacing:.10em;color:var(--muted);text-transform:uppercase}
+.ult .h{display:flex;justify-content:space-between;padding:8px 2px;font-size:12px;color:var(--muted)}
+.ult .h+.h{border-top:1px solid rgba(46,58,85,.5)}
+.ult .h b{color:#fff;font-weight:600}
+.ult .h span{font-variant-numeric:tabular-nums}
+</style></head><body>
+<div class="tel">
+
+  <div class="barra">
+    <div class="t">Copa Santo Coffee · Cancha 2<b>Set 3</b></div>
+    <div class="chip"><span class="punto-ok"></span> Guardado en el teléfono</div>
+  </div>
+
+  <div class="marcador">
+    <div class="equipos">
+      <div class="eq">
+        <div class="n">Aura Voley</div>
+        <div class="p lider">18</div>
+      </div>
+      <div class="centro">
+        <div class="sets">1 – 1</div>
+        <div class="lbl">SETS</div>
+      </div>
+      <div class="eq">
+        <div class="n">Caribe Voley</div>
+        <div class="p">16</div>
+      </div>
+    </div>
+    <div class="saque">● Saca Aura Voley — número 7</div>
+  </div>
+
+  <div class="tap">
+    <div class="z saca">
+      <div class="mas">+</div>
+      <div class="txt">Punto<br>Aura Voley</div>
+    </div>
+    <div class="z">
+      <div class="mas">+</div>
+      <div class="txt">Punto<br>Caribe Voley</div>
+    </div>
+  </div>
+
+  <div class="rot">
+    <div class="lado">
+      <div class="cab"><span class="etq">Aura en cancha</span><span class="etq">Cambio</span></div>
+      <div class="grid">
+        <div class="num">4</div><div class="num">11</div><div class="num">2</div>
+        <div class="num">5</div><div class="num">9</div><div class="num saca">7</div>
+      </div>
+    </div>
+    <div class="lado">
+      <div class="cab"><span class="etq">Caribe en cancha</span><span class="etq">Cambio</span></div>
+      <div class="grid">
+        <div class="num">3</div><div class="num">8</div><div class="num">12</div>
+        <div class="num">6</div><div class="num">1</div><div class="num">10</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ult">
+    <div class="titulo">Últimos puntos</div>
+    <div class="h"><span>18 – 16</span><b>Punto Aura</b><span>saca 7</span></div>
+    <div class="h"><span>17 – 16</span><b>Punto Caribe</b><span>rotó Caribe</span></div>
+    <div class="h"><span>17 – 15</span><b>Punto Aura</b><span>saca 7</span></div>
+    <div class="h"><span>16 – 15</span><b>Punto Aura</b><span>rotó Aura</span></div>
+    <div class="h"><span>15 – 15</span><b>Punto Caribe</b><span>saca 6</span></div>
+  </div>
+
+  <div class="pie">
+    <div class="btn tenue">← Deshacer</div>
+    <div class="btn tenue">Cambio</div>
+    <div class="btn oro">Cerrar set</div>
+  </div>
+
+</div></body></html>

@@ -1,0 +1,86 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<link rel="stylesheet" href="comun.css">
+<style>
+.tablero{display:flex;align-items:center;justify-content:center;gap:14px;padding:14px 16px 10px}
+.tablero .eq{flex:1;text-align:center;min-width:0}
+.tablero .eq .n{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tablero .eq .p{font-size:52px;font-weight:800;line-height:1;margin-top:2px;font-variant-numeric:tabular-nums}
+.tablero .eq .p.lider{color:var(--gold)}
+.tablero .mid{text-align:center}
+.tablero .mid .s{font-size:18px;font-weight:700}
+.tablero .mid .l{font-size:9px;color:var(--muted);letter-spacing:.10em}
+
+.cancha{flex:1;margin:4px 16px 10px;border:1px solid var(--line);border-radius:16px;
+  background:linear-gradient(180deg,#16203A 0%,#131C33 100%);display:flex;flex-direction:column;
+  overflow:hidden}
+.lado{flex:1;padding:32px 14px 14px;position:relative;display:flex}
+.lado.arriba{border-bottom:2px dashed var(--line)}
+.lado .quien{position:absolute;top:10px;left:14px;font-size:11px;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.08em}
+.lado .quien b{color:#fff}
+.zona{flex:1;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr;gap:8px}
+.zona .num{flex-direction:column;gap:3px;font-size:26px}
+.zona .num small{font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.06em}
+.zona .num.saca small{color:rgba(16,26,46,.65)}
+.bola{position:absolute;right:14px;top:10px;font-size:11px;color:var(--gold)}
+
+.acciones{display:flex;gap:10px;padding:0 16px 10px}
+.acciones .z{flex:1;border-radius:14px;border:1px solid var(--line);background:var(--navy-2);
+  padding:18px 8px;text-align:center}
+.acciones .z .mas{font-size:34px;font-weight:300;color:var(--gold);line-height:1}
+.acciones .z.saca{border-color:var(--gold)}
+.acciones .z .txt{font-size:12px;color:var(--muted);margin-top:4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style></head><body>
+<div class="tel">
+
+  <div class="barra">
+    <div class="t">Copa Santo Coffee · Cancha 2<b>Set 3</b></div>
+    <div class="chip"><span class="punto-ok"></span> Guardado en el teléfono</div>
+  </div>
+
+  <div class="tablero">
+    <div class="eq"><div class="n">Aura Voley</div><div class="p lider">18</div></div>
+    <div class="mid"><div class="s">1 – 1</div><div class="l">SETS</div></div>
+    <div class="eq"><div class="n">Caribe Voley</div><div class="p">16</div></div>
+  </div>
+
+  <div class="cancha">
+    <div class="lado arriba">
+      <div class="quien">Recibe · <b>Caribe Voley</b></div>
+      <div class="zona">
+        <div class="num">12<small>4</small></div>
+        <div class="num">8<small>3</small></div>
+        <div class="num">3<small>2</small></div>
+        <div class="num">10<small>5</small></div>
+        <div class="num">1<small>6</small></div>
+        <div class="num">6<small>1</small></div>
+      </div>
+    </div>
+    <div class="lado">
+      <div class="quien">Saca · <b>Aura Voley</b></div>
+      <div class="bola">● saque</div>
+      <div class="zona">
+        <div class="num">4<small>4</small></div>
+        <div class="num">11<small>3</small></div>
+        <div class="num">2<small>2</small></div>
+        <div class="num">5<small>5</small></div>
+        <div class="num">9<small>6</small></div>
+        <div class="num saca">7<small>1</small></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="acciones">
+    <div class="z saca"><div class="mas">+</div><div class="txt">Aura Voley</div></div>
+    <div class="z"><div class="mas">+</div><div class="txt">Caribe Voley</div></div>
+  </div>
+
+  <div class="pie">
+    <div class="btn tenue">← Deshacer</div>
+    <div class="btn tenue">Cambio</div>
+    <div class="btn oro">Cerrar set</div>
+  </div>
+
+</div></body></html>
