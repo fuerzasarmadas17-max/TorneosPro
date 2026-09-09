@@ -22,20 +22,30 @@ export const CONECTORES = new Set([
   "de", "del", "la", "el", "los", "las", "y", "en",
 ]);
 
-/** Cómo se guarda una cancha al programar: sin espacios de sobra y con cada
- *  palabra en mayúscula. Es lo que ya hacía "Organizar fechas"; vive acá para
- *  que "Reprogramar" guarde igual y no aparezcan dos canchas donde hay una.
+/**
+ * Cómo se guarda una cancha, se escriba como se escriba: sin espacios de
+ * sobra, cada palabra con la primera letra en mayúscula y el resto en
+ * minúscula. "KENNEDY", "kennedy" y "KeNNedy" se guardan las tres como
+ * "Kennedy", así que dejan de ser tres canchas distintas en la base.
  *
- *  Los conectores quedan en minúscula, salvo que abran el nombre: "Rita de
- *  Arrazola" y "La Rita" se leen como los escribiría una persona. */
+ * Los conectores quedan enteros en minúscula, salvo que abran el nombre:
+ * "Rita de Arrazola" y "La Rita" se leen como los escribiría una persona.
+ *
+ * El costo de esto es que una sigla escrita a propósito en mayúsculas
+ * ("IDRD") queda como "Idrd". Se acepta: el organizador que escribe todo en
+ * mayúsculas es mucho más común que el que usa siglas, y una cancha partida
+ * en dos desordena el filtro y la agenda.
+ */
 export function formatVenue(venue: string): string {
   return venue
     .trim()
     .replace(/\s+/g, " ")
-    .replace(/\S+/g, (w, i: number) => {
-      const lower = w.toLocaleLowerCase("es");
-      if (i > 0 && CONECTORES.has(lower)) return lower;
-      return w.charAt(0).toLocaleUpperCase("es") + w.slice(1);
+    .replace(/\S+/g, (palabra, posicion: number) => {
+      const minuscula = palabra.toLocaleLowerCase("es");
+      if (posicion > 0 && CONECTORES.has(minuscula)) return minuscula;
+      return (
+        minuscula.charAt(0).toLocaleUpperCase("es") + minuscula.slice(1)
+      );
     });
 }
 
