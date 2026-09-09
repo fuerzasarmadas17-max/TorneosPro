@@ -106,7 +106,18 @@ export function TournamentDetailClient({
   const canEdit =
     (user?.id === tournament.createdBy && tournament.status !== "completed") ||
     isAdmin;
-  const canEditSponsors = canEdit || isAdmin;
+  // Los patrocinadores quedan FUERA del candado de "torneo terminado".
+  //
+  // Ese candado existe para que nadie toque resultados de un torneo cerrado, y
+  // ahí tiene sentido. Los patrocinadores no cambian ningún resultado, y un
+  // torneo terminado es justo cuando más se los ve: la foto del campeón y la
+  // tabla final se siguen compartiendo por semanas. Dejarlo bloqueado obligaba
+  // al organizador a pedirle a un administrador que se los cargara a mano.
+  //
+  // La regla de la base ya lo permitía ("Creador gestiona sponsors de org" no
+  // mira el estado del torneo): el bloqueo era solo de esta pantalla.
+  const canEditSponsors =
+    (!!user?.id && user.id === tournament.createdBy) || isAdmin;
 
   return (
     <div className="container mx-auto px-4 py-8">
