@@ -17,8 +17,8 @@ import {
   generateEmptyPlayoffBracket,
   getFinalSeriesChampion,
 } from "@/data/helpers";
-import { fetchTournaments, fetchTournamentsWithMatches, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, deleteTournament as dbDeleteTournament, addTournamentTeams, removeTeamFromTournament as dbRemoveTeamFromTournament, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup, assignTeamsToPhaseGroups as dbAssignTeamsToPhaseGroups, assignTeamsToBracketSlots as dbAssignTeamsToBracketSlots, updateGroupName as dbUpdateGroupName } from "@/lib/db/tournaments";
-import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam, updateTeamPlayers as dbUpdateTeamPlayers } from "@/lib/db/teams";
+import { fetchTournaments, fetchTournamentsWithMatches, fetchTournamentsByOrganizer, fetchTournamentsWithMatchesByOrganizer, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, deleteTournament as dbDeleteTournament, addTournamentTeams, removeTeamFromTournament as dbRemoveTeamFromTournament, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup, assignTeamsToPhaseGroups as dbAssignTeamsToPhaseGroups, assignTeamsToBracketSlots as dbAssignTeamsToBracketSlots, updateGroupName as dbUpdateGroupName } from "@/lib/db/tournaments";
+import { fetchTeamsByIdsResult, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam, updateTeamPlayers as dbUpdateTeamPlayers } from "@/lib/db/teams";
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid, renameVenueForMatches as dbRenameVenueForMatches } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
 import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
@@ -168,6 +168,10 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   // recreate every callback on each state mutation).
   const tournamentsRef = useRef<Tournament[]>([]);
   tournamentsRef.current = tournaments;
+  // Ids de equipo ya cargados. Se lee dentro de `ensureTeams` sin ponerlo como
+  // dependencia, que si no el callback se recrearía en cada equipo que entra.
+  const teamIdsRef = useRef<Set<string>>(new Set());
+  teamIdsRef.current = new Set(teams.map((t) => t.id));
   // `isLoading` refleja solo el estado de torneos (la query liviana). Lo
   // usamos en la landing y /tournaments para no bloquear el render.
   // `teamsLoading` es la query pesada de equipos; se carga en background
@@ -177,13 +181,15 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   // El estado de auth se inyecta vía AuthProvider (que envuelve a este
-  // provider en app/providers.tsx). Lo usamos para evitar pedir
-  // `fetchAllTeams()` en el initial load para usuarios anónimos — esa
-  // query trae TODOS los equipos del sistema con sus jugadores y es la
-  // peor parte del bottleneck de performance (auditoria_landing.md #1).
-  // Anónimos solo ven la landing y el listado público de torneos; los
-  // equipos los cargamos recién cuando el user se autentica.
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  // provider en app/providers.tsx). Se usa para dos cosas: no cargar nada para
+  // el visitante anónimo (que solo ve la landing, el listado público y el
+  // detalle de un torneo, y esos tres se arman en el servidor), y para acotar
+  // lo que se carga a lo que es de este usuario.
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const userId = user?.id;
+  // El panel de administración sí necesita ver los torneos de todos. Es un
+  // puñado de cuentas, así que ahí se mantiene la carga completa.
+  const esAdmin = user?.role === "admin";
 
   // Torneos: query pública con RLS, se carga siempre para todos, en DOS FASES.
   //
@@ -201,25 +207,39 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   //     vistas que sí los necesitan (detalle, planilla de partido) o los reciben
   //     por SSR o esperan a esta fase, que ya no bloquea a nadie más.
   const loadTournaments = useCallback(async () => {
+    if (!userId) return;
     try {
-      const light = await fetchTournaments();
+      // Acotado al dueño. Antes se bajaban los torneos de TODOS los
+      // organizadores para que el dashboard filtrara en el celular los que son
+      // tuyos; con 30 torneos se notaba poco y con diez mil es imposible.
+      const light = esAdmin
+        ? await fetchTournaments()
+        : await fetchTournamentsByOrganizer(userId);
       // Fase 1 no trae matches: preservamos los que ya haya en memoria (del SSR
       // del detalle, de seedTournamentData, o de la fase 2 de una carga previa).
       // Sin esto, un refetch borraría el fixture de la vista abierta.
       setTournaments((prev) => {
         if (prev.length === 0) return light;
         const byId = new Map(prev.map((t) => [t.id, t]));
-        return light.map((newT) => {
-          const existing = byId.get(newT.id);
-          if (!existing || existing.matches.length === 0) return newT;
-          return { ...newT, matches: existing.matches };
-        });
+        // Los torneos que ya estaban y no vienen en esta carga se conservan:
+        // acotar por dueño no puede hacer desaparecer el torneo ajeno que el
+        // usuario está mirando y que le sembró el render del servidor.
+        const entrantes = new Set(light.map((t) => t.id));
+        const conservados = prev.filter((t) => !entrantes.has(t.id));
+        return [
+          ...light.map((newT) => {
+            const existing = byId.get(newT.id);
+            if (!existing || existing.matches.length === 0) return newT;
+            return { ...newT, matches: existing.matches };
+          }),
+          ...conservados,
+        ];
       });
       setError(null);
     } catch (err) {
+      // Un fallo NO borra nada: se deja en pantalla lo que ya estaba.
       setError("Error al cargar datos");
       console.error(err);
-      // Si falló la liviana, la pesada va a fallar igual: no la pedimos.
       return;
     } finally {
       // La app ya tiene con qué pintar. Los matches llegan solos.
@@ -227,7 +247,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const full = await fetchTournamentsWithMatches();
+      const full = esAdmin
+        ? await fetchTournamentsWithMatches()
+        : await fetchTournamentsWithMatchesByOrganizer(userId);
       // Fase 2 trae matches pero NO match_events (los omite el select para no
       // explotar en filas). Preservamos los events que el detalle ya hidrató vía
       // fetchMatchEventsByMatchIds — sin esto las stats individuales
@@ -242,35 +264,61 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
             }
           }
         }
-        return full.map((newT) => ({
-          ...newT,
-          matches: newT.matches.map((m) => {
-            const events = existingEventsByMatch.get(m.id);
-            return events ? { ...m, events } : m;
-          }),
-        }));
+        const entrantes = new Set(full.map((t) => t.id));
+        const conservados = prev.filter((t) => !entrantes.has(t.id));
+        return [
+          ...full.map((newT) => ({
+            ...newT,
+            matches: newT.matches.map((m) => {
+              const events = existingEventsByMatch.get(m.id);
+              return events ? { ...m, events } : m;
+            }),
+          })),
+          ...conservados,
+        ];
       });
     } catch (err) {
       // La app sigue usable con la fase 1; solo faltan los matches.
       console.error("carga de matches en background falló", err);
     }
-  }, []);
+  }, [userId, esAdmin]);
 
-  // Equipos: query "todos los equipos del sistema" — pesada. Se carga
-  // en BACKGROUND después del initial paint de la landing. El estado
-  // `teamsLoading` permite a la página de detalle del torneo mostrar
-  // un spinner mientras los nombres reales llegan, en lugar de mostrar
-  // UUIDs / "TBD" en bracket, calendario y posiciones.
-  const loadTeams = useCallback(async () => {
-    setTeamsLoading(true);
-    try {
-      const data = await fetchAllTeams();
-      setTeams(data);
-    } catch (err) {
-      console.error("loadTeams failed", err);
-    } finally {
+  /**
+   * Trae los equipos que falten de una lista de ids, y los SUMA a los que ya
+   * hay. Nunca reemplaza la lista entera.
+   *
+   * Reemplaza a la vieja "traer todos los equipos del sistema", que tenía dos
+   * problemas graves. Uno: la API corta en 1000 filas sin avisar, y con 1014
+   * equipos en la base había 14 que la app no podía ver nunca —de ahí los
+   * UUIDs y los "TBD" en pantalla, y los equipos que faltaban en la pestaña
+   * Equipos. Dos: si esa petición se caía (señal inestable), devolvía lista
+   * vacía y se escribía encima de los equipos que la página ya tenía bien.
+   *
+   * Ahora el peso depende de cuántos equipos tienen los torneos cargados, no
+   * de cuántos tiene la plataforma. Con un millón de equipos en la base, esto
+   * pesa lo mismo.
+   */
+  const ensureTeams = useCallback(async (ids: string[]) => {
+    const faltantes = Array.from(
+      new Set(ids.filter((id) => id && !teamIdsRef.current.has(id)))
+    );
+    if (faltantes.length === 0) {
       setTeamsLoading(false);
+      return;
     }
+
+    setTeamsLoading(true);
+    const res = await fetchTeamsByIdsResult(faltantes);
+    // Si falló, se deja lo que había. Un equipo que ya tenía nombre no puede
+    // volver a ser un UUID por una petición caída.
+    if (res.ok) {
+      setTeams((prev) => {
+        const map = new Map(prev.map((t) => [t.id, t]));
+        for (const t of res.teams) map.set(t.id, t);
+        return Array.from(map.values());
+      });
+    }
+    setTeamsLoading(false);
   }, []);
 
   // Hidrata el state con datos pre-cargados del Server Component. No
@@ -370,26 +418,28 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, [loadTournaments]);
 
-  // Equipos: cargar SOLO si el user está autenticado. Anónimos no los
-  // necesitan: el detalle del torneo público (/tournaments/[id]) los
-  // recibe pre-cargados por el SSR vía seedTournamentData. Antes
-  // cargábamos para todos en background, pero en mobile 4G esa query
-  // de "todos los equipos del sistema con jugadores" saturaba el
-  // ancho de banda y bloqueaba la hidratación. Si después un anónimo
-  // se loguea, el effect re-corre con isAuthenticated=true.
+  // Equipos: se piden los de los torneos que YA están cargados, y solo los que
+  // falten. Anónimos no pasan por acá: el detalle del torneo público los recibe
+  // pre-cargados del render del servidor, anclados a ese torneo.
+  //
+  // El efecto se vuelve a disparar cuando cambia la lista de torneos, pero
+  // `ensureTeams` no hace nada si no falta ninguno, así que las corridas de más
+  // no cuestan una petición.
   useEffect(() => {
     if (authLoading) return;
-    if (isAuthenticated) {
-      loadTeams();
-    } else {
+    if (!isAuthenticated) {
       setTeamsLoading(false);
+      return;
     }
-  }, [authLoading, isAuthenticated, loadTeams]);
+    const ids: string[] = [];
+    for (const t of tournaments) ids.push(...t.teamIds);
+    void ensureTeams(ids);
+  }, [authLoading, isAuthenticated, tournaments, ensureTeams]);
 
   const refetch = useCallback(async () => {
     await loadTournaments();
-    await loadTeams();
-  }, [loadTournaments, loadTeams]);
+    // Los equipos los trae el effect de arriba cuando llegan los torneos.
+  }, [loadTournaments]);
 
   const addTournament = useCallback(async (tournament: Tournament): Promise<{ id: string } | null> => {
     const tournamentId = await dbCreateTournament(tournament);
@@ -404,9 +454,16 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   const addTeams = useCallback(async (newTeams: Team[]): Promise<string[]> => {
     const ids = await dbCreateTeams(newTeams);
     if (ids.length > 0) {
-      // Reload teams
-      const teamsData = await fetchAllTeams();
-      setTeams(teamsData);
+      // Solo los recién creados, para tener sus ids de base. Antes se volvía a
+      // bajar la lista entera de equipos de la plataforma.
+      const res = await fetchTeamsByIdsResult(ids);
+      if (res.ok) {
+        setTeams((prev) => {
+          const map = new Map(prev.map((t) => [t.id, t]));
+          for (const t of res.teams) map.set(t.id, t);
+          return Array.from(map.values());
+        });
+      }
     }
     return ids;
   }, []);
@@ -1521,9 +1578,13 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
 
   const updateTeamPlayers = useCallback(async (teamId: string, players: Player[]) => {
     const ok = await dbUpdateTeamPlayers(teamId, players);
-    // Reload teams to get new player IDs
-    const teamsData = await fetchAllTeams();
-    setTeams(teamsData);
+    // Se relee SOLO ese equipo, para tomar los ids de jugador que generó la
+    // base. Antes se rebajaba la lista completa de equipos de la plataforma.
+    const res = await fetchTeamsByIdsResult([teamId]);
+    if (res.ok && res.teams.length > 0) {
+      const fresco = res.teams[0];
+      setTeams((prev) => prev.map((t) => (t.id === teamId ? fresco : t)));
+    }
     return ok;
   }, []);
 

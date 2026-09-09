@@ -141,13 +141,41 @@ export async function fetchTournamentsByOrganizer(
     .eq("created_by", userId)
     .order("created_at", { ascending: false });
 
-  if (error || !data) return [];
+  // Lanza en vez de devolver lista vacía: un fallo de red y "este organizador
+  // no tiene torneos" son cosas distintas, y quien llama tiene que poder
+  // conservar lo que ya tenía en pantalla en vez de borrarlo.
+  if (error || !data) throw new Error(error?.message ?? "sin datos");
+  return data.map((row) => mapTournament(row as Record<string, unknown>));
+}
+
+/**
+ * Fase 2 acotada al organizador: sus torneos con sus partidos.
+ *
+ * Es la que usa el panel. La versión sin filtro (`fetchTournamentsWithMatches`)
+ * baja los torneos de TODOS los organizadores para que después el dashboard
+ * filtre en el celular los que son suyos: funciona con 30 torneos y es
+ * imposible con diez mil. Acá el peso depende de cuántos torneos tiene esta
+ * persona, no de cuántos tiene la plataforma.
+ */
+export async function fetchTournamentsWithMatchesByOrganizer(
+  userId: string
+): Promise<Tournament[]> {
+  const { data, error } = await supabase
+    .from("tournaments")
+    .select(TOURNAMENT_WITH_MATCHES_SELECT)
+    .eq("created_by", userId)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) throw new Error(error?.message ?? "sin datos");
   return data.map((row) => mapTournament(row as Record<string, unknown>));
 }
 
 /**
  * Fase 1 de la carga de torneos: todo menos los matches. Rápida a propósito —
  * es la que bloquea el "Cargando..." del AppShell.
+ *
+ * Sin filtro: la usa el panel de administración, que sí necesita ver los
+ * torneos de todos. El organizador común usa `fetchTournamentsByOrganizer`.
  */
 export async function fetchTournaments(): Promise<Tournament[]> {
   const { data, error } = await supabase

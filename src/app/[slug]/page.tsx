@@ -40,7 +40,9 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!user?.id) return;
-    fetchTournamentsByOrganizer(user.id).then(setUserTournaments);
+    fetchTournamentsByOrganizer(user.id)
+      .then(setUserTournaments)
+      .catch((err) => console.error("fetchTournamentsByOrganizer falló", err));
   }, [user?.id]);
 
   if (!checked) {

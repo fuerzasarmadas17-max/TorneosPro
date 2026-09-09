@@ -65,7 +65,7 @@ export default function ProfileTournamentPage() {
   //   2. Los match_events: el SELECT de la lista los omite (evita el 504),
   //      así que las stats salen "sin registrar".
   // Replicamos el patrón probado de tournament-detail-client: traemos los
-  // equipos por IDs (consulta liviana, NO fetchAllTeams) + los eventos, y
+  // equipos por IDs (consulta liviana, anclada al torneo) + los eventos, y
   // sembramos al contexto. Una vez por torneo.
   const tournamentForSeed = inContext ?? fetched ?? undefined;
   const seededRef = useRef<string | null>(null);

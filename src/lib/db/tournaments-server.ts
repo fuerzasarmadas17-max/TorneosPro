@@ -51,7 +51,7 @@ export interface TournamentPageData {
  *
  * Performance: dos queries paralelas, normalmente ~80-150ms total
  * cuando ambas corren en la misma región que Supabase. El bonus de
- * usar `fetchTeamsByIds` (en lugar de `fetchAllTeams`) es que solo
+ * usar `fetchTeamsByIds` (y no una consulta global de equipos) es que solo
  * trae los equipos del torneo en cuestión — para un torneo de 16
  * equipos son ~16 filas, no ~1000.
  */

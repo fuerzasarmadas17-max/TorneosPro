@@ -4,27 +4,57 @@ import { Team, Player } from "@/types";
 import { dedupePlayersByName } from "@/lib/name-utils";
 import { mapTeam } from "./mappers";
 
+/**
+ * Cuántos ids se piden por vez.
+ *
+ * La API corta cualquier respuesta en 1000 filas y no avisa: la petición sale
+ * bien, con menos equipos de los que hay. Pidiendo de a 500 nunca se llega a
+ * ese techo, así que ninguna tanda puede volver recortada.
+ */
+const TAMANO_DE_TANDA = 500;
+
+/**
+ * Los equipos de una lista de ids, distinguiendo "no hay ninguno" de "falló la
+ * petición".
+ *
+ * Esa diferencia es el corazón de un bug feo: la versión anterior devolvía una
+ * lista vacía en los dos casos, y quien la llamaba escribía ese vacío encima de
+ * los equipos que ya tenía en pantalla. Con señal inestable, los nombres se
+ * convertían en UUIDs y la pestaña de equipos quedaba vacía. Con `ok: false`,
+ * el que llama puede conservar lo que ya tenía.
+ */
+export async function fetchTeamsByIdsResult(
+  ids: string[],
+  client: SupabaseClient = supabase
+): Promise<{ ok: true; teams: Team[] } | { ok: false }> {
+  if (ids.length === 0) return { ok: true, teams: [] };
+
+  const teams: Team[] = [];
+  for (let i = 0; i < ids.length; i += TAMANO_DE_TANDA) {
+    const tanda = ids.slice(i, i + TAMANO_DE_TANDA);
+    const { data, error } = await client
+      .from("teams")
+      .select("*, players(*)")
+      .in("id", tanda);
+
+    // Si una tanda falla se aborta entero: media lista es peor que ninguna,
+    // porque el que llama no tiene forma de saber que le faltan equipos.
+    if (error || !data) return { ok: false };
+    for (const row of data) teams.push(mapTeam(row as Record<string, unknown>));
+  }
+
+  return { ok: true, teams };
+}
+
+/** Igual que `fetchTeamsByIdsResult` pero devolviendo la lista pelada. Para los
+ *  llamadores a los que un fallo no les puede pisar nada (el render del
+ *  servidor, que arranca de cero). */
 export async function fetchTeamsByIds(
   ids: string[],
   client: SupabaseClient = supabase
 ): Promise<Team[]> {
-  if (ids.length === 0) return [];
-  const { data, error } = await client
-    .from("teams")
-    .select("*, players(*)")
-    .in("id", ids);
-
-  if (error || !data) return [];
-  return data.map((row) => mapTeam(row as Record<string, unknown>));
-}
-
-export async function fetchAllTeams(): Promise<Team[]> {
-  const { data, error } = await supabase
-    .from("teams")
-    .select("*, players(*)");
-
-  if (error || !data) return [];
-  return data.map((row) => mapTeam(row as Record<string, unknown>));
+  const res = await fetchTeamsByIdsResult(ids, client);
+  return res.ok ? res.teams : [];
 }
 
 export async function createTeams(
