@@ -39,10 +39,13 @@ import {
 import { dedupePlayersByName, buildPlayerNameOptions, normalizePlayerName } from "@/lib/name-utils";
 import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
 import {
+  parseSetPoints,
   setsForScore,
   validateVolleyballSets,
   volleyballDrawAllowed,
+  volleyballSetWarnings,
 } from "@/lib/volleyball-sets";
+import { parseMatchScore, validateScoreForSport } from "@/lib/score-errors";
 import { fetchTeamsByIds } from "@/lib/db/teams";
 import { PlayerCombobox } from "./player-combobox";
 import { FairPlayPicker } from "./fair-play-picker";
@@ -161,6 +164,10 @@ export function MatchResultForm({
   const isFutbol = sport ? getSportCategory(sport) === "futbol" : false;
   const stackScorersMobile = isFutbol || isVolleyball;
   const setsToWin = bestOf ? Math.ceil(bestOf / 2) : 2;
+  // Nombres con los que los errores nombran al equipo que le falta el marcador.
+  // Sin equipo asignado todavia (una llave "TBD") caen a Local / Visitante.
+  const homeName = homeTeam?.name || "Local";
+  const awayName = awayTeam?.name || "Visitante";
   // Marcador reglamentario de W del deporte. Misma fuente que usa la
   // descalificación y el anotador con link. Ver lib/walkover.ts.
   const walkoverRule = getWalkoverRule(sport ?? "futbol", bestOf);
@@ -273,6 +280,21 @@ export function MatchResultForm({
       return next;
     });
   }, [isVolleyball, volleyTotalSets]);
+
+  // Avisos de parciales que probablemente estén mal tipeados (un 25-24, un
+  // 21-19). NO bloquean: hay relámpagos que juegan los sets a 21 o a 15, y
+  // trabarlos dejaría al organizador sin poder cargar su propio torneo.
+  // Los sets a medio escribir se mandan con -1 para que el aviso los saltee
+  // sin correr la numeración.
+  const volleySetWarnings = isVolleyball
+    ? volleyballSetWarnings(
+        setScores.map((s) => ({
+          homePoints: s.home.trim() === "" ? -1 : Number(s.home),
+          awayPoints: s.away.trim() === "" ? -1 : Number(s.away),
+        })),
+        setsToWin
+      )
+    : [];
 
   const updateSetScore = (index: number, side: "home" | "away", value: string) => {
     setSetScores((prev) => {
@@ -463,26 +485,40 @@ export function MatchResultForm({
     // el servidor — vive en lib/volleyball-sets.ts justo para que los tres
     // digan lo mismo y no haya un camino más permisivo que otro.
     if (isVolleyball) {
-      if (volleyHome === null || volleyAway === null) {
-        setError("Cargá el resultado del partido en sets (por ejemplo 2-1).");
+      // El marcador primero, nombrando al equipo que quedo sin cargar: el error
+      // mas comun es escribir el 2 y dejar la otra casilla vacia.
+      const parsed = parseMatchScore(
+        { raw: homeScore, teamName: homeName },
+        { raw: awayScore, teamName: awayName },
+        "sets"
+      );
+      if (!parsed.ok) {
+        setError(parsed.error);
         return;
       }
 
       const completedSets: VolleyballSet[] = [];
       for (let i = 0; i < setScores.length; i++) {
         const s = setScores[i];
-        const hp = parseInt(s.home);
-        const ap = parseInt(s.away);
-        if (s.home === "" || s.away === "" || isNaN(hp) || isNaN(ap)) {
-          setError(`Set ${i + 1}: faltan los puntos de alguno de los dos equipos.`);
+        const points = parseSetPoints(
+          i + 1,
+          { raw: s.home, teamName: homeName },
+          { raw: s.away, teamName: awayName }
+        );
+        if (!points.ok) {
+          setError(points.error);
           return;
         }
-        completedSets.push({ setNumber: i + 1, homePoints: hp, awayPoints: ap });
+        completedSets.push({
+          setNumber: i + 1,
+          homePoints: points.homePoints,
+          awayPoints: points.awayPoints,
+        });
       }
 
       const setsError = validateVolleyballSets(
-        volleyHome,
-        volleyAway,
+        parsed.home,
+        parsed.away,
         completedSets,
         { setsToWin, allowDraw: drawAllowed }
       );
@@ -491,8 +527,8 @@ export function MatchResultForm({
         return;
       }
 
-      const homeSetsWon = volleyHome;
-      const awaySetsWon = volleyAway;
+      const homeSetsWon = parsed.home;
+      const awaySetsWon = parsed.away;
 
       // Build events from card/stat entries (yellow cards, red cards, etc.)
       const events: MatchEvent[] = eventEntries
@@ -513,18 +549,17 @@ export function MatchResultForm({
       return;
     }
 
-    const home = parseInt(homeScore);
-    const away = parseInt(awayScore);
-
-    if (isNaN(home) || isNaN(away)) {
-      setError("Ingresa marcadores validos");
+    const parsed = validateScoreForSport(
+      { raw: homeScore, teamName: homeName },
+      { raw: awayScore, teamName: awayName },
+      sport
+    );
+    if (!parsed.ok) {
+      setError(parsed.error);
       return;
     }
-
-    if (home < 0 || away < 0) {
-      setError("Los marcadores no pueden ser negativos");
-      return;
-    }
+    const home = parsed.home;
+    const away = parsed.away;
 
     let events: MatchEvent[];
 
@@ -704,6 +739,18 @@ export function MatchResultForm({
                   ))}
                   <p className="text-center text-[11px] text-muted-foreground">
                     Puntos de cada set (25-23, 25-20, …)
+                  </p>
+                </div>
+              )}
+
+              {/* Avisos, no errores: se puede guardar igual. */}
+              {volleySetWarnings.length > 0 && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 space-y-1 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                  {volleySetWarnings.map((w) => (
+                    <p key={w.setNumber}>{w.message}</p>
+                  ))}
+                  <p className="opacity-80">
+                    Si en tu torneo los sets se juegan así, guardá tranquilo.
                   </p>
                 </div>
               )}
@@ -1035,14 +1082,13 @@ export function MatchResultForm({
             // Validación de marcadores solo al salir del primer paso.
             const validateScores = () => {
               setError("");
-              const home = parseInt(homeScore);
-              const away = parseInt(awayScore);
-              if (isNaN(home) || isNaN(away)) {
-                setError("Ingresa marcadores validos");
-                return false;
-              }
-              if (home < 0 || away < 0) {
-                setError("Los marcadores no pueden ser negativos");
+              const parsed = validateScoreForSport(
+                { raw: homeScore, teamName: homeName },
+                { raw: awayScore, teamName: awayName },
+                sport
+              );
+              if (!parsed.ok) {
+                setError(parsed.error);
                 return false;
               }
               return true;

@@ -4,6 +4,7 @@ import {
   validateVolleyballSets,
   volleyballDrawAllowed,
 } from "@/lib/volleyball-sets";
+import { validateRacketScore } from "@/lib/score-errors";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import {
   validateScorerToken,
@@ -101,8 +102,11 @@ export async function POST(
     !Number.isInteger(homeScore) ||
     !Number.isInteger(awayScore)
   ) {
+    // El navegador ya valida con mensajes que nombran al equipo; acá no
+    // tenemos los nombres a mano, pero el texto igual se le muestra tal cual
+    // al planillero si alguien llega por otro camino.
     return NextResponse.json(
-      { error: "Marcador inválido (debe ser entero 0..999)" },
+      { error: "El marcador tiene que ser un número entero entre 0 y 999." },
       { status: 400 }
     );
   }
@@ -173,6 +177,16 @@ export async function POST(
     }
   }
 
+  // Tenis, pádel y ping pong: el marcador también son sets, pero sin parciales
+  // ni "mejor de" guardado. Solo se rechaza lo imposible en cualquier formato:
+  // un partido empatado, o una cuenta de sets que no existe.
+  if (tournament && getSportCategory(tournament.sport) === "no-stats") {
+    const racketError = validateRacketScore(homeScore, awayScore);
+    if (racketError) {
+      return NextResponse.json({ error: racketError }, { status: 400 });
+    }
+  }
+
   // Determinar winner_id (igual lógica que el form actual: mayor score gana;
   // empate → null).
   const winnerId =
@@ -221,7 +235,12 @@ export async function POST(
         s.homePoints > 99 ||
         s.awayPoints > 99
       ) {
-        return NextResponse.json({ error: "Set inválido" }, { status: 400 });
+        return NextResponse.json(
+          {
+            error: `Set ${s.setNumber}: los puntos tienen que ser números enteros entre 0 y 99.`,
+          },
+          { status: 400 }
+        );
       }
     }
     await supabaseAdmin.from("volleyball_sets").delete().eq("match_id", matchId);

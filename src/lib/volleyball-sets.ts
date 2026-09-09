@@ -19,6 +19,8 @@
  * endpoint público y no se le puede creer nada al navegador.
  */
 
+import { MAX_SET_POINTS } from "@/lib/score-errors";
+
 export interface SetScore {
   homePoints: number;
   awayPoints: number;
@@ -97,6 +99,9 @@ export function validateVolleyballSets(
     ) {
       return `Set ${i + 1}: faltan los puntos de alguno de los dos equipos.`;
     }
+    if (s.homePoints === 0 && s.awayPoints === 0) {
+      return `Set ${i + 1}: falta cargarlo. Si ese set no se jugó, corregí el resultado del partido.`;
+    }
     if (s.homePoints === s.awayPoints) {
       return `Set ${i + 1}: un set no puede terminar empatado (${s.homePoints}-${s.awayPoints}).`;
     }
@@ -134,4 +139,133 @@ export function validateVolleyballSets(
   }
 
   return null;
+}
+
+/** Puntos con los que se cierra un set normal, y el decisivo (el último de un
+ *  partido que llegó al final). Se usan solo para AVISAR: hay relámpagos que
+ *  juegan los sets a 21 o a 15, y bloquearlos dejaría al organizador sin poder
+ *  cargar su propio torneo. */
+export const SET_TARGET_POINTS = 25;
+export const DECIDING_SET_TARGET_POINTS = 15;
+
+export interface SetWarning {
+  setNumber: number;
+  message: string;
+}
+
+/**
+ * Avisos de los parciales: lo que probablemente esté mal tipeado, pero que no
+ * se puede afirmar. No bloquean el guardado.
+ *
+ * Un 25-24 casi siempre es un 25-23 mal escrito, porque un set se gana por dos
+ * de diferencia. Y un 21-19 puede ser un set jugado a 21 —perfectamente
+ * normal en un relámpago— o un 25-19 al que le comieron un dígito. Se avisa y
+ * decide quien está mirando la planilla.
+ */
+export function volleyballSetWarnings(
+  sets: SetScore[],
+  setsToWin: number
+): SetWarning[] {
+  const maxSets = setsToWin * 2 - 1;
+  const warnings: SetWarning[] = [];
+
+  for (let i = 0; i < sets.length; i++) {
+    const s = sets[i];
+    if (
+      !Number.isInteger(s.homePoints) || !Number.isInteger(s.awayPoints) ||
+      s.homePoints < 0 || s.awayPoints < 0 ||
+      s.homePoints === s.awayPoints
+    ) {
+      continue; // Lo agarra la validación que sí bloquea.
+    }
+
+    const isDeciding = sets.length === maxSets && i === sets.length - 1;
+    const target = isDeciding ? DECIDING_SET_TARGET_POINTS : SET_TARGET_POINTS;
+    const ganador = Math.max(s.homePoints, s.awayPoints);
+    const parcial = `${s.homePoints}-${s.awayPoints}`;
+
+    if (ganador < target) {
+      warnings.push({
+        setNumber: i + 1,
+        message: isDeciding
+          ? `Set ${i + 1}: el set decisivo se juega a ${target}, y cargaste ${parcial}.`
+          : `Set ${i + 1}: un set se gana llegando a ${target}, y cargaste ${parcial}.`,
+      });
+      continue;
+    }
+
+    if (ganador - Math.min(s.homePoints, s.awayPoints) < 2) {
+      warnings.push({
+        setNumber: i + 1,
+        message: `Set ${i + 1}: un set se gana por dos puntos de diferencia, y cargaste ${parcial}.`,
+      });
+    }
+  }
+
+  return warnings;
+}
+
+export interface SetPointsSide {
+  /** Lo que hay escrito en la casilla, tal cual. */
+  raw: string;
+  /** Nombre del equipo, para nombrarlo en el error. */
+  teamName: string;
+}
+
+/**
+ * Valida las dos casillas de puntos de UN set.
+ *
+ * Antes decía "faltan los puntos de alguno de los dos equipos", que obliga a
+ * mirar las dos casillas para encontrar la vacía. Ahora nombra la que falta.
+ */
+export function parseSetPoints(
+  setNumber: number,
+  home: SetPointsSide,
+  away: SetPointsSide
+):
+  | { ok: true; homePoints: number; awayPoints: number }
+  | { ok: false; error: string } {
+  const sides: [SetPointsSide, "home" | "away"][] = [
+    [home, "home"],
+    [away, "away"],
+  ];
+  const values: Record<"home" | "away", number> = { home: 0, away: 0 };
+
+  for (const [side, key] of sides) {
+    const raw = side.raw.trim();
+    if (raw === "") {
+      return {
+        ok: false,
+        error: `Set ${setNumber}: faltan los puntos de ${side.teamName}.`,
+      };
+    }
+    const n = Number(raw);
+    if (!Number.isFinite(n)) {
+      return {
+        ok: false,
+        error: `Set ${setNumber}: los puntos de ${side.teamName} tienen que ser un número.`,
+      };
+    }
+    if (n < 0) {
+      return {
+        ok: false,
+        error: `Set ${setNumber}: los puntos de ${side.teamName} no pueden ser negativos.`,
+      };
+    }
+    if (!Number.isInteger(n)) {
+      return {
+        ok: false,
+        error: `Set ${setNumber}: los puntos de ${side.teamName} tienen que ser un número entero, sin decimales.`,
+      };
+    }
+    if (n > MAX_SET_POINTS) {
+      return {
+        ok: false,
+        error: `Set ${setNumber}: ${n} puntos de ${side.teamName} no parece un parcial real. Revisá el número.`,
+      };
+    }
+    values[key] = n;
+  }
+
+  return { ok: true, homePoints: values.home, awayPoints: values.away };
 }

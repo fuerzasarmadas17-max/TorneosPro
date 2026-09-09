@@ -25,10 +25,13 @@ import {
 } from "@/lib/baseball-scoresheet";
 import { dedupePlayersByName, buildPlayerNameOptions } from "@/lib/name-utils";
 import {
+  parseSetPoints,
   setsForScore,
   validateVolleyballSets,
   volleyballDrawAllowed,
+  volleyballSetWarnings,
 } from "@/lib/volleyball-sets";
+import { parseMatchScore, validateScoreForSport } from "@/lib/score-errors";
 import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
 import { PlayerCombobox } from "@/components/forms/player-combobox";
 import { FairPlayPicker } from "@/components/forms/fair-play-picker";
@@ -736,6 +739,21 @@ function MatchScreen({
       : 0;
   const volleyTotalSets = volleyRawSets > volleyMaxSets ? 0 : volleyRawSets;
   const drawAllowed = volleyballDrawAllowed(tournament.format, match.phase);
+  // Nombres con los que los errores nombran al equipo al que le falta el dato.
+  const homeName = home?.name ?? "Local";
+  const awayName = away?.name ?? "Visitante";
+  // Avisos de parciales raros (25-24, 21-19). NO bloquean el guardado: hay
+  // relámpagos que juegan los sets a 21 o a 15. Los sets a medio escribir se
+  // mandan con -1 para que el aviso los saltee sin correr la numeración.
+  const volleySetWarnings = isVolleyball
+    ? volleyballSetWarnings(
+        sets.map((s) => ({
+          homePoints: s.homePoints.trim() === "" ? -1 : Number(s.homePoints),
+          awayPoints: s.awayPoints.trim() === "" ? -1 : Number(s.awayPoints),
+        })),
+        Math.ceil((tournament.bestOf ?? 3) / 2)
+      )
+    : [];
 
   useEffect(() => {
     if (!isVolleyball) return;
@@ -800,18 +818,34 @@ function MatchScreen({
 
   const handleSave = async () => {
     // Validación cliente. El servidor revalida igual.
-    const hs = Number(homeScore);
-    const as = Number(awayScore);
-    if (!Number.isInteger(hs) || !Number.isInteger(as) || hs < 0 || as < 0 || hs > 999 || as > 999) {
-      toast.error("Marcador inválido");
+    //
+    // Ojo con `Number("")`, que da 0: antes, dejar una casilla vacía guardaba
+    // un 0 sin avisar y el partido quedaba mal cargado para siempre. Por eso
+    // el marcador se valida desde el texto, no desde el número.
+    const parsedScore = isVolleyball
+      ? parseMatchScore(
+          { raw: homeScore, teamName: homeName },
+          { raw: awayScore, teamName: awayName },
+          "sets"
+        )
+      : validateScoreForSport(
+          { raw: homeScore, teamName: homeName },
+          { raw: awayScore, teamName: awayName },
+          tournament.sport
+        );
+    if (!parsedScore.ok) {
+      setFormError(parsedScore.error);
+      if (isBaseball) toast.error(parsedScore.error);
       return;
     }
+    const hs = parsedScore.home;
+    const as = parsedScore.away;
     // Validar eventos manuales: cada uno debe tener equipo y jugador.
     // (Béisbol no usa eventos manuales — se arman desde la planilla.)
     if (!isBaseball) {
       for (const e of eventEntries) {
         if (!e.teamId || !e.playerName.trim()) {
-          toast.error("Hay eventos sin equipo o jugador");
+          setFormError("Hay eventos sin equipo o jugador.");
           return;
         }
       }
@@ -850,23 +884,20 @@ function MatchScreen({
     const outSets: { setNumber: number; homePoints: number; awayPoints: number }[] = [];
     if (isVolleyball) {
       for (const s of sets) {
-        const hp = s.homePoints.trim();
-        const ap = s.awayPoints.trim();
-        if (hp === "" && ap === "") continue;
-        const hpNum = Number(hp);
-        const apNum = Number(ap);
-        if (
-          hp === "" || ap === "" ||
-          !Number.isInteger(hpNum) || !Number.isInteger(apNum) ||
-          hpNum < 0 || apNum < 0 || hpNum > 99 || apNum > 99
-        ) {
-          setFormError(`Set ${s.setNumber}: ingresá los puntos de los dos equipos.`);
+        if (s.homePoints.trim() === "" && s.awayPoints.trim() === "") continue;
+        const points = parseSetPoints(
+          outSets.length + 1,
+          { raw: s.homePoints, teamName: homeName },
+          { raw: s.awayPoints, teamName: awayName }
+        );
+        if (!points.ok) {
+          setFormError(points.error);
           return;
         }
         outSets.push({
           setNumber: outSets.length + 1,
-          homePoints: hpNum,
-          awayPoints: apNum,
+          homePoints: points.homePoints,
+          awayPoints: points.awayPoints,
         });
       }
 
@@ -1027,10 +1058,13 @@ function MatchScreen({
               const goNext = () => {
                 // Validar marcador solo al salir del primer paso.
                 if (step === 1) {
-                  const hs = Number(homeScore);
-                  const as = Number(awayScore);
-                  if (!Number.isInteger(hs) || !Number.isInteger(as) || hs < 0 || as < 0) {
-                    toast.error("Ingresá el marcador (carreras) válido");
+                  const parsed = validateScoreForSport(
+                    { raw: homeScore, teamName: home?.name ?? "Local" },
+                    { raw: awayScore, teamName: away?.name ?? "Visitante" },
+                    tournament.sport
+                  );
+                  if (!parsed.ok) {
+                    toast.error(parsed.error);
                     return;
                   }
                 }
@@ -1108,6 +1142,18 @@ function MatchScreen({
               />
             </div>
           ))}
+
+          {/* Avisos, no errores: se puede guardar igual. */}
+          {volleySetWarnings.length > 0 && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 space-y-1 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              {volleySetWarnings.map((w) => (
+                <p key={w.setNumber}>{w.message}</p>
+              ))}
+              <p className="opacity-80">
+                Si en este torneo los sets se juegan así, guardá tranquilo.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
