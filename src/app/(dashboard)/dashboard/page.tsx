@@ -24,6 +24,7 @@ import { TournamentViews } from "@/components/analytics/tournament-views";
 import { WeeklyAgenda } from "@/components/dashboard/weekly-agenda";
 import { ScheduleMatchModal } from "@/components/dashboard/schedule-match-modal";
 import { ScorerLinksPanel } from "@/components/dashboard/scorer-links-panel";
+import { VenueSuggestions } from "@/components/dashboard/venue-suggestions";
 import { useAuth } from "@/context/auth-context";
 import { useTournaments } from "@/context/tournament-context";
 import {
@@ -119,6 +120,11 @@ function DashboardContent() {
               </Button>
             </div>
           </div>
+          {/* "Estas dos canchas parecen la misma". Va afuera del corte de
+              abajo: sale de todos sus torneos, no solo de los que están en
+              curso, y si no hay nada que sugerir no pinta nada. */}
+          <VenueSuggestions />
+
           {activeTournaments.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center gap-4 py-14 text-center">

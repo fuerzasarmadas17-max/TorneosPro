@@ -9,6 +9,19 @@ import { Tournament } from "@/types";
 import { useTournaments } from "@/context/tournament-context";
 import { buildTournamentColorMap } from "@/lib/tournament-colors";
 import {
+  ALL_VENUES,
+  NO_VENUE,
+  collectVenues,
+  isInVenue,
+} from "@/lib/venues";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   startOfDay,
   toISO,
   addDays,
@@ -34,6 +47,9 @@ export function WeeklyAgenda({ tournaments }: { tournaments: Tournament[] }) {
   const { getTeamById } = useTournaments();
   const today = startOfDay(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(today);
+  // La cancha elegida se mantiene al cambiar de día: quien está mirando "la
+  // cancha 2" quiere seguir viéndola el día siguiente, no volver a elegirla.
+  const [venueFilter, setVenueFilter] = useState<string>(ALL_VENUES);
 
   const colorMap = useMemo(
     () => buildTournamentColorMap(tournaments.map((t) => t.id)),
@@ -71,10 +87,34 @@ export function WeeklyAgenda({ tournaments }: { tournaments: Tournament[] }) {
     return map;
   }, [tournaments, colorMap, getTeamById]);
 
+  // Las canchas salen de todos los partidos programados, no solo del día: si
+  // la lista cambiara al pasar de día, el desplegable bailaría bajo el dedo.
+  const venues = useMemo(() => {
+    const all: { venue?: string }[] = [];
+    for (const arr of matchesByDate.values()) {
+      for (const m of arr) all.push({ venue: m.venue });
+    }
+    return collectVenues(all);
+  }, [matchesByDate]);
+
+  // Con una sola cancha el filtro no filtra nada: se esconde.
+  const showVenueFilter = venues.length > 1;
+  const activeVenue = showVenueFilter ? venueFilter : ALL_VENUES;
+  const someWithoutVenue = useMemo(() => {
+    for (const arr of matchesByDate.values()) {
+      for (const m of arr) if (!m.venue) return true;
+    }
+    return false;
+  }, [matchesByDate]);
+
   const weekStart = mondayOf(selectedDate);
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const selectedISO = toISO(selectedDate);
-  const dayMatches = matchesByDate.get(selectedISO) ?? [];
+  const allDayMatches = matchesByDate.get(selectedISO) ?? [];
+  const dayMatches = allDayMatches.filter((m) => isInVenue(m.venue, activeVenue));
+  const venueLabel =
+    venues.find((v) => v.key === activeVenue)?.label ??
+    (activeVenue === NO_VENUE ? "sin cancha" : null);
 
   const selectedLabel = formatDayLabel(selectedDate);
 
@@ -118,7 +158,9 @@ export function WeeklyAgenda({ tournaments }: { tournaments: Tournament[] }) {
         <div className="grid grid-cols-7 gap-1">
           {weekDays.map((d) => {
             const iso = toISO(d);
-            const count = matchesByDate.get(iso)?.length ?? 0;
+            const count = (matchesByDate.get(iso) ?? []).filter((m) =>
+              isInVenue(m.venue, activeVenue)
+            ).length;
             const isSelected = iso === selectedISO;
             const isToday = iso === toISO(today);
             return (
@@ -155,11 +197,46 @@ export function WeeklyAgenda({ tournaments }: { tournaments: Tournament[] }) {
           })}
         </div>
 
+        {/* Filtro por cancha. Solo aparece si hay más de una. */}
+        {showVenueFilter && (
+          <div className="flex items-center gap-2">
+            <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
+            <Select value={venueFilter} onValueChange={setVenueFilter}>
+              <SelectTrigger className="h-8 flex-1 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_VENUES}>Todas las canchas</SelectItem>
+                {venues.map((v) => (
+                  <SelectItem key={v.key} value={v.key}>
+                    {v.label}
+                  </SelectItem>
+                ))}
+                {someWithoutVenue && (
+                  <SelectItem value={NO_VENUE}>Sin cancha asignada</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         {/* Partidos del día */}
         {dayMatches.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
             <CalendarDays className="size-8 opacity-40" />
-            <p className="text-sm">No hay partidos programados este día.</p>
+            <p className="text-sm">
+              {activeVenue !== ALL_VENUES && venueLabel
+                ? `No hay partidos en ${venueLabel} este día.`
+                : "No hay partidos programados este día."}
+            </p>
+            {activeVenue !== ALL_VENUES && allDayMatches.length > 0 && (
+              <button
+                className="text-xs text-primary hover:underline"
+                onClick={() => setVenueFilter(ALL_VENUES)}
+              >
+                Ver las {allDayMatches.length} de todas las canchas
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-2">

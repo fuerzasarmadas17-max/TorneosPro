@@ -158,6 +158,31 @@ export async function updateMatchDetails(
   return !error;
 }
 
+/**
+ * Reescribe la cancha de varios partidos de una sola vez.
+ *
+ * Es lo que corre cuando el organizador dice que dos canchas parecidas son la
+ * misma: los partidos que decían un nombre pasan a decir el otro. Va en un
+ * solo UPDATE y no en un `updateMatchDetails` por partido, porque una cancha
+ * con temporada entera son decenas de partidos, y hacerlo de a uno deja el
+ * calendario a medio renombrar si se corta la conexión en el medio.
+ *
+ * La RLS ya limita qué partidos puede tocar cada quien ("Creador gestiona
+ * partidos"), así que un id ajeno en la lista no escribe nada.
+ */
+export async function renameVenueForMatches(
+  matchIds: string[],
+  venue: string
+): Promise<boolean> {
+  if (matchIds.length === 0) return true;
+  const { error } = await supabase
+    .from("matches")
+    .update({ venue })
+    .in("id", matchIds);
+
+  return !error;
+}
+
 export async function deleteMatch(matchId: string): Promise<boolean> {
   const { error } = await supabase.from("matches").delete().eq("id", matchId);
   return !error;

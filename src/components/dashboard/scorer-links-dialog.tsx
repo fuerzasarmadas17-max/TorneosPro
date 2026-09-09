@@ -16,6 +16,22 @@ import { CreateLinkResult } from "@/hooks/use-scorer-links";
 import { ShareScorerLinkDialog } from "@/components/scorer/scorer-link-share";
 import { MatchInfo, MatchSummary } from "@/components/dashboard/scorer-match-summary";
 import { parseISO, formatDayLabel } from "@/lib/agenda-dates";
+import {
+  ALL_VENUES,
+  NO_VENUE,
+  collectVenues,
+  isInVenue,
+} from "@/lib/venues";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+/** Valor del desplegable de día para "todos los días". */
+const ALL_DAYS = "__todos__";
 
 /**
  * Diálogo de **crear** un link de anotador, cruzando torneos si hace falta.
@@ -50,18 +66,52 @@ export function ScorerLinksDialog({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [createdToken, setCreatedToken] = useState<string | null>(null);
+  // Día y cancha: es como se reparte de verdad ("lo del sábado en la 2 se lo
+  // mando a Pedro"). Filtrar no desmarca nada, así se puede armar un link
+  // juntando dos canchas si hace falta.
+  const [dayFilter, setDayFilter] = useState<string>(ALL_DAYS);
+  const [venueFilter, setVenueFilter] = useState<string>(ALL_VENUES);
+
+  const days = useMemo(
+    () => Array.from(new Set(availableMatches.map((m) => m.date))).sort(),
+    [availableMatches]
+  );
+  const venues = useMemo(() => collectVenues(availableMatches), [availableMatches]);
+  const someWithoutVenue = useMemo(
+    () => availableMatches.some((m) => !m.venue),
+    [availableMatches]
+  );
+
+  const filteredMatches = useMemo(
+    () =>
+      availableMatches.filter(
+        (m) =>
+          (dayFilter === ALL_DAYS || m.date === dayFilter) &&
+          isInVenue(m.venue, venueFilter)
+      ),
+    [availableMatches, dayFilter, venueFilter]
+  );
+
+  // Marcados que el filtro de ahora esconde. Se avisa, porque el botón dice
+  // "Generar link (5)" y en pantalla podrían verse solo dos.
+  const hiddenSelectedCount = useMemo(() => {
+    const visible = new Set(filteredMatches.map((m) => m.matchId));
+    let n = 0;
+    for (const id of selected) if (!visible.has(id)) n++;
+    return n;
+  }, [selected, filteredMatches]);
 
   // Agrupados por día: es como el organizador piensa el reparto ("lo del
   // sábado se lo mando a Pedro").
   const groupedByDate = useMemo(() => {
     const map = new Map<string, MatchInfo[]>();
-    for (const m of availableMatches) {
+    for (const m of filteredMatches) {
       const arr = map.get(m.date) ?? [];
       arr.push(m);
       map.set(m.date, arr);
     }
     return Array.from(map.entries());
-  }, [availableMatches]);
+  }, [filteredMatches]);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -106,7 +156,11 @@ export function ScorerLinksDialog({
   }, [selected, availableMatches]);
 
   const handleClose = (o: boolean) => {
-    if (!o) setSelected(new Set());
+    if (!o) {
+      setSelected(new Set());
+      setDayFilter(ALL_DAYS);
+      setVenueFilter(ALL_VENUES);
+    }
     onOpenChange(o);
   };
 
@@ -145,12 +199,69 @@ export function ScorerLinksDialog({
             </DialogDescription>
           </DialogHeader>
 
+          {/* Filtros. Cada uno aparece solo si hay algo que filtrar. */}
+          {(days.length > 1 || venues.length > 1) && (
+            <div className="flex gap-2 px-4 pb-2 shrink-0 sm:px-6">
+              {days.length > 1 && (
+                <Select value={dayFilter} onValueChange={setDayFilter}>
+                  <SelectTrigger className="h-8 flex-1 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_DAYS}>Todos los días</SelectItem>
+                    {days.map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {formatDayLabel(parseISO(d))}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {venues.length > 1 && (
+                <Select value={venueFilter} onValueChange={setVenueFilter}>
+                  <SelectTrigger className="h-8 flex-1 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_VENUES}>Todas las canchas</SelectItem>
+                    {venues.map((v) => (
+                      <SelectItem key={v.key} value={v.key}>
+                        {v.label}
+                      </SelectItem>
+                    ))}
+                    {someWithoutVenue && (
+                      <SelectItem value={NO_VENUE}>Sin cancha asignada</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
+
           <div className="flex-1 min-h-0 overflow-y-auto px-4 py-2 space-y-4 sm:px-6">
             {groupedByDate.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">
-                No hay partidos disponibles. Programá partidos con fecha y hora,
-                o revocá un link para liberar los suyos.
-              </p>
+              availableMatches.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-8 text-center">
+                  No hay partidos disponibles. Programá partidos con fecha y hora,
+                  o revocá un link para liberar los suyos.
+                </p>
+              ) : (
+                <div className="py-8 text-center space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Ningún partido disponible con este filtro.
+                  </p>
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => {
+                      setDayFilter(ALL_DAYS);
+                      setVenueFilter(ALL_VENUES);
+                    }}
+                  >
+                    Ver los {availableMatches.length} disponibles
+                  </button>
+                </div>
+              )
             ) : (
               groupedByDate.map(([date, matches]) => {
                 const allSelected = matches.every((m) => selected.has(m.matchId));
@@ -201,6 +312,12 @@ export function ScorerLinksDialog({
               <>
                 {selected.size} {selected.size === 1 ? "partido" : "partidos"}
                 {selectedTournamentCount > 1 && ` de ${selectedTournamentCount} torneos`}
+                {hiddenSelectedCount > 0 && (
+                  <span className="text-amber-600">
+                    {" · "}
+                    {hiddenSelectedCount} que el filtro no muestra
+                  </span>
+                )}
                 {expiresPreview && (
                   <>
                     {" · "}expira el{" "}

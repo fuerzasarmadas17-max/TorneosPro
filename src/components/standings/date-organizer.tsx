@@ -10,6 +10,7 @@ import { getRoundLabel } from "@/data/helpers";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CalendarIcon, Clock, MapPin, Check, ArrowRight, Filter } from "lucide-react";
 import { toast } from "sonner";
+import { collectVenues, formatVenue } from "@/lib/venues";
 import {
   isSaneMatchDate,
   INVALID_MATCH_DATE_MESSAGE,
@@ -316,15 +317,15 @@ export function DateOrganizer({ tournament, phaseFilter, onScheduled }: DateOrga
     return Array.from(allTeamIds).filter((id) => !playing.has(id));
   };
 
-  const usedVenues = Array.from(new Set(
-    tournament.matches.map((m) => m.venue).filter(Boolean) as string[]
-  ));
+  // Canchas ya usadas, agrupando las escritas distinto: el autocompletado
+  // ofrece una sola "Cancha 1" en vez de las tres formas que haya en la base.
+  const venueOptions = collectVenues(tournament.matches);
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
       <datalist id={`venues-${tournament.id}`}>
-        {usedVenues.map((v) => (
-          <option key={v} value={v} />
+        {venueOptions.map((v) => (
+          <option key={v.key} value={v.label} />
         ))}
       </datalist>
       {/* Header */}
@@ -524,10 +525,11 @@ function MatchRow({
   };
 
   const commitVenue = () => {
-    const trimmed = venue.trim();
-    const capitalized = trimmed.replace(/\b\w/g, (c) => c.toUpperCase());
-    setVenue(capitalized);
-    updateMatchDetails(tournament.id, match.id, { venue: capitalized || undefined });
+    // Se normaliza al guardar (ver lib/venues.ts): si no, "cancha 1" y
+    // "Cancha 1" quedan como dos canchas distintas y el filtro las separa.
+    const normalized = formatVenue(venue);
+    setVenue(normalized);
+    updateMatchDetails(tournament.id, match.id, { venue: normalized || undefined });
   };
 
   return (

@@ -19,7 +19,7 @@ import {
 } from "@/data/helpers";
 import { fetchTournaments, fetchTournamentsWithMatches, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, deleteTournament as dbDeleteTournament, addTournamentTeams, removeTeamFromTournament as dbRemoveTeamFromTournament, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup, assignTeamsToPhaseGroups as dbAssignTeamsToPhaseGroups, assignTeamsToBracketSlots as dbAssignTeamsToBracketSlots, updateGroupName as dbUpdateGroupName } from "@/lib/db/tournaments";
 import { fetchAllTeams, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam, updateTeamPlayers as dbUpdateTeamPlayers } from "@/lib/db/teams";
-import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid } from "@/lib/db/matches";
+import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid, renameVenueForMatches as dbRenameVenueForMatches } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
 import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
 import { todayMatchDate } from "@/lib/match-date";
@@ -53,6 +53,10 @@ interface TournamentContextType {
   removeTournament: (tournamentId: string) => Promise<boolean>;
   updateMatchDetails: (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "round" | "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => Promise<void>;
   updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "doubleRoundRobin" | "groupStageComplete" | "playoffDoubleLeg" | "playoffFixtureGenerated" | "playoffFinalFormat" | "championPhotoUrl" | "mvpPhotoUrl" | "mvpPlayerId" | "mvpPlayerName" | "mvpTeamId" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs" | "disqualifiedTeamIds">>) => Promise<void>;
+  /** Escribe la misma cancha en varios partidos de una vez. Lo usa la
+   *  sugerencia de "estas dos canchas parecen la misma", que ya sabe qué
+   *  partidos tiene que tocar. Devuelve false si falló la escritura. */
+  setMatchesVenue: (matchIds: string[], venue: string) => Promise<boolean>;
   updatePlayoffConfig: (
     tournamentId: string,
     advancePerGroup: number,
@@ -667,6 +671,40 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
           };
         })
       );
+    },
+    []
+  );
+
+  /**
+   * Escribe la misma cancha en una lista de partidos, de un solo UPDATE.
+   *
+   * Recibe los ids ya resueltos en vez de un nombre de cancha a propósito: el
+   * que unifica dos canchas necesita después poder DESHACER, y deshacer exige
+   * devolver exactamente los partidos que se tocaron. Si acá se buscara por
+   * nombre, el deshacer arrastraría también a los que ya se llamaban así desde
+   * antes y les cambiaría la cancha a un lugar donde nunca jugaron.
+   *
+   * El estado local se actualiza recién cuando la base confirmó: es un renombre
+   * sobre partidos ya jugados, y mostrarlo hecho antes de que lo esté sería
+   * mentirle al organizador.
+   */
+  const setMatchesVenue = useCallback(
+    async (matchIds: string[], venue: string) => {
+      if (matchIds.length === 0) return true;
+
+      const ok = await dbRenameVenueForMatches(matchIds, venue);
+      if (!ok) return false;
+
+      const touched = new Set(matchIds);
+      setTournaments((prev) =>
+        prev.map((t) => ({
+          ...t,
+          matches: t.matches.map((m) =>
+            touched.has(m.id) ? { ...m, venue } : m
+          ),
+        }))
+      );
+      return true;
     },
     []
   );
@@ -1894,6 +1932,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       removeTournament,
       updateMatchDetails,
       updateTournamentProps,
+      setMatchesVenue,
       updatePlayoffConfig,
       renameGroup,
       configurePhaseGroups,
@@ -1932,6 +1971,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       removeTournament,
       updateMatchDetails,
       updateTournamentProps,
+      setMatchesVenue,
       updatePlayoffConfig,
       renameGroup,
       configurePhaseGroups,

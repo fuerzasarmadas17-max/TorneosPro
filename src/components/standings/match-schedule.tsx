@@ -34,6 +34,13 @@ import {
   shuffleArray,
 } from "@/data/helpers";
 import { Shuffle, LayoutList, CalendarIcon, Clock, MapPin, AlertTriangle, Filter } from "lucide-react";
+import {
+  ALL_VENUES,
+  NO_VENUE,
+  collectVenues,
+  formatVenue,
+  isInVenue,
+} from "@/lib/venues";
 import { toast } from "sonner";
 import {
   isSaneMatchDate,
@@ -142,6 +149,7 @@ function MatchDisplay({
   const [rescheduleTime, setRescheduleTime] = useState("");
   const [rescheduleVenue, setRescheduleVenue] = useState("");
   const [teamFilter, setTeamFilter] = useState<string>("all");
+  const [venueFilter, setVenueFilter] = useState<string>(ALL_VENUES);
   const [statusTab, setStatusTab] = useState<"upcoming" | "completed" | "postponed">("upcoming");
 
   // Detalle de estadísticas del partido para quien NO puede editar: el
@@ -159,10 +167,13 @@ function MatchDisplay({
     !!match.homeTeamId &&
     !!match.awayTeamId;
 
-  // Collect unique venues already used across the tournament
-  const usedVenues = Array.from(new Set(
-    tournament.matches.map((m) => m.venue).filter(Boolean) as string[]
-  ));
+  // Canchas ya usadas en el torneo. Alimentan el filtro y el autocompletado
+  // al reprogramar; van agrupadas para que "cancha 1" y "Cancha 1" sean una
+  // sola. Ver lib/venues.ts.
+  const venueOptions = collectVenues(tournament.matches);
+  const someWithoutVenue = tournament.matches.some(
+    (m) => m.status !== "unscheduled" && !m.venue
+  );
 
   // Build team list for filter
   const teamOptions = tournament.teamIds
@@ -172,10 +183,16 @@ function MatchDisplay({
   // Only show scheduled/completed/postponed matches (unscheduled go to Fechas tab)
   const baseMatches = tournament.matches.filter((m) => m.status !== "unscheduled");
 
-  // Apply team filter
-  const visibleMatches = teamFilter === "all"
-    ? baseMatches
-    : baseMatches.filter((m) => m.homeTeamId === teamFilter || m.awayTeamId === teamFilter);
+  // Filtro por equipo y por cancha. Se aplican juntos: "los del Deportivo en
+  // la cancha 2" es una pregunta normal.
+  const visibleMatches = baseMatches
+    .filter(
+      (m) =>
+        teamFilter === "all" ||
+        m.homeTeamId === teamFilter ||
+        m.awayTeamId === teamFilter
+    )
+    .filter((m) => isInVenue(m.venue, venueFilter));
 
   // Status counts (after team filter)
   const upcomingCount = visibleMatches.filter(
@@ -301,7 +318,7 @@ function MatchDisplay({
       status: "scheduled",
       date: rescheduleDate,
       time: rescheduleTime,
-      venue: rescheduleVenue.trim(),
+      venue: formatVenue(rescheduleVenue),
       postponedReason: undefined,
     });
     setReschedulingId(null);
@@ -614,28 +631,50 @@ function MatchDisplay({
     <>
       {/* Venue autocomplete datalist (shared across all match cards) */}
       <datalist id={`venues-${tournament.id}`}>
-        {usedVenues.map((v) => (
-          <option key={v} value={v} />
+        {venueOptions.map((v) => (
+          <option key={v.key} value={v.label} />
         ))}
       </datalist>
 
-      {/* Team filter */}
-      {teamOptions.length > 0 && (
+      {/* Filtros: equipo y cancha. El de cancha solo si hay más de una. */}
+      {(teamOptions.length > 0 || venueOptions.length > 1) && (
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
-          <Select value={teamFilter} onValueChange={setTeamFilter}>
-            <SelectTrigger className="h-9 w-full sm:w-64">
-              <SelectValue placeholder="Filtrar por equipo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los equipos</SelectItem>
-              {teamOptions.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex flex-1 flex-col gap-2 sm:flex-row">
+            {teamOptions.length > 0 && (
+              <Select value={teamFilter} onValueChange={setTeamFilter}>
+                <SelectTrigger className="h-9 w-full sm:w-64">
+                  <SelectValue placeholder="Filtrar por equipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los equipos</SelectItem>
+                  {teamOptions.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {venueOptions.length > 1 && (
+              <Select value={venueFilter} onValueChange={setVenueFilter}>
+                <SelectTrigger className="h-9 w-full sm:w-56">
+                  <SelectValue placeholder="Filtrar por cancha" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VENUES}>Todas las canchas</SelectItem>
+                  {venueOptions.map((v) => (
+                    <SelectItem key={v.key} value={v.key}>
+                      {v.label}
+                    </SelectItem>
+                  ))}
+                  {someWithoutVenue && (
+                    <SelectItem value={NO_VENUE}>Sin cancha asignada</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         </div>
       )}
 
@@ -662,11 +701,16 @@ function MatchDisplay({
       </div>
 
       {/* No results message */}
-      {teamFilter !== "all" && visibleMatches.length === 0 && (
-        <div className="text-center py-8 text-muted-foreground text-sm">
-          No hay partidos para este equipo
-        </div>
-      )}
+      {(teamFilter !== "all" || venueFilter !== ALL_VENUES) &&
+        visibleMatches.length === 0 && (
+          <div className="text-center py-8 text-muted-foreground text-sm">
+            {teamFilter !== "all" && venueFilter !== ALL_VENUES
+              ? "No hay partidos de ese equipo en esa cancha"
+              : teamFilter !== "all"
+                ? "No hay partidos para este equipo"
+                : "No hay partidos en esa cancha"}
+          </div>
+        )}
 
       {/* === Filtered view: flat sorted list === */}
       {isFiltered && filteredSorted.length > 0 && (
