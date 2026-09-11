@@ -156,6 +156,10 @@ interface TournamentContextType {
   refetch: () => Promise<void>;
 }
 
+// Cuántos partidos van en cada insert por lotes. 200 filas por viaje mantiene
+// el pedido chico y convierte un fixture de 380 partidos en 2 viajes.
+const MATCH_INSERT_CHUNK = 200;
+
 const TournamentContext = createContext<TournamentContextType | undefined>(
   undefined
 );
@@ -497,20 +501,33 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  // onProgress reporta partidos guardados / total. La inserción va de a uno
-  // (cada partido necesita su id para resolver next_match_id), así que un
-  // fixture grande tarda; sin ese avance la pantalla parece congelada.
+  // Guardado del fixture completo.
+  //
+  // Los partidos que no son cruce de bracket (una liga, la fase de grupos) se
+  // insertan por lotes. Antes iban de a uno: un torneo de 20 equipos ida y
+  // vuelta son 380 viajes al servidor, o sea varios minutos de espera.
+  //
+  // Los de bracket siguen yendo de a uno a propósito: necesitamos el id que
+  // asigna la base para enlazar next_match_id, y un insert por lotes no
+  // garantiza en qué orden devuelve los ids. Son pocos (una llave de 16
+  // equipos son 15 partidos), así que no es el cuello de botella.
+  //
+  // onProgress reporta partidos guardados / total, para que la pantalla pueda
+  // mostrar el avance en vez de quedarse muda.
   const setTournamentMatches = useCallback(async (tournamentId: string, matches: Match[], onProgress?: (done: number, total: number) => void) => {
     // Delete existing matches and insert new ones
     onProgress?.(0, matches.length);
     await supabase.from("matches").delete().eq("tournament_id", tournamentId);
 
     if (matches.length > 0) {
-      // Insert matches, need to handle nextMatchId references
-      // First insert all without nextMatchId
-      const idMapping: Record<string, string> = {};
+      const linkTargets = new Set(
+        matches.map((m) => m.nextMatchId).filter((id): id is string => Boolean(id))
+      );
+      // Necesitamos el id real de un partido si apunta a otro (para escribirle
+      // el enlace) o si otro lo apunta a él (para ser el destino del enlace).
+      const needsDbId = (m: Match) => Boolean(m.nextMatchId) || linkTargets.has(m.id);
 
-      for (const match of matches) {
+      const toDbRow = (match: Match) => {
         const dbData = toDbMatch({ ...match, tournamentId });
         dbData.next_match_id = null;
         // Map group_id if needed
@@ -518,27 +535,52 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
           // groupId should already be a DB UUID if groups were created properly
           dbData.group_id = match.groupId;
         }
+        return dbData;
+      };
 
-        const { data } = await supabase
+      let saved = 0;
+      const bulkMatches = matches.filter((m) => !needsDbId(m));
+      for (let i = 0; i < bulkMatches.length; i += MATCH_INSERT_CHUNK) {
+        const chunk = bulkMatches.slice(i, i + MATCH_INSERT_CHUNK);
+        const { error } = await supabase.from("matches").insert(chunk.map(toDbRow));
+        if (error) throw error;
+        saved += chunk.length;
+        onProgress?.(saved, matches.length);
+      }
+
+      const idMapping: Record<string, string> = {};
+      for (const match of matches.filter(needsDbId)) {
+        const { data, error } = await supabase
           .from("matches")
-          .insert(dbData)
+          .insert(toDbRow(match))
           .select("id")
           .single();
 
+        if (error) throw error;
         if (data) {
           idMapping[match.id] = data.id as string;
         }
-        onProgress?.(Object.keys(idMapping).length, matches.length);
+        saved++;
+        onProgress?.(saved, matches.length);
       }
 
-      // Update nextMatchId references
+      // Update nextMatchId references: un update por partido destino, con
+      // todos sus hijos juntos, en vez de uno por hijo.
+      const childrenByTarget = new Map<string, string[]>();
       for (const match of matches) {
-        if (match.nextMatchId && idMapping[match.nextMatchId]) {
-          await supabase
-            .from("matches")
-            .update({ next_match_id: idMapping[match.nextMatchId] })
-            .eq("id", idMapping[match.id]);
-        }
+        const targetId = match.nextMatchId ? idMapping[match.nextMatchId] : undefined;
+        const childId = idMapping[match.id];
+        if (!targetId || !childId) continue;
+        const siblings = childrenByTarget.get(targetId);
+        if (siblings) siblings.push(childId);
+        else childrenByTarget.set(targetId, [childId]);
+      }
+      for (const [targetId, childIds] of childrenByTarget) {
+        const { error } = await supabase
+          .from("matches")
+          .update({ next_match_id: targetId })
+          .in("id", childIds);
+        if (error) throw error;
       }
     }
 
