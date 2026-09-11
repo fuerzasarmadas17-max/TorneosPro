@@ -33,7 +33,7 @@ import {
   generateEmptyEliminationBracket,
   shuffleArray,
 } from "@/data/helpers";
-import { Shuffle, LayoutList, CalendarIcon, Clock, MapPin, AlertTriangle, Filter } from "lucide-react";
+import { Shuffle, LayoutList, CalendarIcon, Clock, MapPin, AlertTriangle, Filter, Loader2 } from "lucide-react";
 import {
   ALL_VENUES,
   NO_VENUE,
@@ -760,12 +760,41 @@ function MatchDisplay({
   );
 }
 
+// Spinner + contador de partidos guardados. Lo comparten el bracket y el
+// calendario: guardar es lento (un insert por partido) y sin esto el
+// organizador no sabe si el sistema está trabajando o se quedó pegado.
+function GenerationProgress({ progress }: { progress: { done: number; total: number } }) {
+  const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+  return (
+    <div className="flex flex-col items-center gap-3 py-6">
+      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <p className="text-sm text-muted-foreground text-center">
+        {progress.total > 0
+          ? `Guardando partidos… ${progress.done} de ${progress.total}`
+          : "Preparando los partidos…"}
+      </p>
+      <div className="h-2 w-full max-w-[240px] overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full bg-primary transition-all duration-300"
+          style={{ width: `${Math.max(pct, 4)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // --- Empty state for Elimination ---
 
 function EliminationEmptySchedule({ tournament }: { tournament: Tournament }) {
   const { setTournamentMatches, updateTournamentProps } = useTournaments();
   const [showIdaVueltaDialog, setShowIdaVueltaDialog] = useState(false);
   const [pendingMode, setPendingMode] = useState<"random" | "manual">("random");
+  // Mientras esto no sea null estamos guardando: el diálogo se queda abierto
+  // mostrando el avance. Antes, al elegir Ida / Ida y Vuelta el diálogo se
+  // cerraba de una y la pantalla no cambiaba en nada durante todo el guardado,
+  // así que el organizador creía que el botón no había hecho nada.
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const generating = progress !== null;
 
   const isPaid = tournament.plan === "paid";
 
@@ -773,29 +802,37 @@ function EliminationEmptySchedule({ tournament }: { tournament: Tournament }) {
   const jornadasIda = numRounds;
   const jornadasIdaVuelta = numRounds * 2;
 
-  const handleGenerate = (doubleRoundRobin: boolean) => {
-    setShowIdaVueltaDialog(false);
-    if (pendingMode === "random") {
-      const shuffledTeams = shuffleArray(tournament.teamIds);
-      const matches = generateEliminationMatches(shuffledTeams, tournament.id, doubleRoundRobin);
-      setTournamentMatches(tournament.id, matches);
-      toast.success("Bracket generado aleatoriamente");
-    } else {
-      const matches = generateEmptyEliminationBracket(tournament.teamIds.length, tournament.id, doubleRoundRobin);
-      setTournamentMatches(tournament.id, matches);
-      toast.success("Bracket creado. Asigna los equipos en la vista de bracket.");
+  const handleGenerate = async (mode: "random" | "manual", doubleRoundRobin: boolean) => {
+    if (generating) return;
+    setShowIdaVueltaDialog(true);
+    setProgress({ done: 0, total: 0 });
+    try {
+      const matches = mode === "random"
+        ? generateEliminationMatches(shuffleArray(tournament.teamIds), tournament.id, doubleRoundRobin)
+        : generateEmptyEliminationBracket(tournament.teamIds.length, tournament.id, doubleRoundRobin);
+      await setTournamentMatches(tournament.id, matches, (done, total) => setProgress({ done, total }));
+      await updateTournamentProps(tournament.id, { doubleRoundRobin });
+      toast.success(
+        mode === "random"
+          ? "Bracket generado aleatoriamente"
+          : "Bracket creado. Asigna los equipos en la vista de bracket."
+      );
+      setShowIdaVueltaDialog(false);
+    } catch (error) {
+      console.error("[bracket] fallo al generar", error);
+      toast.error("No se pudo generar el bracket. Revisa tu conexion e intenta de nuevo.");
+    } finally {
+      setProgress(null);
     }
-    updateTournamentProps(tournament.id, { doubleRoundRobin });
   };
 
   const handleClick = (mode: "random" | "manual") => {
+    setPendingMode(mode);
     if (isPaid) {
-      setPendingMode(mode);
       setShowIdaVueltaDialog(true);
     } else {
       // Free: only ida, no dialog
-      setPendingMode(mode);
-      handleGenerate(false);
+      handleGenerate(mode, false);
     }
   };
 
@@ -809,28 +846,47 @@ function EliminationEmptySchedule({ tournament }: { tournament: Tournament }) {
         </p>
       </div>
       <div className="flex gap-3">
-        <Button onClick={() => handleClick("random")} className="gap-2">
-          <Shuffle className="h-4 w-4" />
+        <Button onClick={() => handleClick("random")} disabled={generating} className="gap-2">
+          {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shuffle className="h-4 w-4" />}
           Aleatorio
         </Button>
-        <Button variant="outline" onClick={() => handleClick("manual")} className="gap-2">
+        <Button variant="outline" onClick={() => handleClick("manual")} disabled={generating} className="gap-2">
           <LayoutList className="h-4 w-4" />
           Asignar Equipos
         </Button>
       </div>
 
-      <Dialog open={showIdaVueltaDialog} onOpenChange={setShowIdaVueltaDialog}>
-        <DialogContent className="sm:max-w-sm">
+      <Dialog
+        open={showIdaVueltaDialog}
+        onOpenChange={(open) => {
+          if (!generating) setShowIdaVueltaDialog(open);
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-sm"
+          showCloseButton={!generating}
+          onInteractOutside={(e) => {
+            if (generating) e.preventDefault();
+          }}
+          onEscapeKeyDown={(e) => {
+            if (generating) e.preventDefault();
+          }}
+        >
           <DialogHeader>
-            <DialogTitle>Tipo de Bracket</DialogTitle>
+            <DialogTitle>{progress ? "Generando bracket" : "Tipo de Bracket"}</DialogTitle>
             <DialogDescription>
-              Selecciona el formato de enfrentamientos
+              {progress
+                ? "Estamos creando los partidos. Puede tardar un momento; no cierres esta ventana."
+                : "Selecciona el formato de enfrentamientos"}
             </DialogDescription>
           </DialogHeader>
+          {progress ? (
+            <GenerationProgress progress={progress} />
+          ) : (
           <div className="flex flex-col gap-3">
             <Button
               variant="outline"
-              onClick={() => handleGenerate(false)}
+              onClick={() => handleGenerate(pendingMode, false)}
               className="justify-start h-auto py-3"
             >
               <div className="text-left">
@@ -842,7 +898,7 @@ function EliminationEmptySchedule({ tournament }: { tournament: Tournament }) {
             </Button>
             <Button
               variant="outline"
-              onClick={() => handleGenerate(true)}
+              onClick={() => handleGenerate(pendingMode, true)}
               className="justify-start h-auto py-3"
             >
               <div className="text-left">
@@ -853,6 +909,7 @@ function EliminationEmptySchedule({ tournament }: { tournament: Tournament }) {
               </div>
             </Button>
           </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
@@ -868,6 +925,10 @@ function RoundRobinEmptySchedule({
 }) {
   const { setTournamentMatches, updateTournamentProps } = useTournaments();
   const [showIdaVueltaDialog, setShowIdaVueltaDialog] = useState(false);
+  // Ver la nota en EliminationEmptySchedule: mientras progress no sea null el
+  // diálogo se queda abierto mostrando cuántos partidos van guardados.
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const generating = progress !== null;
 
   // Compute team count for jornada display
   const teamCount = tournament.format === "group-playoff" || (tournament.format === "round-robin" && tournament.groups && tournament.groups.length > 0)
@@ -877,8 +938,10 @@ function RoundRobinEmptySchedule({
   const jornadasIda = teamCount % 2 === 0 ? teamCount - 1 : teamCount;
   const jornadasIdaVuelta = jornadasIda * 2;
 
-  const handleGenerate = (doubleRoundRobin: boolean) => {
-    setShowIdaVueltaDialog(false);
+  const handleGenerate = async (doubleRoundRobin: boolean) => {
+    if (generating) return;
+    setShowIdaVueltaDialog(true);
+    setProgress({ done: 0, total: 0 });
     const shuffledTeams = shuffleArray(tournament.teamIds);
     let matches: Match[];
 
@@ -931,9 +994,17 @@ function RoundRobinEmptySchedule({
     // sólo completaba hora y lugar — que sí venían en blanco. Resultado:
     // partidos programados para un día que nadie eligió. Con el campo vacío,
     // "Programar" no se habilita hasta que él mismo ponga fecha, hora y lugar.
-    setTournamentMatches(tournament.id, matches);
-    updateTournamentProps(tournament.id, { doubleRoundRobin });
-    toast.success("Calendario generado. Asigná fecha, hora y lugar en Fechas");
+    try {
+      await setTournamentMatches(tournament.id, matches, (done, total) => setProgress({ done, total }));
+      await updateTournamentProps(tournament.id, { doubleRoundRobin });
+      toast.success("Calendario generado. Asigná fecha, hora y lugar en Fechas");
+      setShowIdaVueltaDialog(false);
+    } catch (error) {
+      console.error("[calendario] fallo al generar", error);
+      toast.error("No se pudo generar el calendario. Revisa tu conexion e intenta de nuevo.");
+    } finally {
+      setProgress(null);
+    }
   };
 
   return (
@@ -946,26 +1017,49 @@ function RoundRobinEmptySchedule({
         </p>
       </div>
       <div className="flex gap-3">
-        <Button onClick={() => {
-          if (tournament.plan === "paid") {
-            setShowIdaVueltaDialog(true);
-          } else {
-            handleGenerate(false);
-          }
-        }} className="gap-2">
-          <Shuffle className="h-4 w-4" />
+        <Button
+          disabled={generating}
+          onClick={() => {
+            if (tournament.plan === "paid") {
+              setShowIdaVueltaDialog(true);
+            } else {
+              handleGenerate(false);
+            }
+          }}
+          className="gap-2"
+        >
+          {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shuffle className="h-4 w-4" />}
           Generar Aleatorio
         </Button>
       </div>
 
-      <Dialog open={showIdaVueltaDialog} onOpenChange={setShowIdaVueltaDialog}>
-        <DialogContent className="sm:max-w-sm">
+      <Dialog
+        open={showIdaVueltaDialog}
+        onOpenChange={(open) => {
+          if (!generating) setShowIdaVueltaDialog(open);
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-sm"
+          showCloseButton={!generating}
+          onInteractOutside={(e) => {
+            if (generating) e.preventDefault();
+          }}
+          onEscapeKeyDown={(e) => {
+            if (generating) e.preventDefault();
+          }}
+        >
           <DialogHeader>
-            <DialogTitle>Tipo de Calendario</DialogTitle>
+            <DialogTitle>{progress ? "Generando calendario" : "Tipo de Calendario"}</DialogTitle>
             <DialogDescription>
-              Selecciona el formato de enfrentamientos
+              {progress
+                ? "Estamos creando los partidos. Puede tardar un momento; no cierres esta ventana."
+                : "Selecciona el formato de enfrentamientos"}
             </DialogDescription>
           </DialogHeader>
+          {progress ? (
+            <GenerationProgress progress={progress} />
+          ) : (
           <div className="flex flex-col gap-3">
             <Button
               variant="outline"
@@ -992,6 +1086,7 @@ function RoundRobinEmptySchedule({
               </div>
             </Button>
           </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

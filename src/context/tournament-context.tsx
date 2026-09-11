@@ -45,7 +45,7 @@ interface TournamentContextType {
   addTournament: (tournament: Tournament) => Promise<{ id: string } | null>;
   addTeams: (newTeams: Team[]) => Promise<string[]>;
   addTeamsToTournament: (tournamentId: string, teamIds: string[]) => Promise<boolean>;
-  setTournamentMatches: (tournamentId: string, matches: Match[]) => Promise<void>;
+  setTournamentMatches: (tournamentId: string, matches: Match[], onProgress?: (done: number, total: number) => void) => Promise<void>;
   addMatchToTournament: (tournamentId: string, match: Match) => Promise<void>;
   removeMatchFromTournament: (tournamentId: string, matchId: string) => Promise<void>;
   removeTeamFromTournament: (tournamentId: string, teamId: string) => Promise<void>;
@@ -497,8 +497,12 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  const setTournamentMatches = useCallback(async (tournamentId: string, matches: Match[]) => {
+  // onProgress reporta partidos guardados / total. La inserción va de a uno
+  // (cada partido necesita su id para resolver next_match_id), así que un
+  // fixture grande tarda; sin ese avance la pantalla parece congelada.
+  const setTournamentMatches = useCallback(async (tournamentId: string, matches: Match[], onProgress?: (done: number, total: number) => void) => {
     // Delete existing matches and insert new ones
+    onProgress?.(0, matches.length);
     await supabase.from("matches").delete().eq("tournament_id", tournamentId);
 
     if (matches.length > 0) {
@@ -524,6 +528,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         if (data) {
           idMapping[match.id] = data.id as string;
         }
+        onProgress?.(Object.keys(idMapping).length, matches.length);
       }
 
       // Update nextMatchId references
@@ -537,6 +542,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    onProgress?.(matches.length, matches.length);
     await refetch();
   }, [refetch]);
 
