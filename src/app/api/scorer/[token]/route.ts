@@ -44,7 +44,7 @@ export async function GET(
   const [tournRes, matchesRes] = await Promise.all([
     supabaseAdmin
       .from("tournaments")
-      .select("id, name, sport, format, enabled_stats, plan, best_of")
+      .select("id, name, sport, format, enabled_stats, plan, best_of, players_on_court")
       .in("id", tournamentIds),
     supabaseAdmin
       .from("matches")
@@ -71,6 +71,9 @@ export async function GET(
     // Necesario para el marcador de W en vóley: define cuántos sets se
     // ganan (2 en best-of-3, 3 en best-of-5).
     bestOf: t.best_of ?? undefined,
+    // Solo vóley: cuántos juegan por equipo. La planilla en vivo dibuja una
+    // casilla por posición, así que sin esto no sabe cuántas pintar.
+    playersOnCourt: t.players_on_court ?? undefined,
   }));
 
   // Necesitamos nombre + colores + roster de los equipos involucrados

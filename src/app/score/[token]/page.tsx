@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState, useMemo, useCallback } from "react";
 import { toast } from "sonner";
-import { Loader2, ChevronLeft, ChevronRight, Trophy, CheckCircle2, Clock, Plus, Trash2, Monitor } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Trophy, CheckCircle2, Clock, Plus, Trash2, Monitor, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +34,8 @@ import {
 import { parseMatchScore, validateScoreForSport } from "@/lib/score-errors";
 import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
 import { PlayerCombobox } from "@/components/forms/player-combobox";
+import { PlanillaScreen } from "@/components/scorer/volley/planilla-screen";
+import { planillaVolleyVisible } from "@/lib/volley/planilla-flag";
 import { FairPlayPicker } from "@/components/forms/fair-play-picker";
 import { MvpPicker, type MvpSelection } from "@/components/forms/mvp-picker";
 import {
@@ -102,6 +104,8 @@ interface ScorerTournament {
   plan: string;
   /** Solo vóley: cuántos sets se juegan. Define el marcador de W. */
   bestOf?: 3 | 5;
+  /** Solo vóley: cuántos juegan por equipo. `undefined` se lee como 6. */
+  playersOnCourt?: 4 | 5 | 6;
 }
 
 interface ScorerData {
@@ -125,6 +129,13 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
   const [error, setError] = useState<string | null>(null);
   const [scorerName, setScorerName] = useState<string>("");
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
+  // Partido abierto en la planilla en vivo de vóley. Es otra pantalla que la
+  // de cargar el resultado: acá se anota punto por punto.
+  const [planillaMatchId, setPlanillaMatchId] = useState<string | null>(null);
+  // La planilla está apagada para todos hasta que esté el marcador; con
+  // `?planilla=1` en el link se puede mirar. Se calcula en el navegador y no
+  // al renderizar en el servidor, que no conoce la URL de la visita.
+  const [planillaVisible, setPlanillaVisible] = useState(false);
   // El anotador cerró su propio link con "Terminé mi labor".
   const [finished, setFinished] = useState(false);
 
@@ -157,6 +168,11 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setPlanillaVisible(planillaVolleyVisible(window.location.search));
+  }, []);
 
   // Restaurar nombre del scorer desde localStorage al cargar. Junto con él,
   // la marca de "ya terminé": si refresca después de cerrar, le mostramos la
@@ -246,6 +262,31 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
     return <NameScreen tournamentName={headerTitle} onSubmit={handleNameSubmit} />;
   }
 
+  // Planilla en vivo de vóley: punto por punto, todo en el teléfono.
+  if (planillaMatchId) {
+    const match = data.matches.find((m) => m.id === planillaMatchId);
+    const matchTournament = match
+      ? data.tournaments.find((t) => t.id === match.tournamentId)
+      : undefined;
+    if (!match || !matchTournament) {
+      setPlanillaMatchId(null);
+      return null;
+    }
+    const home = match.homeTeamId ? data.teams.find((t) => t.id === match.homeTeamId) : null;
+    const away = match.awayTeamId ? data.teams.find((t) => t.id === match.awayTeamId) : null;
+    return (
+      <PlanillaScreen
+        token={token}
+        matchId={match.id}
+        tituloArriba={`${matchTournament.name}${match.venue ? ` \u00b7 ${match.venue}` : ""}`}
+        homeTeamName={home?.name ?? "Local"}
+        awayTeamName={away?.name ?? "Visitante"}
+        jugadoresEnCancha={matchTournament.playersOnCourt ?? 6}
+        onBack={() => setPlanillaMatchId(null)}
+      />
+    );
+  }
+
   // Pantalla 3: scoresheet de un partido.
   if (activeMatchId) {
     const match = data.matches.find((m) => m.id === activeMatchId);
@@ -280,6 +321,8 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
     <MatchListScreen
       data={data}
       scorerName={scorerName}
+      planillaVisible={planillaVisible}
+      onAbrirPlanilla={(id) => setPlanillaMatchId(id)}
       onSelectMatch={(id) => setActiveMatchId(id)}
       onFinish={handleFinish}
       onChangeName={() => {
@@ -346,12 +389,16 @@ function NameScreen({ tournamentName, onSubmit }: { tournamentName: string; onSu
 function MatchListScreen({
   data,
   scorerName,
+  planillaVisible,
+  onAbrirPlanilla,
   onSelectMatch,
   onFinish,
   onChangeName,
 }: {
   data: ScorerData;
   scorerName: string;
+  planillaVisible: boolean;
+  onAbrirPlanilla: (id: string) => void;
   onSelectMatch: (id: string) => void;
   onFinish: () => Promise<boolean>;
   onChangeName: () => void;
@@ -415,9 +462,17 @@ function MatchListScreen({
           const home = m.homeTeamId ? teamById.get(m.homeTeamId) : null;
           const away = m.awayTeamId ? teamById.get(m.awayTeamId) : null;
           const isCompleted = m.status === "completed";
+          // La planilla en vivo es solo de vóley y solo de un partido que
+          // todavía no se cargó: abrirla sobre uno terminado no tendría qué
+          // anotar y pisaría un resultado que ya está bien.
+          const matchTournament = data.tournaments.find((t) => t.id === m.tournamentId);
+          const conPlanilla =
+            planillaVisible &&
+            !isCompleted &&
+            getSportCategory(matchTournament?.sport ?? "futbol") === "volleyball";
           return (
+            <div key={m.id} className="space-y-2">
             <button
-              key={m.id}
               onClick={() => onSelectMatch(m.id)}
               className="w-full rounded-lg border bg-card p-4 text-left hover:bg-muted/50 transition-colors space-y-2 active:scale-[0.99]"
             >
@@ -457,6 +512,17 @@ function MatchListScreen({
                 </div>
               )}
             </button>
+            {conPlanilla && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => onAbrirPlanilla(m.id)}
+              >
+                <ClipboardList className="h-4 w-4 mr-2" />
+                Planilla en vivo
+              </Button>
+            )}
+            </div>
           );
         })}
       </div>

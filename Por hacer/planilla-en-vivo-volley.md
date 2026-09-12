@@ -1,8 +1,9 @@
 # Planilla en vivo de vóley — para la mesa, no para el entrenador
 
-**Estado:** evaluada, **pedida por el dueño el 2026-09-06** y con las cuatro
-decisiones que faltaban **cerradas el 2026-09-12.** Nada empezado todavía, pero
-ya no falta nada para arrancar.
+**Estado:** **en construcción desde el 2026-09-12.** Las cuatro decisiones que
+faltaban se cerraron ese día. Ya están hechos el dato del torneo (jugadores en
+cancha) y las dos pantallas de antes del partido. **Falta el marcador**, que es
+lo que la hace servir; hasta entonces la planilla está apagada (ver 8).
 **Fecha:** escrito el 2026-08-26, actualizado el 2026-09-12.
 **Origen:** el organizador preguntó cuánto trabajo sería que la mesa lleve la
 planilla en vivo —rotación, punto por punto— en vez de cargar el resultado al
@@ -357,6 +358,21 @@ que no.
 
 ---
 
+## 6.6 Una pregunta que los dibujos no hacían: quién saca primero
+
+Encontrada al construir, el 2026-09-12. Las cuatro pantallas dibujadas no
+preguntan **quién saca el primer punto del set**, y sin eso la rotación no se
+puede calcular: la app rota al que recibe cuando gana el punto, así que si no
+sabe quién empezó sacando, rota al equipo equivocado desde el primer punto.
+
+En la cancha lo define el sorteo del árbitro, así que es un dato que la mesa
+tiene y la app no puede deducir. Se resolvió con una pantalla corta entre la
+rotación y el marcador: los dos equipos, se toca uno, y ahí mismo va el aviso
+de "fulano empieza con 5 de 6" cuando alguna posición quedó vacía. Es el último
+momento antes de que empiece a contar, que es donde corresponde avisar.
+
+---
+
 ## 7. Qué falta para arrancar
 
 **Nada. Se puede empezar.** Lo pidió el dueño el 2026-09-06 y las cuatro
@@ -382,3 +398,30 @@ se puede hacer sola y ver qué pasa.
 **Diseño:** hay tres propuestas de pantalla en modo oscuro para elegir, hechas
 el 2026-09-06, en `Por hacer/planilla-volley-propuestas/` (los `.png` son las
 propuestas; el `LEEME.md` de esa carpeta explica cada una y cómo cambiarlas).
+
+---
+
+## 8. Lo construido hasta ahora
+
+Al 2026-09-12. El orden es el de la conversación con el dueño.
+
+| Paso | Estado | Dónde |
+|---|---|---|
+| 1. Dato del torneo: jugadores en cancha | **hecho**, ya corrido en producción | `aplicadas/20260912_volley_jugadores_en_cancha.sql` |
+| 2. Elegirlo al crear el torneo y después | **hecho** | formulario de crear torneo y Configuración › Formato |
+| 3. Pantallas de antes del partido | **hecho** | `src/components/scorer/volley/` |
+| 4. El marcador | falta | — |
+| 5. Cambio y tiempos | falta | — |
+| 6. Envío al terminar, con cola sin señal | falta | — |
+| 7. Service worker (abrir sin señal) | falta | — |
+
+**El modelo está en `src/lib/volley/planilla.ts`** y es lo que decide todo lo
+demás: el estado del set es la lista de eventos, y el marcador, el saque, la
+rotación, los tiempos y los atados se calculan leyendo esa lista. Es el punto 2
+de 5.5 —"que el dato interno sea la lista de puntos"— hecho desde el principio
+para que la entrega 2 sea agregar el envío y nada más.
+
+**La planilla está APAGADA** hasta que esté el marcador: `PLANILLA_VOLLEY_ENABLED`
+en `src/lib/volley/planilla-flag.ts`. Una mesa que se la encontrara hoy quedaría
+a mitad de camino, sin poder anotar un punto. Para verla sin prenderla, agregarle
+`?planilla=1` al link del planillero.
