@@ -17,7 +17,7 @@
 
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
-import { ChevronLeft, Loader2, CheckCircle2, CloudOff, TriangleAlert, Trophy } from "lucide-react";
+import { ChevronLeft, Loader2, CloudOff, TriangleAlert, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RosterScreen } from "./roster-screen";
 import { LineupScreen } from "./lineup-screen";
@@ -246,7 +246,15 @@ export function PlanillaScreen({
     setEnvio("enviando");
     const r = await intentarEnviar(pendiente);
     setEnvio(r);
-    if (r.estado === "enviado") onEnviado();
+    if (r.estado === "enviado") listo();
+  };
+
+  /** Se guardó: la mesa vuelve sola a sus partidos. Lo que sigue para ella es
+   *  el próximo partido, no quedarse mirando esta pantalla. */
+  const listo = () => {
+    toast.success("Resultado guardado. El organizador ya lo ve.");
+    onEnviado();
+    onBack();
   };
 
   /** Cortar el partido con la serie igualada, sin jugar el set que falta. */
@@ -264,7 +272,7 @@ export function PlanillaScreen({
     // puede haber cambiado lo que lo causaba.
     const r = await intentarEnviar({ ...pendiente, errorPermanente: undefined });
     setEnvio(r);
-    if (r.estado === "enviado") onEnviado();
+    if (r.estado === "enviado") listo();
   };
 
   const empezarElSet = () => {
@@ -466,17 +474,26 @@ export function PlanillaScreen({
               </div>
             ))}
           </div>
-          <EstadoDelEnvio envio={envio} onReintentar={reintentar} />
-
-          <Button
-            variant={envio && envio !== "enviando" && envio.estado === "enviado" ? "default" : "outline"}
-            className="h-12"
-            onClick={onBack}
-          >
-            <ChevronLeft className="mr-1 h-4 w-4" />
-            Volver a los partidos
-          </Button>
+          {envio === "enviando" ? (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Mandando el resultado...
+            </p>
+          ) : (
+            <Button variant="outline" className="h-12" onClick={onBack}>
+              <ChevronLeft className="mr-1 h-4 w-4" />
+              Volver a los partidos
+            </Button>
+          )}
         </div>
+
+        {envio !== null && envio !== "enviando" && envio.estado !== "enviado" && (
+          <ModalDelEnvio
+            envio={envio}
+            onReintentar={reintentar}
+            onMasTarde={onBack}
+          />
+        )}
       </div>
     );
   }
@@ -612,71 +629,60 @@ function AvisoSinGuardado({ visible }: { visible: boolean }) {
 }
 
 /**
- * Cómo va el envío del resultado, en una sola caja.
+ * El envío no salió: qué pasó y qué puede hacer la mesa.
  *
- * Los tres finales posibles se ven distintos a propósito: "enviado" es el único
- * que deja a la mesa irse tranquila, "sin red" dice que no hay nada que hacer
- * porque sale solo, y "rechazado" es el único que pide algo de ella.
+ * Va en un modal y no en una caja al costado porque es lo único que queda por
+ * resolver en esa pantalla: el partido ya está anotado y guardado, y si esto se
+ * puede pasar por alto, la mesa se va creyendo que el organizador ya lo tiene.
+ *
+ * Las dos salidas son de verdad salidas. "Volver a intentar" es para cuando la
+ * señal volvió mientras leía. "Más tarde" la devuelve a sus partidos y deja el
+ * resultado en la cola, que sale solo cuando haya red: no es rendirse, es no
+ * tener que quedarse esperando.
  */
-function EstadoDelEnvio({
+function ModalDelEnvio({
   envio,
   onReintentar,
+  onMasTarde,
 }: {
-  envio: ResultadoDelEnvio | "enviando" | null;
+  envio: Exclude<ResultadoDelEnvio, { estado: "enviado" }>;
   onReintentar: () => void;
+  onMasTarde: () => void;
 }) {
-  if (envio === null) return null;
-
-  if (envio === "enviando") {
-    return (
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Mandando el resultado...
-      </p>
-    );
-  }
-
-  if (envio.estado === "enviado") {
-    return (
-      <div className="flex max-w-sm items-center gap-2 rounded-lg border border-green-600/40 bg-green-600/10 p-3 text-sm">
-        <CheckCircle2 className="h-4 w-4 shrink-0 text-green-700 dark:text-green-500" />
-        <p>
-          <span className="font-semibold">Resultado guardado.</span> El
-          organizador ya lo ve.
-        </p>
-      </div>
-    );
-  }
-
-  if (envio.estado === "sin-red") {
-    return (
-      <div className="max-w-sm space-y-3 rounded-lg border border-primary/50 bg-primary/10 p-3 text-sm">
-        <div className="flex gap-2">
-          <CloudOff className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          <p>
-            <span className="font-semibold">Guardado en el teléfono.</span>{" "}
-            {envio.mensaje} Podés cerrar la página: no se pierde.
-          </p>
-        </div>
-        <Button variant="outline" className="h-11 w-full" onClick={onReintentar}>
-          Probar de nuevo ahora
-        </Button>
-      </div>
-    );
-  }
-
+  const sinRed = envio.estado === "sin-red";
   return (
-    <div className="max-w-sm space-y-3 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm">
-      <div className="flex gap-2">
-        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-        <p>
-          <span className="font-semibold">No se pudo guardar.</span>{" "}
-          {envio.mensaje}
-        </p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-sm space-y-4 rounded-2xl border bg-background p-5">
+        <div className="flex gap-3">
+          {sinRed ? (
+            <CloudOff className="mt-0.5 h-6 w-6 shrink-0 text-primary" />
+          ) : (
+            <TriangleAlert className="mt-0.5 h-6 w-6 shrink-0 text-destructive" />
+          )}
+          <div>
+            <h2 className="text-lg font-bold">
+              {sinRed ? "No hay internet ahora" : "No se pudo guardar"}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {sinRed
+                ? "El resultado quedó guardado en el teléfono y se manda solo cuando vuelva la señal. No se pierde aunque cierres la página."
+                : envio.mensaje}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <Button className="h-12 w-full text-base" onClick={onReintentar}>
+            Volver a intentar
+          </Button>
+          <Button
+            variant="outline"
+            className="h-12 w-full text-base"
+            onClick={onMasTarde}
+          >
+            {sinRed ? "Intentar más tarde" : "Seguir con otros partidos"}
+          </Button>
+        </div>
       </div>
-      <Button variant="outline" className="h-11 w-full" onClick={onReintentar}>
-        Probar de nuevo
-      </Button>
     </div>
   );
 }

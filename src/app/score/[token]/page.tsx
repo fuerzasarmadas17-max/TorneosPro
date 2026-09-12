@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState, useMemo, useCallback } from "react";
 import { toast } from "sonner";
-import { Loader2, ChevronLeft, ChevronRight, Trophy, CheckCircle2, Clock, Plus, Trash2, Monitor, ClipboardList } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Trophy, CheckCircle2, Clock, Plus, Trash2, Monitor, ClipboardList, CloudOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +37,7 @@ import { PlayerCombobox } from "@/components/forms/player-combobox";
 import { PlanillaScreen } from "@/components/scorer/volley/planilla-screen";
 import { planillaVolleyVisible } from "@/lib/volley/planilla-flag";
 import { useEnviosPendientes } from "@/components/scorer/volley/use-envios-pendientes";
+import { listarPendientes } from "@/lib/volley/envio";
 import { FairPlayPicker } from "@/components/forms/fair-play-picker";
 import { MvpPicker, type MvpSelection } from "@/components/forms/mvp-picker";
 import {
@@ -137,6 +138,10 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
   // `?planilla=1` en el link se puede mirar. Se calcula en el navegador y no
   // al renderizar en el servidor, que no conoce la URL de la visita.
   const [planillaVisible, setPlanillaVisible] = useState(false);
+  // Partidos de la planilla que terminaron y todavía no llegaron al servidor.
+  // La lista los marca: si no, la mesa los ve como pendientes de anotar y los
+  // anota de nuevo, o peor, se va creyendo que ya están.
+  const [sinMandar, setSinMandar] = useState<string[]>([]);
   // El anotador cerró su propio link con "Terminé mi labor".
   const [finished, setFinished] = useState(false);
 
@@ -157,6 +162,7 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
       }
       const json = (await res.json()) as ScorerData;
       setData(json);
+      setSinMandar(listarPendientes().map((e) => e.matchId));
       setError(null);
     } catch (err) {
       console.error(err);
@@ -290,7 +296,10 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
         bestOf={matchTournament.bestOf ?? 3}
         scorerName={scorerName}
         permiteEmpate={volleyballDrawAllowed(matchTournament.format, match.phase)}
-        onBack={() => setPlanillaMatchId(null)}
+        onBack={() => {
+          setPlanillaMatchId(null);
+          setSinMandar(listarPendientes().map((e) => e.matchId));
+        }}
         onEnviado={loadData}
       />
     );
@@ -331,6 +340,7 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
       data={data}
       scorerName={scorerName}
       planillaVisible={planillaVisible}
+      sinMandar={sinMandar}
       onAbrirPlanilla={(id) => setPlanillaMatchId(id)}
       onSelectMatch={(id) => setActiveMatchId(id)}
       onFinish={handleFinish}
@@ -399,6 +409,7 @@ function MatchListScreen({
   data,
   scorerName,
   planillaVisible,
+  sinMandar,
   onAbrirPlanilla,
   onSelectMatch,
   onFinish,
@@ -407,6 +418,7 @@ function MatchListScreen({
   data: ScorerData;
   scorerName: string;
   planillaVisible: boolean;
+  sinMandar: string[];
   onAbrirPlanilla: (id: string) => void;
   onSelectMatch: (id: string) => void;
   onFinish: () => Promise<boolean>;
@@ -479,6 +491,7 @@ function MatchListScreen({
             planillaVisible &&
             !isCompleted &&
             getSportCategory(matchTournament?.sport ?? "futbol") === "volleyball";
+          const esperandoEnvio = sinMandar.includes(m.id);
           return (
             <div key={m.id} className="space-y-2">
             <button
@@ -494,6 +507,10 @@ function MatchListScreen({
                 {isCompleted ? (
                   <Badge className="bg-green-600 hover:bg-green-700">
                     <CheckCircle2 className="h-3 w-3 mr-1" /> Cargado
+                  </Badge>
+                ) : esperandoEnvio ? (
+                  <Badge variant="outline" className="border-primary text-primary">
+                    <CloudOff className="h-3 w-3 mr-1" /> Sin mandar
                   </Badge>
                 ) : (
                   <Badge variant="outline">
@@ -528,7 +545,7 @@ function MatchListScreen({
                 onClick={() => onAbrirPlanilla(m.id)}
               >
                 <ClipboardList className="h-4 w-4 mr-2" />
-                Planilla en vivo
+                {esperandoEnvio ? "Mandar el resultado" : "Planilla en vivo"}
               </Button>
             )}
             </div>

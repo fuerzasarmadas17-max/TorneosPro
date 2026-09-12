@@ -9,12 +9,24 @@
  *
  * La tecla ABC está porque hay ligas donde alguien no tiene dorsal y se lo anota
  * como "A".
+ *
+ * LAS LETRAS OCUPAN LO MISMO QUE LOS NÚMEROS. Las 26 de un saque eran nueve
+ * filas: el teclado empujaba el botón de Agregar fuera de la pantalla, y había
+ * que bajar a tocar la letra y volver a subir a agregar. Ahora van de a nueve,
+ * en el mismo cuadrado de cuatro filas que los números, con una tecla que pasa
+ * al grupo siguiente. La A queda donde se llega con el pulgar, que es la que se
+ * usa casi siempre.
  */
 
 import { useState } from "react";
 import { Delete } from "lucide-react";
 
-const LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+/** Las letras de a nueve, para que el teclado no crezca. */
+const GRUPOS_DE_LETRAS = [
+  ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
+  ["J", "K", "L", "M", "N", "Ñ", "O", "P", "Q"],
+  ["R", "S", "T", "U", "V", "W", "X", "Y", "Z"],
+];
 
 export function Teclado({
   onTecla,
@@ -26,21 +38,34 @@ export function Teclado({
   className?: string;
 }) {
   const [letras, setLetras] = useState(false);
+  const [grupo, setGrupo] = useState(0);
+
+  const siguienteGrupo = (grupo + 1) % GRUPOS_DE_LETRAS.length;
 
   return (
     <div className={`grid grid-cols-3 gap-2 ${className ?? ""}`}>
       {letras ? (
         <>
-          {LETRAS.map((l) => (
-            <Tecla key={l} chica onClick={() => onTecla(l)}>
+          {GRUPOS_DE_LETRAS[grupo].map((l) => (
+            <Tecla key={l} onClick={() => onTecla(l)}>
               {l}
             </Tecla>
           ))}
-          <Tecla chica tenue onClick={() => setLetras(false)}>
+          <Tecla tenue onClick={() => setLetras(false)}>
             123
           </Tecla>
-          <Tecla chica tenue onClick={onBorrar} aria-label="Borrar">
-            <Delete className="mx-auto h-5 w-5" />
+          <Tecla
+            tenue
+            onClick={() => setGrupo(siguienteGrupo)}
+            aria-label="Más letras"
+          >
+            <span className="text-base">
+              {GRUPOS_DE_LETRAS[siguienteGrupo][0]}–
+              {GRUPOS_DE_LETRAS[siguienteGrupo][8]}
+            </span>
+          </Tecla>
+          <Tecla tenue onClick={onBorrar} aria-label="Borrar">
+            <Delete className="mx-auto h-6 w-6" />
           </Tecla>
         </>
       ) : (
@@ -67,21 +92,19 @@ function Tecla({
   children,
   onClick,
   tenue,
-  chica,
   ...rest
 }: {
   children: React.ReactNode;
   onClick: () => void;
   tenue?: boolean;
-  chica?: boolean;
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg border bg-card font-bold transition-colors active:bg-accent ${
-        chica ? "h-12 text-lg" : "h-16 text-2xl"
-      } ${tenue ? "text-muted-foreground" : ""}`}
+      className={`h-16 rounded-lg border bg-card text-2xl font-bold transition-colors active:bg-accent ${
+        tenue ? "text-muted-foreground" : ""
+      }`}
       {...rest}
     >
       {children}
