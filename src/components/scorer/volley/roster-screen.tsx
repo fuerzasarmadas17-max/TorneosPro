@@ -8,16 +8,13 @@
  * torneo: es el número que la mesa ve en la camiseta, y si alguno no tiene
  * número, una letra.
  *
- * EL TECLADO ES PROPIO Y NO EL DEL TELÉFONO. En la cancha se anota de a un
- * número por vez y las teclas grandes se aciertan sin mirar. El del sistema
- * ocupa media pantalla, tapa la lista, y en muchos Android no trae una tecla
- * de "listo" que se pueda usar para agregar. La tecla ABC está porque hay
- * ligas donde alguien no tiene dorsal y se lo anota como "A".
+ * El teclado es propio y no el del teléfono; el porqué está en `teclado.tsx`.
  */
 
 import { useState } from "react";
-import { Delete, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Teclado, Visor } from "./teclado";
 import {
   type Etiqueta,
   type Lado,
@@ -36,8 +33,6 @@ interface Props {
   onContinuar: () => void;
 }
 
-const LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-
 export function RosterScreen({
   tituloArriba,
   homeTeamName,
@@ -50,7 +45,6 @@ export function RosterScreen({
 }: Props) {
   const [lado, setLado] = useState<Lado>("home");
   const [buffer, setBuffer] = useState("");
-  const [letras, setLetras] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const nombre: Record<Lado, string> = { home: homeTeamName, away: awayTeamName };
@@ -79,7 +73,6 @@ export function RosterScreen({
     onChange({ ...nomina, [lado]: [...anotados, etiqueta] });
     setBuffer("");
     setError(null);
-    setLetras(false);
   };
 
   const quitar = (etiqueta: Etiqueta) => {
@@ -90,7 +83,6 @@ export function RosterScreen({
     setLado(nuevo);
     setBuffer("");
     setError(null);
-    setLetras(false);
   };
 
   const siguiente = () => {
@@ -157,13 +149,7 @@ export function RosterScreen({
 
           {/* Lo que se está escribiendo */}
           <div className="flex gap-2">
-            <div
-              className={`flex h-14 flex-1 items-center rounded-lg border-2 px-4 text-2xl font-bold ${
-                buffer ? "border-primary" : "border-input text-muted-foreground"
-              }`}
-            >
-              {buffer || <span className="text-base font-normal">Tocá el teclado</span>}
-            </div>
+            <Visor texto={buffer} />
             <Button
               type="button"
               className="h-14 px-6 text-base"
@@ -219,36 +205,11 @@ export function RosterScreen({
         </div>
 
         {/* Teclado */}
-        <div className="grid grid-cols-3 gap-2 landscape:flex-1 landscape:self-stretch">
-          {letras ? (
-            <>
-              {LETRAS.map((l) => (
-                <TeclaChica key={l} onClick={() => teclear(l)}>
-                  {l}
-                </TeclaChica>
-              ))}
-              <TeclaChica onClick={() => setLetras(false)}>123</TeclaChica>
-              <TeclaChica onClick={borrar} aria-label="Borrar">
-                <Delete className="mx-auto h-5 w-5" />
-              </TeclaChica>
-            </>
-          ) : (
-            <>
-              {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((n) => (
-                <Tecla key={n} onClick={() => teclear(n)}>
-                  {n}
-                </Tecla>
-              ))}
-              <Tecla onClick={() => setLetras(true)} tenue>
-                ABC
-              </Tecla>
-              <Tecla onClick={() => teclear("0")}>0</Tecla>
-              <Tecla onClick={borrar} tenue aria-label="Borrar">
-                <Delete className="mx-auto h-6 w-6" />
-              </Tecla>
-            </>
-          )}
-        </div>
+        <Teclado
+          className="landscape:flex-1 landscape:self-stretch"
+          onTecla={teclear}
+          onBorrar={borrar}
+        />
       </div>
 
       {/* Pie */}
@@ -269,49 +230,5 @@ export function RosterScreen({
         </Button>
       </footer>
     </div>
-  );
-}
-
-function Tecla({
-  children,
-  onClick,
-  tenue,
-  ...rest
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  tenue?: boolean;
-} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`h-16 rounded-lg border bg-card text-2xl font-bold transition-colors active:bg-accent ${
-        tenue ? "text-muted-foreground" : ""
-      }`}
-      {...rest}
-    >
-      {children}
-    </button>
-  );
-}
-
-function TeclaChica({
-  children,
-  onClick,
-  ...rest
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="h-12 rounded-lg border bg-card text-lg font-bold transition-colors active:bg-accent"
-      {...rest}
-    >
-      {children}
-    </button>
   );
 }

@@ -410,8 +410,8 @@ Al 2026-09-12. El orden es el de la conversación con el dueño.
 | 1. Dato del torneo: jugadores en cancha | **hecho**, ya corrido en producción | `aplicadas/20260912_volley_jugadores_en_cancha.sql` |
 | 2. Elegirlo al crear el torneo y después | **hecho** | formulario de crear torneo y Configuración › Formato |
 | 3. Pantallas de antes del partido | **hecho** | `src/components/scorer/volley/` |
-| 4. El marcador | falta | — |
-| 5. Cambio y tiempos | falta | — |
+| 4. El marcador, de pie y acostado | **hecho** | `marcador-screen.tsx` |
+| 5. Cambio y tiempos | **hecho** | `cambio-sheet.tsx` |
 | 6. Envío al terminar, con cola sin señal | falta | — |
 | 7. Service worker (abrir sin señal) | falta | — |
 
@@ -421,7 +421,12 @@ rotación, los tiempos y los atados se calculan leyendo esa lista. Es el punto 2
 de 5.5 —"que el dato interno sea la lista de puntos"— hecho desde el principio
 para que la entrega 2 sea agregar el envío y nada más.
 
-**La planilla está APAGADA** hasta que esté el marcador: `PLANILLA_VOLLEY_ENABLED`
-en `src/lib/volley/planilla-flag.ts`. Una mesa que se la encontrara hoy quedaría
-a mitad de camino, sin poder anotar un punto. Para verla sin prenderla, agregarle
-`?planilla=1` al link del planillero.
+**La planilla está APAGADA** hasta que el resultado se pueda mandar:
+`PLANILLA_VOLLEY_ENABLED` en `src/lib/volley/planilla-flag.ts`. Hoy la mesa
+puede anotar un partido entero, pero al terminar tiene que cargar el resultado a
+mano como siempre, así que dárselo así sería pedirle el trabajo dos veces. Para
+verla sin prenderla, agregarle `?planilla=1` al link del planillero.
+
+**Lo que falta para prenderla** es el paso 6: mandar el resultado al cerrar el
+último set, con la cola que espera la red. Recién ahí la planilla reemplaza a la
+carga manual en vez de sumarse a ella.

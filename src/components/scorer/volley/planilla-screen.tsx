@@ -17,25 +17,37 @@
 
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
-import { ChevronLeft, Smartphone, TriangleAlert } from "lucide-react";
+import { ChevronLeft, TriangleAlert, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RosterScreen } from "./roster-screen";
 import { LineupScreen } from "./lineup-screen";
+import { MarcadorScreen } from "./marcador-screen";
+import { CambioSheet } from "./cambio-sheet";
 import {
   type Alineacion,
   type Etiqueta,
+  type Evento,
   type Lado,
   type Planilla,
   alineacionVacia,
+  estadoDelSet,
   huecos,
   planillaNueva,
+  setsGanados as contarSets,
 } from "@/lib/volley/planilla";
+import { volleyballSetWarnings } from "@/lib/volleyball-sets";
 import {
   guardarPlanilla,
   leerPlanilla,
 } from "@/lib/volley/planilla-storage";
 
-type Paso = "nomina" | "rotacion-home" | "rotacion-away" | "arranque" | "marcador";
+type Paso =
+  | "nomina"
+  | "rotacion-home"
+  | "rotacion-away"
+  | "arranque"
+  | "marcador"
+  | "terminado";
 
 interface Props {
   token: string;
@@ -45,6 +57,8 @@ interface Props {
   homeTeamName: string;
   awayTeamName: string;
   jugadoresEnCancha: number;
+  /** Cuántos sets se juegan en este torneo. Define cuándo se acabó el partido. */
+  bestOf: 3 | 5;
   onBack: () => void;
 }
 
@@ -55,6 +69,7 @@ export function PlanillaScreen({
   homeTeamName,
   awayTeamName,
   jugadoresEnCancha,
+  bestOf,
   onBack,
 }: Props) {
   // Lo que había en el teléfono, leído una sola vez al montar. Va en un
@@ -89,6 +104,10 @@ export function PlanillaScreen({
   );
   const [saqueInicial, setSaqueInicial] = useState<Lado | null>(inicial.saque);
   const [sinGuardado, setSinGuardado] = useState(false);
+  /** Equipo cuyo cambio está abierto, o null. */
+  const [cambioDe, setCambioDe] = useState<Lado | null>(null);
+  /** El "¿cerramos el set?" abierto. */
+  const [cerrando, setCerrando] = useState(false);
 
   // Guardar en cada cambio. Si el navegador no deja (ventana privada,
   // almacenamiento lleno), se avisa una sola vez: la mesa tiene que saber que
@@ -103,6 +122,62 @@ export function PlanillaScreen({
   );
 
   const nombre: Record<Lado, string> = { home: homeTeamName, away: awayTeamName };
+
+  const setActual = planilla.setActual;
+  const estado = setActual ? estadoDelSet(setActual) : null;
+  const setsToWin = Math.ceil(bestOf / 2);
+
+  /** Agrega un evento al set en juego. Es lo único que escribe la planilla
+   *  mientras se juega: todo lo demás se calcula leyendo la lista. */
+  const agregarEvento = (evento: Evento) => {
+    if (!setActual) return;
+    actualizar({
+      ...planilla,
+      setActual: { ...setActual, eventos: [...setActual.eventos, evento] },
+    });
+  };
+
+  /** Deshacer es quitar el último evento, sea un punto, un tiempo o un cambio.
+   *  Un punto no se edita: se deshace. Editar el punto 14 de un set que va
+   *  22-19 es la puerta a que la planilla y el marcador digan cosas distintas. */
+  const deshacer = () => {
+    if (!setActual || setActual.eventos.length === 0) return;
+    actualizar({
+      ...planilla,
+      setActual: { ...setActual, eventos: setActual.eventos.slice(0, -1) },
+    });
+  };
+
+  /** Cierra el set y decide qué sigue: otro set, o el partido terminado. */
+  const cerrarSet = () => {
+    if (!setActual || !estado) return;
+    const cerrado = {
+      numero: setActual.numero,
+      homePoints: estado.puntos.home,
+      awayPoints: estado.puntos.away,
+    };
+    const siguiente: Planilla = {
+      ...planilla,
+      setsCerrados: [...planilla.setsCerrados, cerrado],
+      setActual: null,
+    };
+    actualizar(siguiente);
+    setCerrando(false);
+
+    const ganados = contarSets(siguiente);
+    if (ganados.home >= setsToWin || ganados.away >= setsToWin) {
+      setPaso("terminado");
+      return;
+    }
+    // Cada set arranca con su propia rotación: la del set anterior no sirve, y
+    // los cambios y los tiempos se reinician (4.2.1 y 4.2.2 del documento).
+    setAlineaciones({
+      home: alineacionVacia(jugadoresEnCancha),
+      away: alineacionVacia(jugadoresEnCancha),
+    });
+    setSaqueInicial(null);
+    setPaso("rotacion-home");
+  };
 
   const empezarElSet = () => {
     if (saqueInicial === null) {
@@ -260,50 +335,157 @@ export function PlanillaScreen({
   }
 
   // ------------------------------------------------------------------
-  // El marcador — paso 4, todavía no construido
+  // Partido terminado — falta mandarlo, que es el paso siguiente
   // ------------------------------------------------------------------
-  return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <AvisoSinGuardado visible={sinGuardado} />
-      <header className="flex items-center justify-between gap-3 border-b px-4 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm text-muted-foreground">{tituloArriba}</p>
-          <h1 className="truncate font-semibold">
-            Set {planilla.setActual?.numero ?? 1}
-          </h1>
-        </div>
-        <span className="flex shrink-0 items-center gap-1 rounded-full border px-3 py-1 text-sm text-muted-foreground">
-          <Smartphone className="h-3.5 w-3.5" />
-          Guardado en el teléfono
-        </span>
-      </header>
-
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-        <p className="text-lg font-semibold">El marcador todavía no está.</p>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          La nómina y la rotación de arranque quedaron guardadas en este
-          teléfono. La pantalla para contar los puntos es el paso siguiente de
-          la construcción.
-        </p>
-        <div className="w-full max-w-sm rounded-lg border bg-muted/30 p-3 text-left text-sm">
-          {(["home", "away"] as Lado[]).map((l) => (
-            <p key={l} className="truncate">
-              <span className="font-semibold">{nombre[l]}:</span>{" "}
-              {planilla.setActual?.alineacion[l]
-                .map((e) => e ?? "—")
-                .join(" · ") ?? "—"}
-            </p>
-          ))}
-          <p className="mt-1 text-muted-foreground">
-            Saca {nombre[planilla.setActual?.saqueInicial ?? "home"]}.
+  if (paso === "terminado") {
+    const ganados = contarSets(planilla);
+    const ganador = ganados.home > ganados.away ? "home" : "away";
+    return (
+      <div className="flex min-h-screen flex-col bg-background">
+        <AvisoSinGuardado visible={sinGuardado} />
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
+          <Trophy className="h-12 w-12 text-primary" />
+          <p className="text-xl font-bold">
+            Ganó {nombre[ganador]} {ganados[ganador]}–{ganados[ganador === "home" ? "away" : "home"]}
           </p>
+          <div className="w-full max-w-sm divide-y rounded-lg border text-sm">
+            {planilla.setsCerrados.map((s) => (
+              <div key={s.numero} className="flex justify-between px-3 py-2">
+                <span className="text-muted-foreground">Set {s.numero}</span>
+                <span className="font-semibold tabular-nums">
+                  {s.homePoints} – {s.awayPoints}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="max-w-sm rounded-lg border border-primary/50 bg-primary/10 p-3 text-sm">
+            <span className="font-semibold">Falta mandarlo al organizador.</span>{" "}
+            El envío es el paso siguiente de la construcción. Por ahora el
+            resultado se carga como siempre, desde la lista de partidos.
+          </div>
+          <Button variant="outline" className="h-12" onClick={onBack}>
+            <ChevronLeft className="mr-1 h-4 w-4" />
+            Volver a los partidos
+          </Button>
         </div>
-        <Button variant="outline" className="h-12" onClick={onBack}>
-          <ChevronLeft className="mr-1 h-4 w-4" />
-          Volver a los partidos
-        </Button>
       </div>
-    </div>
+    );
+  }
+
+  // ------------------------------------------------------------------
+  // El marcador
+  // ------------------------------------------------------------------
+  if (!setActual || !estado) {
+    // No debería pasar: el paso "marcador" solo se alcanza con un set abierto.
+    // Si pasa, se vuelve a la nómina en vez de dejar la pantalla en blanco.
+    setPaso("nomina");
+    return null;
+  }
+
+  const ganados = contarSets(planilla);
+  // Los avisos del parcial (un set que no llega a 25, o ganado por uno) se
+  // muestran al cerrar. No bloquean: hay relámpagos que juegan los sets a 21 o
+  // a 15, y bloquearlos dejaría al torneo sin poder cargarse.
+  const avisosDelSet = cerrando
+    ? volleyballSetWarnings(
+        [
+          ...planilla.setsCerrados.map((s) => ({
+            homePoints: s.homePoints,
+            awayPoints: s.awayPoints,
+          })),
+          { homePoints: estado.puntos.home, awayPoints: estado.puntos.away },
+        ],
+        setsToWin
+      ).filter((a) => a.setNumber === setActual.numero)
+    : [];
+
+  return (
+    <>
+      <AvisoSinGuardado visible={sinGuardado} />
+      <MarcadorScreen
+        tituloArriba={tituloArriba}
+        planilla={planilla}
+        estado={estado}
+        nombre={nombre}
+        setsGanados={ganados}
+        numeroDeSet={setActual.numero}
+        guardando={!sinGuardado}
+        onPunto={(equipo) => agregarEvento({ t: "punto", equipo })}
+        onDeshacer={deshacer}
+        onCambio={(equipo) => setCambioDe(equipo)}
+        onTiempo={(equipo) => agregarEvento({ t: "tiempo", equipo })}
+        onCerrarSet={() => setCerrando(true)}
+        onBack={onBack}
+      />
+
+      {cambioDe && (
+        <CambioSheet
+          lado={cambioDe}
+          teamName={nombre[cambioDe]}
+          planilla={planilla}
+          estado={estado}
+          onConfirmar={agregarEvento}
+          onAgregarALaNomina={(etiqueta) =>
+            actualizar({
+              ...planilla,
+              nomina: {
+                ...planilla.nomina,
+                [cambioDe]: [...planilla.nomina[cambioDe], etiqueta],
+              },
+            })
+          }
+          onCerrar={() => setCambioDe(null)}
+        />
+      )}
+
+      {cerrando && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm space-y-4 rounded-2xl border bg-background p-5">
+            <div>
+              <h2 className="text-lg font-bold">¿Cerramos el set {setActual.numero}?</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Después de cerrarlo no se puede seguir anotando en este set.
+              </p>
+            </div>
+            <p className="text-center text-4xl font-bold tabular-nums">
+              {estado.puntos.home} – {estado.puntos.away}
+            </p>
+            {estado.puntos.home === estado.puntos.away ? (
+              <div className="flex gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <p>Un set no puede terminar empatado. Seguí anotando.</p>
+              </div>
+            ) : (
+              avisosDelSet.map((a) => (
+                <div
+                  key={a.message}
+                  className="flex gap-2 rounded-lg border border-primary/50 bg-primary/10 p-3 text-sm"
+                >
+                  <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <p>{a.message} Si en este torneo se juega así, cerralo tranquilo.</p>
+                </div>
+              ))
+            )}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="h-12 flex-1"
+                onClick={() => setCerrando(false)}
+              >
+                Seguir anotando
+              </Button>
+              <Button
+                className="h-12 flex-1"
+                disabled={estado.puntos.home === estado.puntos.away}
+                onClick={cerrarSet}
+              >
+                Cerrar set
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

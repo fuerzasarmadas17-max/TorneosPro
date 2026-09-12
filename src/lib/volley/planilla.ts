@@ -49,7 +49,11 @@ export type Alineacion = (Etiqueta | null)[];
 export type Evento =
   | { t: "punto"; equipo: Lado }
   | { t: "cambio"; equipo: Lado; sale: Etiqueta; entra: Etiqueta }
-  | { t: "tiempo"; equipo: Lado };
+  | { t: "tiempo"; equipo: Lado }
+  /** El que llegó tarde ocupa una posición que arrancó vacía. NO es un cambio:
+   *  no gasta cambio y no ata a nadie con nadie. Guarda la posición y no a
+   *  quién reemplaza, justamente porque no reemplaza a nadie. */
+  | { t: "completar"; equipo: Lado; posicion: number; entra: Etiqueta };
 
 export interface SetEnJuego {
   /** 1 para el primer set. */
@@ -192,6 +196,8 @@ export function estadoDelSet(set: SetEnJuego): EstadoDelSet {
         estado.enCancha[ev.equipo] = rotar(estado.enCancha[ev.equipo]);
         estado.saca = ev.equipo;
       }
+    } else if (ev.t === "completar") {
+      estado.enCancha[ev.equipo][indiceDePosicion(ev.posicion)] = ev.entra;
     } else if (ev.t === "cambio") {
       const cancha = estado.enCancha[ev.equipo];
       const i = cancha.indexOf(ev.sale);
@@ -264,4 +270,91 @@ export function alineacionVacia(jugadoresEnCancha: number): Alineacion {
  *  equipo que arranca con menos gente de la que corresponde. */
 export function huecos(alineacion: Alineacion): number {
   return alineacion.filter((e) => e === null).length;
+}
+
+// ============================================================
+// Contar sets
+// ============================================================
+
+/**
+ * Quién ganó el set con ese marcador, o `null` si están iguales.
+ *
+ * No dice si el set está TERMINADO: eso no se puede saber sin las reglas de
+ * cada liga. Hay relámpagos que juegan los sets a 21 o a 15, y el decisivo casi
+ * siempre es más corto, así que el que cierra el set es la mesa y no la app.
+ */
+export function ganadorDelSet(homePoints: number, awayPoints: number): Lado | null {
+  if (homePoints === awayPoints) return null;
+  return homePoints > awayPoints ? "home" : "away";
+}
+
+/** Sets ganados por cada lado, contando los ya cerrados. */
+export function setsGanados(planilla: Planilla): Record<Lado, number> {
+  const cuenta: Record<Lado, number> = { home: 0, away: 0 };
+  for (const s of planilla.setsCerrados) {
+    const g = ganadorDelSet(s.homePoints, s.awayPoints);
+    if (g) cuenta[g]++;
+  }
+  return cuenta;
+}
+
+// ============================================================
+// El historial: los últimos puntos, como los lee la mesa
+// ============================================================
+
+export interface LineaDelHistorial {
+  /** Dónde está este evento en la lista. El último es el que deshace el botón. */
+  indice: number;
+  puntos: Record<Lado, number>;
+  evento: Evento;
+  /** Si el equipo que ganó el punto rotó (o sea, recuperó el saque). */
+  roto: boolean;
+  /** Quién quedó sacando después de este evento, y con qué jugador. */
+  saca: Lado;
+  sacador: Etiqueta | null;
+}
+
+/**
+ * Vuelve a recorrer el set y arma una línea por evento, con el marcador como
+ * quedó en ese momento.
+ *
+ * Existe para que la mesa pueda mirar atrás y darse cuenta de un punto mal
+ * cargado antes de que se le escape: sin esto, el único dato en pantalla es el
+ * marcador de ahora, y un error de hace tres puntos ya no se ve.
+ */
+export function historial(set: SetEnJuego): LineaDelHistorial[] {
+  const lineas: LineaDelHistorial[] = [];
+  const puntos: Record<Lado, number> = { home: 0, away: 0 };
+  let saca = set.saqueInicial;
+  const cancha: Record<Lado, Alineacion> = {
+    home: [...set.alineacion.home],
+    away: [...set.alineacion.away],
+  };
+
+  set.eventos.forEach((ev, indice) => {
+    let roto = false;
+    if (ev.t === "punto") {
+      puntos[ev.equipo]++;
+      if (ev.equipo !== saca) {
+        cancha[ev.equipo] = rotar(cancha[ev.equipo]);
+        saca = ev.equipo;
+        roto = true;
+      }
+    } else if (ev.t === "cambio") {
+      const i = cancha[ev.equipo].indexOf(ev.sale);
+      if (i >= 0) cancha[ev.equipo][i] = ev.entra;
+    } else if (ev.t === "completar") {
+      cancha[ev.equipo][indiceDePosicion(ev.posicion)] = ev.entra;
+    }
+    lineas.push({
+      indice,
+      puntos: { ...puntos },
+      evento: ev,
+      roto,
+      saca,
+      sacador: cancha[saca][0],
+    });
+  });
+
+  return lineas;
 }

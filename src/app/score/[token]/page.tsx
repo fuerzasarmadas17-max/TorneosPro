@@ -282,6 +282,7 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
         homeTeamName={home?.name ?? "Local"}
         awayTeamName={away?.name ?? "Visitante"}
         jugadoresEnCancha={matchTournament.playersOnCourt ?? 6}
+        bestOf={matchTournament.bestOf ?? 3}
         onBack={() => setPlanillaMatchId(null)}
       />
     );
