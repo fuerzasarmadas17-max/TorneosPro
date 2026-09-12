@@ -4,11 +4,14 @@
  * En `false` el botón "Planilla en vivo" no aparece en la lista de partidos del
  * planillero, y la mesa sigue cargando el resultado al final como siempre.
  *
- * APAGADA. Se prende cuando esté la pantalla del marcador (paso 4) y se haya
- * probado en una cancha real. Mientras tanto están construidas las dos
- * pantallas de antes del partido —quiénes juegan y la rotación de arranque— y
- * una mesa que se las encuentre por accidente quedaría a mitad de camino, sin
- * poder anotar un punto.
+ * APAGADA, pero ya no porque falte algo: la planilla está completa y manda el
+ * resultado sola. Falta probarla en una cancha de verdad, con una mesa de
+ * verdad, y esa prueba la decide el dueño. Se prende poniendo `true` acá y
+ * desplegando; nada más hay que tocar.
+ *
+ * Lo único que NO hace todavía es abrirse sin señal la primera vez (el service
+ * worker, entrega 3): una vez cargada la página funciona desconectada, pero
+ * llegar a un coliseo sin red y abrir el link no va a andar.
  *
  * PARA VERLA SIN PRENDERLA: agregarle `?planilla=1` al link del planillero. Es
  * para mirar y para probar; no deja el botón puesto para nadie más.

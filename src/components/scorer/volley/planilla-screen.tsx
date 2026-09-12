@@ -17,7 +17,7 @@
 
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
-import { ChevronLeft, TriangleAlert, Trophy } from "lucide-react";
+import { ChevronLeft, Loader2, CheckCircle2, CloudOff, TriangleAlert, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RosterScreen } from "./roster-screen";
 import { LineupScreen } from "./lineup-screen";
@@ -36,6 +36,13 @@ import {
   setsGanados as contarSets,
 } from "@/lib/volley/planilla";
 import { volleyballSetWarnings } from "@/lib/volleyball-sets";
+import {
+  type EnvioPendiente,
+  type ResultadoDelEnvio,
+  encolar,
+  intentarEnviar,
+  pendienteDe,
+} from "@/lib/volley/envio";
 import {
   guardarPlanilla,
   leerPlanilla,
@@ -59,7 +66,15 @@ interface Props {
   jugadoresEnCancha: number;
   /** Cuántos sets se juegan en este torneo. Define cuándo se acabó el partido. */
   bestOf: 3 | 5;
+  /** Quién está anotando. Va en el resultado, igual que en la carga a mano. */
+  scorerName: string;
+  /** Si este partido puede quedar empatado. Va en grupos y liga, no en
+   *  playoffs, donde alguien tiene que pasar de ronda. Lo decide el servidor
+   *  igual; acá sirve para no ofrecer algo que después va a rechazar. */
+  permiteEmpate: boolean;
   onBack: () => void;
+  /** El resultado llegó al servidor: la lista de partidos tiene que refrescarse. */
+  onEnviado: () => void;
 }
 
 export function PlanillaScreen({
@@ -70,7 +85,10 @@ export function PlanillaScreen({
   awayTeamName,
   jugadoresEnCancha,
   bestOf,
+  scorerName,
+  permiteEmpate,
   onBack,
+  onEnviado,
 }: Props) {
   // Lo que había en el teléfono, leído una sola vez al montar. Va en un
   // inicializador y no en un efecto porque esta pantalla recién se monta cuando
@@ -91,7 +109,16 @@ export function PlanillaScreen({
           home: alineacionVacia(jugadoresEnCancha),
           away: alineacionVacia(jugadoresEnCancha),
         };
-    return { planilla, paso, alineaciones, saque: planilla.setActual?.saqueInicial ?? null };
+    // Un partido que terminó y quedó sin mandar entra derecho a su pantalla,
+    // con el motivo a la vista. Si no, la mesa lo daría por guardado.
+    const pendiente = pendienteDe(matchId);
+    return {
+      planilla,
+      paso: pendiente ? ("terminado" as Paso) : paso,
+      alineaciones,
+      saque: planilla.setActual?.saqueInicial ?? null,
+      pendiente,
+    };
   });
 
   const [planilla, setPlanilla] = useState<Planilla>(inicial.planilla);
@@ -108,6 +135,14 @@ export function PlanillaScreen({
   const [cambioDe, setCambioDe] = useState<Lado | null>(null);
   /** El "¿cerramos el set?" abierto. */
   const [cerrando, setCerrando] = useState(false);
+  /** Cómo va el envío del resultado al servidor. */
+  const [envio, setEnvio] = useState<ResultadoDelEnvio | "enviando" | null>(
+    inicial.pendiente
+      ? inicial.pendiente.errorPermanente
+        ? { estado: "rechazado", mensaje: inicial.pendiente.errorPermanente }
+        : { estado: "sin-red", mensaje: "Quedó pendiente de mandar." }
+      : null
+  );
 
   // Guardar en cada cambio. Si el navegador no deja (ventana privada,
   // almacenamiento lleno), se avisa una sola vez: la mesa tiene que saber que
@@ -167,6 +202,7 @@ export function PlanillaScreen({
     const ganados = contarSets(siguiente);
     if (ganados.home >= setsToWin || ganados.away >= setsToWin) {
       setPaso("terminado");
+      void terminarPartido(siguiente, ganados);
       return;
     }
     // Cada set arranca con su propia rotación: la del set anterior no sirve, y
@@ -177,6 +213,58 @@ export function PlanillaScreen({
     });
     setSaqueInicial(null);
     setPaso("rotacion-home");
+  };
+
+  /** Arma el resultado, lo deja en la cola y lo intenta mandar.
+   *
+   *  Encolar ANTES de intentar es lo que hace que el partido no se pierda: si el
+   *  teléfono se queda sin batería en medio del envío, el resultado ya está
+   *  anotado como pendiente y sale solo la próxima vez que haya red. */
+  const terminarPartido = async (
+    fin: Planilla,
+    ganados: Record<Lado, number>
+  ) => {
+    const pendiente: EnvioPendiente = {
+      token,
+      matchId,
+      creadoEn: new Date().toISOString(),
+      cuerpo: {
+        scorerName,
+        homeScore: ganados.home,
+        awayScore: ganados.away,
+        // Los parciales de cada set, que es lo único que el sistema guarda hoy
+        // de un partido de vóley. Los puntos uno por uno se quedan en el
+        // teléfono: mandarlos es la entrega 2.
+        sets: fin.setsCerrados.map((s) => ({
+          setNumber: s.numero,
+          homePoints: s.homePoints,
+          awayPoints: s.awayPoints,
+        })),
+      },
+    };
+    encolar(pendiente);
+    setEnvio("enviando");
+    const r = await intentarEnviar(pendiente);
+    setEnvio(r);
+    if (r.estado === "enviado") onEnviado();
+  };
+
+  /** Cortar el partido con la serie igualada, sin jugar el set que falta. */
+  const cortarEmpatado = () => {
+    setPaso("terminado");
+    void terminarPartido(planilla, contarSets(planilla));
+  };
+
+  /** Reintento a mano, desde el botón. */
+  const reintentar = async () => {
+    const pendiente = pendienteDe(matchId);
+    if (!pendiente) return;
+    setEnvio("enviando");
+    // Un rechazo anterior no tiene que frenar el reintento que pide la mesa:
+    // puede haber cambiado lo que lo causaba.
+    const r = await intentarEnviar({ ...pendiente, errorPermanente: undefined });
+    setEnvio(r);
+    if (r.estado === "enviado") onEnviado();
   };
 
   const empezarElSet = () => {
@@ -261,6 +349,10 @@ export function PlanillaScreen({
     const incompletos = (["home", "away"] as Lado[]).filter(
       (l) => huecos(alineaciones[l]) > 0
     );
+    const cuenta = contarSets(planilla);
+    const empatadosEn = cuenta.home;
+    const puedeCortarEmpatado =
+      permiteEmpate && planilla.setsCerrados.length > 0 && cuenta.home === cuenta.away;
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <AvisoSinGuardado visible={sinGuardado} />
@@ -313,10 +405,22 @@ export function PlanillaScreen({
             </div>
           )}
 
-          <div className="mt-auto">
+          <div className="mt-auto space-y-2">
             <Button className="h-14 w-full text-base" onClick={empezarElSet}>
               Empezar el set
             </Button>
+            {/* Los relámpagos de dos y tres días cortan el partido con la serie
+                igualada, y es práctica común. Sin esto, la mesa tendría que
+                jugar un set que nadie va a jugar o cargar el partido a mano. */}
+            {puedeCortarEmpatado && (
+              <Button
+                variant="outline"
+                className="h-12 w-full"
+                onClick={cortarEmpatado}
+              >
+                El partido se corta acá, {empatadosEn}–{empatadosEn}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -335,18 +439,22 @@ export function PlanillaScreen({
   }
 
   // ------------------------------------------------------------------
-  // Partido terminado — falta mandarlo, que es el paso siguiente
+  // Partido terminado — el resultado sale para el servidor
   // ------------------------------------------------------------------
   if (paso === "terminado") {
     const ganados = contarSets(planilla);
-    const ganador = ganados.home > ganados.away ? "home" : "away";
+    const empatado = ganados.home === ganados.away;
+    const ganador: Lado = ganados.home > ganados.away ? "home" : "away";
+    const perdedor: Lado = ganador === "home" ? "away" : "home";
     return (
       <div className="flex min-h-screen flex-col bg-background">
         <AvisoSinGuardado visible={sinGuardado} />
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
           <Trophy className="h-12 w-12 text-primary" />
           <p className="text-xl font-bold">
-            Ganó {nombre[ganador]} {ganados[ganador]}–{ganados[ganador === "home" ? "away" : "home"]}
+            {empatado
+              ? `Empataron ${ganados.home}–${ganados.away}`
+              : `Ganó ${nombre[ganador]} ${ganados[ganador]}–${ganados[perdedor]}`}
           </p>
           <div className="w-full max-w-sm divide-y rounded-lg border text-sm">
             {planilla.setsCerrados.map((s) => (
@@ -358,12 +466,13 @@ export function PlanillaScreen({
               </div>
             ))}
           </div>
-          <div className="max-w-sm rounded-lg border border-primary/50 bg-primary/10 p-3 text-sm">
-            <span className="font-semibold">Falta mandarlo al organizador.</span>{" "}
-            El envío es el paso siguiente de la construcción. Por ahora el
-            resultado se carga como siempre, desde la lista de partidos.
-          </div>
-          <Button variant="outline" className="h-12" onClick={onBack}>
+          <EstadoDelEnvio envio={envio} onReintentar={reintentar} />
+
+          <Button
+            variant={envio && envio !== "enviando" && envio.estado === "enviado" ? "default" : "outline"}
+            className="h-12"
+            onClick={onBack}
+          >
             <ChevronLeft className="mr-1 h-4 w-4" />
             Volver a los partidos
           </Button>
@@ -498,6 +607,76 @@ function AvisoSinGuardado({ visible }: { visible: boolean }) {
       <TriangleAlert className="h-4 w-4 shrink-0" />
       Este teléfono no está guardando la planilla. Si recargás la página, se
       pierde lo anotado.
+    </div>
+  );
+}
+
+/**
+ * Cómo va el envío del resultado, en una sola caja.
+ *
+ * Los tres finales posibles se ven distintos a propósito: "enviado" es el único
+ * que deja a la mesa irse tranquila, "sin red" dice que no hay nada que hacer
+ * porque sale solo, y "rechazado" es el único que pide algo de ella.
+ */
+function EstadoDelEnvio({
+  envio,
+  onReintentar,
+}: {
+  envio: ResultadoDelEnvio | "enviando" | null;
+  onReintentar: () => void;
+}) {
+  if (envio === null) return null;
+
+  if (envio === "enviando") {
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Mandando el resultado...
+      </p>
+    );
+  }
+
+  if (envio.estado === "enviado") {
+    return (
+      <div className="flex max-w-sm items-center gap-2 rounded-lg border border-green-600/40 bg-green-600/10 p-3 text-sm">
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-green-700 dark:text-green-500" />
+        <p>
+          <span className="font-semibold">Resultado guardado.</span> El
+          organizador ya lo ve.
+        </p>
+      </div>
+    );
+  }
+
+  if (envio.estado === "sin-red") {
+    return (
+      <div className="max-w-sm space-y-3 rounded-lg border border-primary/50 bg-primary/10 p-3 text-sm">
+        <div className="flex gap-2">
+          <CloudOff className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <p>
+            <span className="font-semibold">Guardado en el teléfono.</span>{" "}
+            {envio.mensaje} Podés cerrar la página: no se pierde.
+          </p>
+        </div>
+        <Button variant="outline" className="h-11 w-full" onClick={onReintentar}>
+          Probar de nuevo ahora
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-sm space-y-3 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm">
+      <div className="flex gap-2">
+        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+        <p>
+          <span className="font-semibold">No se pudo guardar.</span>{" "}
+          {envio.mensaje}
+        </p>
+      </div>
+      <Button variant="outline" className="h-11 w-full" onClick={onReintentar}>
+        Probar de nuevo
+      </Button>
     </div>
   );
 }

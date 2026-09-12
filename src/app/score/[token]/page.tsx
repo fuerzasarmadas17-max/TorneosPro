@@ -36,6 +36,7 @@ import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
 import { PlayerCombobox } from "@/components/forms/player-combobox";
 import { PlanillaScreen } from "@/components/scorer/volley/planilla-screen";
 import { planillaVolleyVisible } from "@/lib/volley/planilla-flag";
+import { useEnviosPendientes } from "@/components/scorer/volley/use-envios-pendientes";
 import { FairPlayPicker } from "@/components/forms/fair-play-picker";
 import { MvpPicker, type MvpSelection } from "@/components/forms/mvp-picker";
 import {
@@ -174,6 +175,10 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
     setPlanillaVisible(planillaVolleyVisible(window.location.search));
   }, []);
 
+  // Un resultado de la planilla que quedó sin mandar sale solo al abrir la
+  // página o cuando vuelve la red, sin que la mesa tenga que estar pendiente.
+  useEnviosPendientes(loadData);
+
   // Restaurar nombre del scorer desde localStorage al cargar. Junto con él,
   // la marca de "ya terminé": si refresca después de cerrar, le mostramos la
   // pantalla de gracias en vez del error genérico de link inválido.
@@ -283,7 +288,10 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
         awayTeamName={away?.name ?? "Visitante"}
         jugadoresEnCancha={matchTournament.playersOnCourt ?? 6}
         bestOf={matchTournament.bestOf ?? 3}
+        scorerName={scorerName}
+        permiteEmpate={volleyballDrawAllowed(matchTournament.format, match.phase)}
         onBack={() => setPlanillaMatchId(null)}
+        onEnviado={loadData}
       />
     );
   }

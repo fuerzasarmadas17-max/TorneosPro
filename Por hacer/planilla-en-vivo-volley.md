@@ -412,7 +412,7 @@ Al 2026-09-12. El orden es el de la conversación con el dueño.
 | 3. Pantallas de antes del partido | **hecho** | `src/components/scorer/volley/` |
 | 4. El marcador, de pie y acostado | **hecho** | `marcador-screen.tsx` |
 | 5. Cambio y tiempos | **hecho** | `cambio-sheet.tsx` |
-| 6. Envío al terminar, con cola sin señal | falta | — |
+| 6. Envío al terminar, con cola sin señal | **hecho** | `src/lib/volley/envio.ts` |
 | 7. Service worker (abrir sin señal) | falta | — |
 
 **El modelo está en `src/lib/volley/planilla.ts`** y es lo que decide todo lo
@@ -421,12 +421,29 @@ rotación, los tiempos y los atados se calculan leyendo esa lista. Es el punto 2
 de 5.5 —"que el dato interno sea la lista de puntos"— hecho desde el principio
 para que la entrega 2 sea agregar el envío y nada más.
 
-**La planilla está APAGADA** hasta que el resultado se pueda mandar:
-`PLANILLA_VOLLEY_ENABLED` en `src/lib/volley/planilla-flag.ts`. Hoy la mesa
-puede anotar un partido entero, pero al terminar tiene que cargar el resultado a
-mano como siempre, así que dárselo así sería pedirle el trabajo dos veces. Para
-verla sin prenderla, agregarle `?planilla=1` al link del planillero.
+**La entrega 1 está completa.** La mesa abre el link, anota el partido entero y
+al terminar el resultado sale para el servidor solo; si no hay señal queda en
+una cola en el teléfono y sale cuando vuelve, aunque hayan cerrado la pestaña.
 
-**Lo que falta para prenderla** es el paso 6: mandar el resultado al cerrar el
-último set, con la cola que espera la red. Recién ahí la planilla reemplaza a la
-carga manual en vez de sumarse a ella.
+**La planilla está APAGADA** igual: `PLANILLA_VOLLEY_ENABLED` en
+`src/lib/volley/planilla-flag.ts`. Ya no falta código, falta la prueba en una
+cancha de verdad, y esa decisión es del dueño. Se prende poniendo `true` y
+desplegando. Para verla sin prenderla, agregarle `?planilla=1` al link del
+planillero.
+
+**Lo que sigue faltando es la entrega 3**, el service worker: una vez cargada la
+página la planilla funciona desconectada, pero llegar a un coliseo sin señal y
+ABRIR el link no va a andar. Con la respuesta del dueño del 2026-09-12 —a veces
+hay señal y a veces no— eso es 1 o 2 días que conviene hacer pegados a esto.
+
+**Dos casos que se resolvieron construyendo el envío:**
+
+- **El partido que se corta empatado.** Los relámpagos de dos y tres días lo
+  hacen y es práctica común. Al terminar un set con la serie igualada, la
+  pantalla ofrece cortar el partido ahí en vez de obligar a jugar un set que
+  nadie va a jugar. Solo aparece donde el empate es legal: en playoffs no, y de
+  eso ya se encarga `volleyballDrawAllowed`.
+- **El resultado rechazado por el servidor.** Un link vencido o un marcador que
+  no cuadra no se puede arreglar reintentando, así que ese envío se queda en la
+  cola con el motivo escrito y un botón para reintentar a mano, en vez de
+  repetir el mismo error cada vez que hay señal.
