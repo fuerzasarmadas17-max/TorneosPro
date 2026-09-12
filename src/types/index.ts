@@ -428,6 +428,12 @@ export interface Tournament {
   enabledStats?: MatchEventType[];
   maxPlayersPerTeam?: number;
   bestOf?: 3 | 5;
+  /** Solo vóley: jugadores en cancha por equipo. El vóley de siempre son 6,
+   *  pero hay categorías de niños de 4 y de 5. `undefined` = el organizador no
+   *  lo eligió, y en todos lados se lee como 6 — mismo trato que `bestOf`, que
+   *  se lee como 3. Lo usa la planilla en vivo para dibujar la cancha y para
+   *  saber cada cuántos puntos cierra la vuelta de rotación. */
+  playersOnCourt?: 4 | 5 | 6;
   sponsors?: Sponsor[];
   price?: number;
   tier?: TournamentTier;

@@ -158,6 +158,7 @@ export function mapTournament(row: Record<string, unknown>): Tournament {
     enabledStats: (row.enabled_stats as MatchEventType[]) ?? undefined,
     maxPlayersPerTeam: (row.max_players_per_team as number) ?? undefined,
     bestOf: (row.best_of as 3 | 5) ?? undefined,
+    playersOnCourt: (row.players_on_court as 4 | 5 | 6) ?? undefined,
     sponsors: sponsorsRows ? sponsorsRows.map(mapSponsor) : undefined,
     price: (row.price as number) ?? undefined,
     tier: (row.tier as TournamentTier) ?? undefined,
@@ -279,6 +280,7 @@ export function toDbTournament(t: Partial<Tournament>): Record<string, unknown> 
   if (t.doubleRoundRobin !== undefined) db.double_round_robin = t.doubleRoundRobin;
   if (t.maxPlayersPerTeam !== undefined) db.max_players_per_team = t.maxPlayersPerTeam;
   if (t.bestOf !== undefined) db.best_of = t.bestOf;
+  if (t.playersOnCourt !== undefined) db.players_on_court = t.playersOnCourt;
   if (t.price !== undefined) db.price = t.price;
   if (t.tier !== undefined) db.tier = t.tier;
   if (t.enabledStats !== undefined) db.enabled_stats = t.enabledStats;

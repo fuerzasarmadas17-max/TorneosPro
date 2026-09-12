@@ -184,6 +184,9 @@ export function CreateTournamentForm() {
   const [advance2Map, setAdvance2Map] = useState<Record<string, string>>({});
   const [enabledStats, setEnabledStats] = useState<MatchEventType[]>([]);
   const [bestOf, setBestOf] = useState<3 | 5>(3);
+  // Seis es el vóley de siempre, así que arranca ahí y el que juega distinto lo
+  // cambia. Lo necesita la planilla en vivo para dibujar la cancha.
+  const [playersOnCourt, setPlayersOnCourt] = useState<4 | 5 | 6>(6);
   const [hasPhase2, setHasPhase2] = useState(false);
   const [phase2GroupCount, setPhase2GroupCount] = useState("2");
 
@@ -421,6 +424,7 @@ export function CreateTournamentForm() {
       isIndividual,
       enabledStats: enabledStats.length > 0 ? enabledStats : null,
       bestOf: sport === "volleyball" ? bestOf : null,
+      playersOnCourt: sport === "volleyball" ? playersOnCourt : null,
       groups: groups.map((g) => ({ name: g.name })),
       // New: per-group cupos by index.
       advance1ByIdx: format === "group-playoff" ? advance1ByIdx : null,
@@ -596,6 +600,7 @@ export function CreateTournamentForm() {
         groupStageComplete: false,
         enabledStats: enabledStats.length > 0 ? enabledStats : undefined,
         bestOf: sport === "volleyball" ? bestOf : undefined,
+        playersOnCourt: sport === "volleyball" ? playersOnCourt : undefined,
         price: plan === "paid" && priceInfo ? priceInfo.price : undefined,
         tier: plan === "paid" && priceInfo ? priceInfo.tier : undefined,
         couponId: couponId ?? undefined,
@@ -998,6 +1003,31 @@ export function CreateTournamentForm() {
                     {bestOf === 3
                       ? "Gana el primero en llegar a 2 sets"
                       : "Gana el primero en llegar a 3 sets"}
+                  </p>
+                </div>
+              )}
+
+              {/* Volleyball: jugadores en cancha por equipo */}
+              {sport === "volleyball" && (
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-xl">¿Cuántos juegan por equipo?</h3>
+                  <div className="flex gap-2">
+                    {([6, 5, 4] as const).map((n) => (
+                      <Button
+                        key={n}
+                        type="button"
+                        variant={playersOnCourt === n ? "default" : "outline"}
+                        className="flex-1 h-12 text-base"
+                        onClick={() => setPlayersOnCourt(n)}
+                      >
+                        {n} en cancha
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {playersOnCourt === 6
+                      ? "Seis por equipo, el vóley de siempre."
+                      : `Categoría de ${playersOnCourt} por equipo. Se usa en torneos de niños.`}
                   </p>
                 </div>
               )}
@@ -1450,6 +1480,9 @@ export function CreateTournamentForm() {
                 <SummaryRow label={participantLabel} value={teamCount} />
                 {sport === "volleyball" && (
                   <SummaryRow label="Sets" value={`Mejor de ${bestOf}`} />
+                )}
+                {sport === "volleyball" && (
+                  <SummaryRow label="En cancha" value={`${playersOnCourt} por equipo`} />
                 )}
                 {groups.length > 0 && (
                   <SummaryRow label="Grupos" value={`${groups.length}`} />

@@ -52,7 +52,7 @@ interface TournamentContextType {
   disqualifyTeam: (tournamentId: string, teamId: string) => Promise<void>;
   removeTournament: (tournamentId: string) => Promise<boolean>;
   updateMatchDetails: (tournamentId: string, matchId: string, updates: Partial<Pick<Match, "round" | "homeTeamId" | "awayTeamId" | "date" | "time" | "venue" | "status" | "postponedReason">>) => Promise<void>;
-  updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "doubleRoundRobin" | "groupStageComplete" | "playoffDoubleLeg" | "playoffFixtureGenerated" | "playoffFinalFormat" | "championPhotoUrl" | "mvpPhotoUrl" | "mvpPlayerId" | "mvpPlayerName" | "mvpTeamId" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs" | "disqualifiedTeamIds">>) => Promise<void>;
+  updateTournamentProps: (tournamentId: string, updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "playersOnCourt" | "doubleRoundRobin" | "groupStageComplete" | "playoffDoubleLeg" | "playoffFixtureGenerated" | "playoffFinalFormat" | "championPhotoUrl" | "mvpPhotoUrl" | "mvpPlayerId" | "mvpPlayerName" | "mvpTeamId" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs" | "disqualifiedTeamIds">>) => Promise<void>;
   /** Escribe la misma cancha en varios partidos de una vez. Lo usa la
    *  sugerencia de "estas dos canchas parecen la misma", que ya sabe qué
    *  partidos tiene que tocar. Devuelve false si falló la escritura. */
@@ -815,7 +815,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   );
 
   const updateTournamentProps = useCallback(
-    async (tournamentId: string, updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "doubleRoundRobin" | "groupStageComplete" | "playoffDoubleLeg" | "playoffFixtureGenerated" | "playoffFinalFormat" | "championPhotoUrl" | "mvpPhotoUrl" | "mvpPlayerId" | "mvpPlayerName" | "mvpTeamId" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs" | "disqualifiedTeamIds">>) => {
+    async (tournamentId: string, updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "playersOnCourt" | "doubleRoundRobin" | "groupStageComplete" | "playoffDoubleLeg" | "playoffFixtureGenerated" | "playoffFinalFormat" | "championPhotoUrl" | "mvpPhotoUrl" | "mvpPlayerId" | "mvpPlayerName" | "mvpTeamId" | "sponsors" | "tier" | "price" | "plan" | "phaseConfigs" | "visibleTabs" | "disqualifiedTeamIds">>) => {
       // Update tournament fields in DB
       const dbUpdates: Partial<Tournament> = {};
       if (updates.name !== undefined) dbUpdates.name = updates.name;
@@ -823,6 +823,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       if (updates.startDate !== undefined) dbUpdates.startDate = updates.startDate;
       if (updates.endDate !== undefined) dbUpdates.endDate = updates.endDate;
       if (updates.bestOf !== undefined) dbUpdates.bestOf = updates.bestOf;
+      if (updates.playersOnCourt !== undefined) dbUpdates.playersOnCourt = updates.playersOnCourt;
       if (updates.doubleRoundRobin !== undefined) dbUpdates.doubleRoundRobin = updates.doubleRoundRobin;
       if (updates.groupStageComplete !== undefined) dbUpdates.groupStageComplete = updates.groupStageComplete;
       if (updates.playoffDoubleLeg !== undefined) dbUpdates.playoffDoubleLeg = updates.playoffDoubleLeg;

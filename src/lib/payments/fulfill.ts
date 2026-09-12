@@ -196,6 +196,10 @@ export async function fulfillTournamentPayment(
         ? (data.enabledStats as MatchEventType[])
         : undefined,
     bestOf: data.sport === "volleyball" ? (data.bestOf as 3 | 5) : undefined,
+    playersOnCourt:
+      data.sport === "volleyball"
+        ? (data.playersOnCourt as 4 | 5 | 6) ?? undefined
+        : undefined,
     price: payment.amount_cop,
     tier: (data.tier as TournamentTier) || undefined,
     couponId: payment.coupon_id || undefined,

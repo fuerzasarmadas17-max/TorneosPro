@@ -1380,7 +1380,7 @@ function ConfigurationDialog({
   configurableTabs: { key: string; label: string }[];
   visibleTabs?: string[];
   onUpdate: (
-    updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "visibleTabs" | "phaseConfigs" | "cardImage">>
+    updates: Partial<Pick<Tournament, "name" | "description" | "startDate" | "endDate" | "bestOf" | "playersOnCourt" | "visibleTabs" | "phaseConfigs" | "cardImage">>
   ) => void;
   /** Persist per-group cupos: updates both the matching phaseConfig and the
    *  playoff_configs row when the edited phase is the last one. */
@@ -1399,6 +1399,9 @@ function ConfigurationDialog({
   const [endDate, setEndDate] = useState(tournament.endDate ?? "");
   const [visibilityDraft, setVisibilityDraft] = useState<string[]>(visibleTabs ?? []);
   const [bestOf, setBestOf] = useState<3 | 5>(tournament.bestOf ?? 3);
+  const [playersOnCourt, setPlayersOnCourt] = useState<4 | 5 | 6>(
+    tournament.playersOnCourt ?? 6
+  );
   const [cardImage, setCardImage] = useState<string | null | undefined>(
     tournament.cardImage
   );
@@ -1493,6 +1496,12 @@ function ConfigurationDialog({
       const updates: Parameters<typeof onUpdate>[0] = {};
       if (tournament.sport === "volleyball" && bestOf !== (tournament.bestOf ?? 3)) {
         updates.bestOf = bestOf;
+      }
+      if (
+        tournament.sport === "volleyball" &&
+        playersOnCourt !== (tournament.playersOnCourt ?? 6)
+      ) {
+        updates.playersOnCourt = playersOnCourt;
       }
       if (Object.keys(updates).length > 0) onUpdate(updates);
     } else if (section === "groups") {
@@ -1750,6 +1759,22 @@ function ConfigurationDialog({
                     >
                       <option value={3}>Mejor de 3</option>
                       <option value={5}>Mejor de 5</option>
+                    </select>
+                  </div>
+                )}
+                {tournament.sport === "volleyball" && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">En cancha</span>
+                    <select
+                      className="text-sm border rounded px-2 py-1 bg-background"
+                      value={playersOnCourt}
+                      onChange={(e) =>
+                        setPlayersOnCourt(parseInt(e.target.value, 10) as 4 | 5 | 6)
+                      }
+                    >
+                      <option value={6}>6 por equipo</option>
+                      <option value={5}>5 por equipo</option>
+                      <option value={4}>4 por equipo</option>
                     </select>
                   </div>
                 )}
