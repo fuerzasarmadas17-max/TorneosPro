@@ -148,11 +148,12 @@ export function ScorerLinksDialog({
     let latest = 0;
     for (const m of availableMatches) {
       if (!selected.has(m.matchId)) continue;
-      const ms = Date.parse(`${m.date}T${m.time}:00`);
+      // Hora de Colombia, igual que el servidor en validate-link-matches.
+      const ms = Date.parse(`${m.date}T${m.time}:00-05:00`);
       if (ms > latest) latest = ms;
     }
     if (latest === 0) return null;
-    return new Date(Math.max(latest, Date.now()) + 24 * 60 * 60 * 1000);
+    return new Date(Math.max(latest, Date.now()) + 72 * 60 * 60 * 1000);
   }, [selected, availableMatches]);
 
   const handleClose = (o: boolean) => {

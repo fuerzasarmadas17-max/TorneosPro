@@ -249,11 +249,12 @@ function CreateScorerLinkDialog({
     for (const id of selected) {
       const m = tournament.matches.find((x) => x.id === id);
       if (!m?.date || !m?.time) continue;
-      const ms = Date.parse(`${m.date}T${m.time}:00`);
+      // Hora de Colombia, igual que el servidor en validate-link-matches.
+      const ms = Date.parse(`${m.date}T${m.time}:00-05:00`);
       if (ms > latest) latest = ms;
     }
     if (latest === 0) return null;
-    return new Date(Math.max(latest, Date.now()) + 24 * 60 * 60 * 1000);
+    return new Date(Math.max(latest, Date.now()) + 72 * 60 * 60 * 1000);
   }, [selected, tournament.matches]);
 
   const toggle = (id: string) => {
@@ -350,7 +351,7 @@ function CreateScorerLinkDialog({
                 minute: "2-digit",
               })}
             </span>{" "}
-            (24h después del último partido)
+            (72h después del último partido)
           </div>
         )}
 

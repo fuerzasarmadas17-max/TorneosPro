@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 export interface ValidatedLinkMatches {
   /** Torneos derivados de los propios partidos (nunca del body). */
   tournamentIds: string[];
-  /** MAX(date + time) + 24h, con piso en now(). */
+  /** MAX(date + time) + 72h, con piso en now(). */
   expiresAt: string;
 }
 
@@ -116,9 +116,13 @@ export async function validateLinkMatches(
     );
   }
 
-  // expires_at = MAX(date + time) + 24h. Si todos los partidos ya pasaron
+  // expires_at = MAX(date + time) + 72h. Si todos los partidos ya pasaron
   // (carga retroactiva), usamos now() como piso para que el link no arranque
   // expirado y dé 404 al toque.
+  //
+  // 72 y no 24 (decisión del dueño, 2026-09-12): las mesas cargan tarde, al
+  // otro día o al siguiente, y el link se cierra antes igual si el organizador
+  // lo revoca o el anotador toca "Terminé mi labor".
   let latestMs = 0;
   for (const m of matches) {
     if (!m.date || !m.time) {
@@ -127,7 +131,9 @@ export async function validateLinkMatches(
         { status: 400 }
       );
     }
-    const ms = Date.parse(`${m.date}T${m.time}:00`);
+    // La fecha y la hora del partido son hora de Colombia. Sin el -05:00 el
+    // servidor (en UTC) las leía cinco horas corridas y el link vencía antes.
+    const ms = Date.parse(`${m.date}T${m.time}:00-05:00`);
     if (Number.isNaN(ms)) {
       return NextResponse.json(
         { error: "Formato de fecha/hora inválido" },
@@ -137,7 +143,7 @@ export async function validateLinkMatches(
     if (ms > latestMs) latestMs = ms;
   }
   const expiresAt = new Date(
-    Math.max(latestMs, Date.now()) + 24 * 60 * 60 * 1000
+    Math.max(latestMs, Date.now()) + 72 * 60 * 60 * 1000
   ).toISOString();
 
   return { tournamentIds, expiresAt };
