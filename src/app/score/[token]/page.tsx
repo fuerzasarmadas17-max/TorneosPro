@@ -285,7 +285,11 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
     }
     const home = match.homeTeamId ? data.teams.find((t) => t.id === match.homeTeamId) : null;
     const away = match.awayTeamId ? data.teams.find((t) => t.id === match.awayTeamId) : null;
+    // La planilla tapa la barra y el pie del sitio: vive a pantalla completa.
+    // Si quedaba entre los dos, la pantalla medía el alto del celular MÁS la
+    // barra, y los botones de abajo siempre pedían scroll.
     return (
+      <div className="fixed inset-0 z-[60] overflow-y-auto bg-background">
       <PlanillaScreen
         token={token}
         matchId={match.id}
@@ -302,6 +306,7 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
         }}
         onEnviado={loadData}
       />
+      </div>
     );
   }
 

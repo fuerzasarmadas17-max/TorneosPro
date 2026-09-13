@@ -373,6 +373,32 @@ momento antes de que empiece a contar, que es donde corresponde avisar.
 
 ---
 
+## 6.7 Los lados de la cancha
+
+Pedido por el dueño después de probarla, el 2026-09-13. La pantalla dibujaba
+siempre al local a la izquierda, y en la cancha los equipos cambian de lado: la
+mesa terminaba tocando el botón del lado equivocado.
+
+- **Set 1:** en la pantalla de "¿Quién saca primero?" se pregunta también quién
+  queda a la izquierda de la mesa. Las dos cosas salen del sorteo.
+- **Sets del medio** (el 2.º de 3; del 2.º al 4.º de 5): cambian de cancha, así
+  que la app lo propone ya marcado al revés de como terminó el anterior. La
+  mesa lo corrige con un toque si en esa liga no cambian.
+- **Set decisivo** (el 3.º de 3, el 5.º de 5): sorteo otra vez, sin nada
+  marcado. Cuando un equipo llega a **8** sale el aviso "Cambio de cancha" con
+  "Ya cambiaron" / "No cambian". **Pregunta, no cambia solo**: si los lados se
+  dieran vuelta sin aviso, la mesa tocaría el botón equivocado justo ahí. Si
+  contestan "No cambian", vuelve a preguntar a los **13**, para los torneos que
+  juegan el decisivo a 25.
+- **"Cambiar de lado"** está siempre a mano en el marcador, para los torneos
+  con otra costumbre. Es un evento de la lista, así que Deshacer lo revierte.
+
+El lado solo cambia el dibujo: la rotación, el saque, los cambios y el
+resultado que se manda no se tocan. Está en `src/lib/volley/planilla.ts`,
+sección "Los lados de la cancha".
+
+---
+
 ## 7. Qué falta para arrancar
 
 **Nada. Se puede empezar.** Lo pidió el dueño el 2026-09-06 y las cuatro

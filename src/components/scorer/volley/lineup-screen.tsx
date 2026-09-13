@@ -1,7 +1,17 @@
 "use client";
 
 /**
- * Paso 2 de la planilla: la rotación de arranque, un equipo por vez.
+ * La rotación de arranque de un equipo, y de paso quiénes juegan.
+ *
+ * ES LA PRIMERA PANTALLA DE LA PLANILLA. Antes había un paso aparte para anotar
+ * todos los números y otro para ubicarlos; el dueño pidió juntarlos
+ * (2026-09-12): se toca una posición, se escribe el número ahí mismo, y el
+ * teclado salta solo a la siguiente. Escribir y ubicar son el mismo toque, y
+ * para un equipo de cuatro eran dos pantallas para escribir cuatro números.
+ *
+ * Acá solo se anotan los que arrancan. Los suplentes no tienen lugar en esta
+ * pantalla (el dueño la quiso sin lista de banco, 2026-09-12): se agregan
+ * desde el cambio, con "Llegó tarde", cuando van a entrar.
  *
  * Las posiciones se dibujan como se ven parado detrás de la línea de fondo:
  * arriba la red, abajo el fondo, y la 1 abajo a la derecha porque es la que
@@ -18,22 +28,28 @@
  */
 
 import { useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Teclado, Visor } from "./teclado";
 import {
   type Alineacion,
   type Etiqueta,
   filasDeLaCancha,
   huecos,
   indiceDePosicion,
+  normalizarEtiqueta,
+  validarEtiqueta,
 } from "@/lib/volley/planilla";
 
 interface Props {
   tituloArriba: string;
   teamName: string;
+  /** "Paso 1 de 2" o "Paso 2 de 2". */
+  paso: string;
   jugadoresEnCancha: number;
-  /** Todos los que pueden entrar hoy, de este equipo. */
+  /** Todos los que pueden entrar hoy, de este equipo: en cancha y banco. */
   nomina: Etiqueta[];
+  onNominaChange: (nomina: Etiqueta[]) => void;
   alineacion: Alineacion;
   onChange: (alineacion: Alineacion) => void;
   onBack: () => void;
@@ -42,11 +58,16 @@ interface Props {
   textoContinuar: string;
 }
 
+/** La posición donde va lo que se está escribiendo, o `null` con el teclado cerrado. */
+type Destino = number | null;
+
 export function LineupScreen({
   tituloArriba,
   teamName,
+  paso,
   jugadoresEnCancha,
   nomina,
+  onNominaChange,
   alineacion,
   onChange,
   onBack,
@@ -55,115 +76,113 @@ export function LineupScreen({
 }: Props) {
   const { frente, fondo } = filasDeLaCancha(jugadoresEnCancha);
 
-  // La posición que está esperando jugador. Arranca en la primera vacía.
-  const primeraVacia = () => {
-    const i = alineacion.findIndex((e) => e === null);
+  const primeraVacia = (a: Alineacion): number | null => {
+    const i = a.findIndex((e) => e === null);
     return i < 0 ? null : i + 1;
   };
-  const [posicionActiva, setPosicionActiva] = useState<number | null>(primeraVacia);
+
+  // Arranca con el teclado abierto en la primera posición vacía: la mesa entra
+  // y escribe, sin tener que tocar nada antes.
+  const [destino, setDestino] = useState<Destino>(() => primeraVacia(alineacion));
+  /** Si el teclado está a la vista. Arranca escondido detrás del botón. */
+  const [escribiendo, setEscribiendo] = useState(false);
+  const [buffer, setBuffer] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const ubicados = new Set(alineacion.filter((e): e is Etiqueta => e !== null));
-  const sinUbicar = nomina.filter((e) => !ubicados.has(e));
+  const banco = nomina.filter((e) => !ubicados.has(e));
   const faltan = huecos(alineacion);
+  const ocupante = typeof destino === "number" ? alineacion[indiceDePosicion(destino)] : null;
 
+  const abrir = (d: Destino) => {
+    setDestino(d);
+    setBuffer("");
+    setError(null);
+  };
+
+  /** Pone a alguien en la posición abierta y salta a la siguiente vacía. El que
+   *  estaba ahí no se borra: pasa al banco. */
   const ubicar = (etiqueta: Etiqueta) => {
-    if (posicionActiva === null) return;
+    if (typeof destino !== "number") return;
     const siguiente = [...alineacion];
-    siguiente[indiceDePosicion(posicionActiva)] = etiqueta;
+    siguiente[indiceDePosicion(destino)] = etiqueta;
     onChange(siguiente);
-    // Saltar sola a la próxima vacía: así se ubica tocando jugador, jugador,
-    // jugador, sin tener que elegir la posición cada vez.
-    const i = siguiente.findIndex((e) => e === null);
-    setPosicionActiva(i < 0 ? null : i + 1);
+    abrir(primeraVacia(siguiente));
   };
 
-  const tocarPosicion = (posicion: number) => {
-    const ocupada = alineacion[indiceDePosicion(posicion)];
-    if (ocupada !== null) {
-      // Sacar al que estaba: vuelve a la lista de sin ubicar y la posición
-      // queda esperando.
-      const siguiente = [...alineacion];
-      siguiente[indiceDePosicion(posicion)] = null;
-      onChange(siguiente);
+  const poner = () => {
+    const etiqueta = normalizarEtiqueta(buffer);
+    if (destino === null) return;
+    // Un número que ya está anotado no es un error acá: si está en el banco, se
+    // lo sube a la cancha. Solo se frena si ya está parado en otra posición.
+    const err = validarEtiqueta(etiqueta, []);
+    if (err) return setError(err);
+    const yaEn = alineacion.indexOf(etiqueta);
+    if (yaEn >= 0 && yaEn !== indiceDePosicion(destino)) {
+      return setError(`El ${etiqueta} ya está en la posición ${yaEn + 1}.`);
     }
-    setPosicionActiva(posicion);
+    if (!nomina.includes(etiqueta)) onNominaChange([...nomina, etiqueta]);
+    ubicar(etiqueta);
   };
+
+  const vaciarPosicion = () => {
+    if (typeof destino !== "number") return;
+    const siguiente = [...alineacion];
+    siguiente[indiceDePosicion(destino)] = null;
+    onChange(siguiente);
+    setError(null);
+  };
+
+  const tituloDelTeclado = ocupante
+    ? `Posición ${destino} · ahora está el ${ocupante}`
+    : `Número para la posición ${destino}`;
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    // min-h-dvh y no min-h-screen: en el celular, screen cuenta también lo que
+    // tapa la barra del navegador y los botones de abajo quedaban escondidos.
+    <div className="min-h-dvh flex flex-col bg-background">
       <header className="flex items-center justify-between gap-3 border-b px-4 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm text-muted-foreground">{tituloArriba}</p>
           <h1 className="truncate font-semibold">Rotación de {teamName}</h1>
         </div>
         <span className="shrink-0 rounded-full border px-3 py-1 text-sm text-muted-foreground">
-          Paso 2 de 2
+          {paso}
         </span>
       </header>
 
-      <div className="flex flex-1 flex-col gap-4 p-4">
-        <div>
-          <h2 className="text-2xl font-bold">¿Quiénes arrancan y dónde?</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Tocá una posición y elegí el jugador. La{" "}
+      <div className="flex flex-1 flex-col gap-4 p-4 landscape:flex-row landscape:items-start">
+        <div className="flex flex-col gap-4 landscape:min-w-0 landscape:flex-1">
+          <p className="text-sm text-muted-foreground">
+            Tocá una posición y escribí el número o la letra. La{" "}
             <span className="font-semibold text-foreground">1</span> es la que
             saca primero.
           </p>
-        </div>
 
-        {/* La cancha */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <div className="h-px flex-1 border-t border-dashed" />
-            <span className="text-xs uppercase tracking-widest text-muted-foreground">
-              Red
-            </span>
-            <div className="h-px flex-1 border-t border-dashed" />
+          {/* La cancha */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 border-t border-dashed" />
+              <span className="text-xs uppercase tracking-widest text-muted-foreground">
+                Red
+              </span>
+              <div className="h-px flex-1 border-t border-dashed" />
+            </div>
+            {[frente, fondo].map((fila, i) => (
+              <Fila
+                key={i}
+                posiciones={fila}
+                alineacion={alineacion}
+                activa={typeof destino === "number" ? destino : null}
+                // Con el teclado abierto las casillas se achican para que la
+                // cancha y el teclado entren juntos de pie.
+                compacta={destino !== null}
+                onTocar={abrir}
+              />
+            ))}
           </div>
 
-          <Fila
-            posiciones={frente}
-            alineacion={alineacion}
-            posicionActiva={posicionActiva}
-            onTocar={tocarPosicion}
-          />
-          <Fila
-            posiciones={fondo}
-            alineacion={alineacion}
-            posicionActiva={posicionActiva}
-            onTocar={tocarPosicion}
-          />
-        </div>
-
-        {/* Los que faltan por ubicar */}
-        <div className="space-y-2">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground">
-            Sin ubicar
-            {posicionActiva !== null && ` · tocá uno para la pos ${posicionActiva}`}
-          </p>
-          {sinUbicar.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {sinUbicar.map((e) => (
-                <button
-                  key={e}
-                  type="button"
-                  disabled={posicionActiva === null}
-                  onClick={() => ubicar(e)}
-                  className="h-14 min-w-14 rounded-lg border bg-card px-4 text-xl font-bold transition-colors hover:bg-accent disabled:opacity-40"
-                >
-                  {e}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Ya están todos ubicados.
-            </p>
-          )}
-        </div>
-
-        <div className="mt-auto space-y-3">
-          {faltan > 0 && (
+          {faltan > 0 && destino === null && (
             <div className="rounded-lg border border-primary/50 bg-primary/10 p-3 text-sm">
               <span className="font-semibold">
                 {teamName} va a empezar con {jugadoresEnCancha - faltan} de{" "}
@@ -173,15 +192,86 @@ export function LineupScreen({
               agrega desde el marcador sin gastar cambio.
             </div>
           )}
-          <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
-            Los que queden sin ubicar van al{" "}
-            <span className="font-semibold text-foreground">banco</span> y entran
-            por cambio. Después de esto no hay que tocar la rotación en todo el
-            set:{" "}
-            <span className="font-semibold text-foreground">la app rota sola</span>{" "}
-            cuando el equipo que recibe gana el punto.
-          </div>
         </div>
+
+        {/* El teclado. Acostado va a la derecha, al lado de la cancha. */}
+        {destino !== null && (
+          <div className="flex flex-col gap-2 landscape:w-[42%] landscape:shrink-0">
+            {/* En el segundo set ya están todos anotados: se suben con un
+                toque, sin volver a escribir. Va arriba de todo del teclado
+                porque, cuando aparece, es lo más rápido de usar. */}
+            {typeof destino === "number" && banco.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted-foreground">Ya anotados:</span>
+                {banco.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    onClick={() => ubicar(e)}
+                    className="h-10 min-w-10 rounded-lg border bg-card px-3 font-bold hover:bg-accent"
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2">
+              <p className="truncate font-semibold">{tituloDelTeclado}</p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  abrir(null);
+                  setEscribiendo(false);
+                }}
+              >
+                Listo
+              </Button>
+            </div>
+            {/* El teclado no se muestra hasta que lo piden (dueño, 2026-09-12):
+                sin él, la pantalla deja ver la cancha y los ya anotados. Una
+                vez abierto se queda abierto al saltar de posición, para anotar
+                a los que arrancan de corrido. */}
+            {escribiendo ? (
+              <>
+                <div className="flex gap-2">
+                  <Visor texto={buffer} />
+                  <Button className="h-14 px-6 text-base" disabled={!buffer} onClick={poner}>
+                    Poner
+                  </Button>
+                </div>
+                {error && <p className="text-sm text-destructive">{error}</p>}
+
+                <Teclado
+                  onTecla={(t) => {
+                    setError(null);
+                    setBuffer((b) => (b.length >= 3 ? b : b + t));
+                  }}
+                  onBorrar={() => {
+                    setError(null);
+                    setBuffer((b) => b.slice(0, -1));
+                  }}
+                />
+              </>
+            ) : (
+              <Button
+                variant="outline"
+                className="h-14 w-full border-2 border-dashed text-base"
+                onClick={() => setEscribiendo(true)}
+              >
+                <Plus className="mr-2 h-5 w-5" />
+                Agregar un nuevo jugador
+              </Button>
+            )}
+
+            {ocupante && (
+              <Button variant="outline" className="h-11" onClick={vaciarPosicion}>
+                Sacar al {ocupante} de la posición {destino}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       <footer className="flex gap-2 border-t p-4">
@@ -205,12 +295,14 @@ export function LineupScreen({
 function Fila({
   posiciones,
   alineacion,
-  posicionActiva,
+  activa,
+  compacta,
   onTocar,
 }: {
   posiciones: number[];
   alineacion: Alineacion;
-  posicionActiva: number | null;
+  activa: number | null;
+  compacta: boolean;
   onTocar: (posicion: number) => void;
 }) {
   return (
@@ -220,16 +312,15 @@ function Fila({
     >
       {posiciones.map((pos) => {
         const etiqueta = alineacion[indiceDePosicion(pos)];
-        const activa = posicionActiva === pos;
         const saca = pos === 1;
         return (
           <button
             key={pos}
             type="button"
             onClick={() => onTocar(pos)}
-            className={`flex h-28 flex-col items-center justify-center gap-1 rounded-xl border-2 transition-colors ${
-              activa ? "border-primary bg-primary/5" : "border-border bg-card"
-            }`}
+            className={`flex flex-col items-center justify-center gap-1 rounded-xl border-2 transition-colors ${
+              compacta ? "h-20" : "h-28"
+            } ${activa === pos ? "border-primary bg-primary/10" : "border-border bg-card"}`}
           >
             <span
               className={`text-xs uppercase tracking-widest ${

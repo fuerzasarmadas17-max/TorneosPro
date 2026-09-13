@@ -53,7 +53,12 @@ export type Evento =
   /** El que llegó tarde ocupa una posición que arrancó vacía. NO es un cambio:
    *  no gasta cambio y no ata a nadie con nadie. Guarda la posición y no a
    *  quién reemplaza, justamente porque no reemplaza a nadie. */
-  | { t: "completar"; equipo: Lado; posicion: number; entra: Etiqueta };
+  | { t: "completar"; equipo: Lado; posicion: number; entra: Etiqueta }
+  /** Los equipos se cambiaron de cancha en medio del set (el decisivo, a los 8).
+   *  Solo cambia qué equipo se dibuja a la izquierda de la mesa: la rotación y
+   *  el saque no se tocan. Es un evento y no un dato suelto para que Deshacer
+   *  lo revierta igual que un punto. */
+  | { t: "cambio-de-cancha" };
 
 export interface SetEnJuego {
   /** 1 para el primer set. */
@@ -62,6 +67,15 @@ export interface SetEnJuego {
   alineacion: Record<Lado, Alineacion>;
   /** Quién sacó el primer punto del set. */
   saqueInicial: Lado;
+  /**
+   * El equipo que arrancó el set a la izquierda de la mesa. Opcional porque las
+   * planillas guardadas antes del 2026-09-13 no lo tienen: ahí es el local.
+   */
+  izquierda?: Lado;
+  /** Los avisos de cambio de cancha que la mesa contestó "No cambian", por
+   *  puntaje (8, 13). No es un evento a propósito: Deshacer quita puntos, no
+   *  tiene que volver a abrir un aviso ya contestado. */
+  avisosDeCanchaDescartados?: number[];
   eventos: Evento[];
 }
 
@@ -69,6 +83,9 @@ export interface SetCerrado {
   numero: number;
   homePoints: number;
   awayPoints: number;
+  /** Quién estaba a la izquierda al terminar. De acá sale la propuesta del set
+   *  siguiente, que es al revés. No viaja al servidor. */
+  izquierdaAlCerrar?: Lado;
 }
 
 export interface Planilla {
@@ -170,6 +187,8 @@ export interface EstadoDelSet {
    * cancha es peor que una que le avisa.
    */
   atados: Record<Lado, Record<Etiqueta, Etiqueta>>;
+  /** El equipo que está ahora a la izquierda de la mesa. */
+  izquierda: Lado;
 }
 
 /** Recorre la lista de eventos desde el arranque y devuelve cómo está el set
@@ -185,6 +204,7 @@ export function estadoDelSet(set: SetEnJuego): EstadoDelSet {
     tiemposUsados: { home: 0, away: 0 },
     cambiosHechos: { home: 0, away: 0 },
     atados: { home: {}, away: {} },
+    izquierda: set.izquierda ?? "home",
   };
 
   for (const ev of set.eventos) {
@@ -205,8 +225,10 @@ export function estadoDelSet(set: SetEnJuego): EstadoDelSet {
       estado.cambiosHechos[ev.equipo]++;
       estado.atados[ev.equipo][ev.entra] = ev.sale;
       estado.atados[ev.equipo][ev.sale] = ev.entra;
-    } else {
+    } else if (ev.t === "tiempo") {
       estado.tiemposUsados[ev.equipo]++;
+    } else {
+      estado.izquierda = otroLado(estado.izquierda);
     }
   }
 
@@ -228,6 +250,70 @@ export function enElBanco(
 // ============================================================
 
 export const TIEMPOS_POR_SET = 2;
+
+// ============================================================
+// Los lados de la cancha
+// ============================================================
+//
+// La mesa ve a un equipo a su izquierda y al otro a su derecha, y la pantalla
+// tiene que dibujarlos igual: si no, se toca el botón del lado equivocado.
+// Reglas que trajo el dueño el 2026-09-13:
+//
+//   - Set 1: lo define el sorteo, lo dice la mesa.
+//   - Sets del medio: cambian de cancha al terminar cada set. La app lo propone
+//     al revés del anterior y la mesa lo puede corregir.
+//   - Set decisivo (el 3.º de 3, el 5.º de 5): sorteo otra vez, y a mitad de set
+//     cambian de cancha.
+
+export function otroLado(lado: Lado): Lado {
+  return lado === "home" ? "away" : "home";
+}
+
+/** El último set posible del partido: el que se sortea de nuevo. */
+export function esSetDecisivo(numero: number, bestOf: number): boolean {
+  return numero === bestOf;
+}
+
+/**
+ * Cuándo se avisa el cambio de cancha en el set decisivo. A los 8 es el set a
+ * 15; a los 13 es para los torneos que juegan el decisivo a 25. La app no sabe a
+ * cuánto se juega (lo cierra la mesa), así que pregunta a los 8 y, si le dicen
+ * que no cambian, vuelve a preguntar a los 13.
+ */
+export const PUNTOS_PARA_CAMBIO_DE_CANCHA = [8, 13];
+
+/**
+ * El lado que se propone para el set que sigue, o `null` si hay que preguntarlo
+ * (el primero y el decisivo, que se sortean). Sale al revés de como terminó el
+ * set anterior.
+ */
+export function izquierdaPropuesta(planilla: Planilla, bestOf: number): Lado | null {
+  const numero = planilla.setsCerrados.length + 1;
+  if (numero === 1 || esSetDecisivo(numero, bestOf)) return null;
+  const anterior = planilla.setsCerrados[planilla.setsCerrados.length - 1];
+  return anterior?.izquierdaAlCerrar ? otroLado(anterior.izquierdaAlCerrar) : null;
+}
+
+/**
+ * El puntaje del aviso de cambio de cancha que hay que mostrar ahora, o `null`.
+ *
+ * Solo en el set decisivo, y solo mientras no se hayan cambiado todavía: un
+ * cambio de cancha ya anotado —por el aviso o por el botón— lo apaga.
+ */
+export function avisoDeCambioDeCancha(
+  set: SetEnJuego,
+  estado: EstadoDelSet,
+  bestOf: number
+): number | null {
+  if (!esSetDecisivo(set.numero, bestOf)) return null;
+  if (set.eventos.some((e) => e.t === "cambio-de-cancha")) return null;
+  const maximo = Math.max(estado.puntos.home, estado.puntos.away);
+  const descartados = set.avisosDeCanchaDescartados ?? [];
+  return (
+    PUNTOS_PARA_CAMBIO_DE_CANCHA.find((p) => maximo >= p && !descartados.includes(p)) ??
+    null
+  );
+}
 
 /** Una planilla vacía, antes de anotar a nadie. */
 export function planillaNueva(matchId: string, jugadoresEnCancha: number): Planilla {

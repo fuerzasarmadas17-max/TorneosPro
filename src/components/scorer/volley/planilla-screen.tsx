@@ -3,8 +3,8 @@
 /**
  * La planilla en vivo de vóley: junta los pasos y guarda en el teléfono.
  *
- * El orden que ve la mesa es el del documento: primero quiénes juegan, después
- * la rotación de arranque de cada equipo, y de ahí en adelante el marcador.
+ * El orden que ve la mesa: la rotación de arranque de cada equipo —que es donde
+ * también se anotan los números—, quién saca, y de ahí en adelante el marcador.
  *
  * TODO LO QUE SE TOCA SE GUARDA EN EL TELÉFONO, en el momento. Si se recarga la
  * página, se apaga la pantalla o cambian de pestaña, la planilla sigue donde
@@ -19,7 +19,6 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { ChevronLeft, Loader2, CloudOff, TriangleAlert, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { RosterScreen } from "./roster-screen";
 import { LineupScreen } from "./lineup-screen";
 import { MarcadorScreen } from "./marcador-screen";
 import { CambioSheet } from "./cambio-sheet";
@@ -30,8 +29,11 @@ import {
   type Lado,
   type Planilla,
   alineacionVacia,
+  avisoDeCambioDeCancha,
+  esSetDecisivo,
   estadoDelSet,
   huecos,
+  izquierdaPropuesta,
   planillaNueva,
   setsGanados as contarSets,
 } from "@/lib/volley/planilla";
@@ -49,7 +51,6 @@ import {
 } from "@/lib/volley/planilla-storage";
 
 type Paso =
-  | "nomina"
   | "rotacion-home"
   | "rotacion-away"
   | "arranque"
@@ -96,11 +97,7 @@ export function PlanillaScreen({
   // hay renderizado previo con el que pueda no coincidir.
   const [inicial] = useState(() => {
     const planilla = leerPlanilla(token, matchId) ?? planillaNueva(matchId, jugadoresEnCancha);
-    const paso: Paso = planilla.setActual
-      ? "marcador"
-      : planilla.nomina.home.length > 0 && planilla.nomina.away.length > 0
-        ? "rotacion-home"
-        : "nomina";
+    const paso: Paso = planilla.setActual ? "marcador" : "rotacion-home";
     // Si el set ya había arrancado, las alineaciones que se ven son las del
     // arranque de ese set y no dos canchas vacías.
     const alineaciones: Record<Lado, Alineacion> = planilla.setActual
@@ -117,6 +114,7 @@ export function PlanillaScreen({
       paso: pendiente ? ("terminado" as Paso) : paso,
       alineaciones,
       saque: planilla.setActual?.saqueInicial ?? null,
+      izquierda: planilla.setActual?.izquierda ?? izquierdaPropuesta(planilla, bestOf),
       pendiente,
     };
   });
@@ -130,6 +128,8 @@ export function PlanillaScreen({
     inicial.alineaciones
   );
   const [saqueInicial, setSaqueInicial] = useState<Lado | null>(inicial.saque);
+  /** El equipo que arranca el set a la izquierda de la mesa. */
+  const [izquierda, setIzquierda] = useState<Lado | null>(inicial.izquierda);
   const [sinGuardado, setSinGuardado] = useState(false);
   /** Equipo cuyo cambio está abierto, o null. */
   const [cambioDe, setCambioDe] = useState<Lado | null>(null);
@@ -190,6 +190,7 @@ export function PlanillaScreen({
       numero: setActual.numero,
       homePoints: estado.puntos.home,
       awayPoints: estado.puntos.away,
+      izquierdaAlCerrar: estado.izquierda,
     };
     const siguiente: Planilla = {
       ...planilla,
@@ -212,6 +213,9 @@ export function PlanillaScreen({
       away: alineacionVacia(jugadoresEnCancha),
     });
     setSaqueInicial(null);
+    // Cambian de cancha: se propone al revés. En el decisivo no hay propuesta,
+    // porque se sortea de nuevo.
+    setIzquierda(izquierdaPropuesta(siguiente, bestOf));
     setPaso("rotacion-home");
   };
 
@@ -280,46 +284,22 @@ export function PlanillaScreen({
       toast.error("Elegí quién saca primero.");
       return;
     }
+    if (izquierda === null) {
+      toast.error("Elegí qué equipo queda a la izquierda de la mesa.");
+      return;
+    }
     actualizar({
       ...planilla,
       setActual: {
         numero: planilla.setsCerrados.length + 1,
         alineacion: alineaciones,
         saqueInicial,
+        izquierda,
         eventos: [],
       },
     });
     setPaso("marcador");
   };
-
-  // ------------------------------------------------------------------
-  // Paso 1 — quiénes juegan
-  // ------------------------------------------------------------------
-  if (paso === "nomina") {
-    return (
-      <>
-        <AvisoSinGuardado visible={sinGuardado} />
-        <RosterScreen
-          tituloArriba={tituloArriba}
-          homeTeamName={homeTeamName}
-          awayTeamName={awayTeamName}
-          jugadoresEnCancha={jugadoresEnCancha}
-          nomina={planilla.nomina}
-          onChange={(nomina: Record<Lado, Etiqueta[]>) => {
-            actualizar({ ...planilla, nomina });
-            // Un jugador borrado de la nómina no puede quedar parado en la
-            // cancha del paso siguiente.
-            setAlineaciones((prev) => ({
-              home: prev.home.map((e) => (e && nomina.home.includes(e) ? e : null)),
-              away: prev.away.map((e) => (e && nomina.away.includes(e) ? e : null)),
-            }));
-          }}
-          onBack={onBack}
-          onContinuar={() => setPaso("rotacion-home")}
-        />
-      </>
-    );
-  }
 
   // ------------------------------------------------------------------
   // Paso 2 — la rotación de arranque, un equipo por vez
@@ -329,16 +309,23 @@ export function PlanillaScreen({
     return (
       <>
         <AvisoSinGuardado visible={sinGuardado} />
+        {/* Una por equipo: sin la key, React reusa la de local para visitante
+            y el teclado arranca con la posición que había quedado abierta. */}
         <LineupScreen
+          key={lado}
           tituloArriba={tituloArriba}
           teamName={nombre[lado]}
           jugadoresEnCancha={jugadoresEnCancha}
+          paso={lado === "home" ? "Paso 1 de 2" : "Paso 2 de 2"}
           nomina={planilla.nomina[lado]}
+          onNominaChange={(n: Etiqueta[]) =>
+            actualizar({ ...planilla, nomina: { ...planilla.nomina, [lado]: n } })
+          }
           alineacion={alineaciones[lado]}
           onChange={(alineacion) =>
             setAlineaciones((prev) => ({ ...prev, [lado]: alineacion }))
           }
-          onBack={() => setPaso(lado === "home" ? "nomina" : "rotacion-home")}
+          onBack={lado === "home" ? onBack : () => setPaso("rotacion-home")}
           onContinuar={() =>
             setPaso(lado === "home" ? "rotacion-away" : "arranque")
           }
@@ -361,8 +348,10 @@ export function PlanillaScreen({
     const empatadosEn = cuenta.home;
     const puedeCortarEmpatado =
       permiteEmpate && planilla.setsCerrados.length > 0 && cuenta.home === cuenta.away;
+    const numeroDelSet = planilla.setsCerrados.length + 1;
+    const decisivo = esSetDecisivo(numeroDelSet, bestOf);
     return (
-      <div className="min-h-screen flex flex-col bg-background">
+      <div className="min-h-dvh flex flex-col bg-background">
         <AvisoSinGuardado visible={sinGuardado} />
         <header className="flex items-center justify-between gap-3 border-b px-4 py-3">
           <div className="min-w-0">
@@ -378,6 +367,11 @@ export function PlanillaScreen({
               Es lo último que falta. De acá en adelante la app lleva sola la
               rotación y el saque.
             </p>
+            {decisivo && (
+              <p className="mt-2 text-sm font-semibold text-primary">
+                Set decisivo: se sortea de nuevo.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-2">
@@ -399,6 +393,34 @@ export function PlanillaScreen({
                 </span>
               </button>
             ))}
+          </div>
+
+          {/* El otro dato del sorteo: de qué lado queda cada uno. En los sets
+              del medio ya viene marcado al revés del anterior. */}
+          <div className="space-y-2">
+            <h3 className="text-lg font-bold">¿Quién queda a la izquierda de la mesa?</h3>
+            {izquierda !== null && numeroDelSet > 1 && !decisivo && (
+              <p className="text-sm text-muted-foreground">
+                Cambiaron de cancha, ya está marcado al revés del set anterior.
+                Si no cambiaron, tocá el otro.
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              {(["home", "away"] as Lado[]).map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => setIzquierda(l)}
+                  className={`rounded-xl border-2 p-3 text-center transition-colors ${
+                    izquierda === l
+                      ? "border-primary bg-primary/10"
+                      : "border-border bg-card hover:bg-accent"
+                  }`}
+                >
+                  <span className="block truncate font-bold">{nombre[l]}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {incompletos.length > 0 && (
@@ -455,7 +477,7 @@ export function PlanillaScreen({
     const ganador: Lado = ganados.home > ganados.away ? "home" : "away";
     const perdedor: Lado = ganador === "home" ? "away" : "home";
     return (
-      <div className="flex min-h-screen flex-col bg-background">
+      <div className="flex min-h-dvh flex-col bg-background">
         <AvisoSinGuardado visible={sinGuardado} />
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
           <Trophy className="h-12 w-12 text-primary" />
@@ -504,11 +526,12 @@ export function PlanillaScreen({
   if (!setActual || !estado) {
     // No debería pasar: el paso "marcador" solo se alcanza con un set abierto.
     // Si pasa, se vuelve a la nómina en vez de dejar la pantalla en blanco.
-    setPaso("nomina");
+    setPaso("rotacion-home");
     return null;
   }
 
   const ganados = contarSets(planilla);
+  const avisoCancha = avisoDeCambioDeCancha(setActual, estado, bestOf);
   // Los avisos del parcial (un set que no llega a 25, o ganado por uno) se
   // muestran al cerrar. No bloquean: hay relámpagos que juegan los sets a 21 o
   // a 15, y bloquearlos dejaría al torneo sin poder cargarse.
@@ -541,6 +564,7 @@ export function PlanillaScreen({
         onCambio={(equipo) => setCambioDe(equipo)}
         onTiempo={(equipo) => agregarEvento({ t: "tiempo", equipo })}
         onCerrarSet={() => setCerrando(true)}
+        onCambiarDeLado={() => agregarEvento({ t: "cambio-de-cancha" })}
         onBack={onBack}
       />
 
@@ -564,6 +588,50 @@ export function PlanillaScreen({
         />
       )}
 
+      {/* El cambio de cancha del set decisivo. Pregunta y no cambia solo: si
+          los lados se dieran vuelta sin aviso, la mesa tocaría el botón del
+          equipo equivocado justo en ese punto. */}
+      {avisoCancha !== null && !cerrando && !cambioDe && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm space-y-4 rounded-2xl border bg-background p-5 text-center">
+            <div>
+              <h2 className="text-2xl font-bold">Cambio de cancha</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {nombre[estado.puntos.home >= estado.puntos.away ? "home" : "away"]}{" "}
+                llegó a {avisoCancha}. En el set decisivo los equipos cambian de
+                lado.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Button
+                className="h-14 w-full text-base"
+                onClick={() => agregarEvento({ t: "cambio-de-cancha" })}
+              >
+                Ya cambiaron
+              </Button>
+              <Button
+                variant="outline"
+                className="h-12 w-full"
+                onClick={() =>
+                  actualizar({
+                    ...planilla,
+                    setActual: {
+                      ...setActual,
+                      avisosDeCanchaDescartados: [
+                        ...(setActual.avisosDeCanchaDescartados ?? []),
+                        avisoCancha,
+                      ],
+                    },
+                  })
+                }
+              >
+                No cambian
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {cerrando && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-sm space-y-4 rounded-2xl border bg-background p-5">
@@ -573,8 +641,11 @@ export function PlanillaScreen({
                 Después de cerrarlo no se puede seguir anotando en este set.
               </p>
             </div>
+            {/* En el orden de los lados, igual que el marcador de atrás. */}
             <p className="text-center text-4xl font-bold tabular-nums">
-              {estado.puntos.home} – {estado.puntos.away}
+              {estado.izquierda === "home"
+                ? `${estado.puntos.home} – ${estado.puntos.away}`
+                : `${estado.puntos.away} – ${estado.puntos.home}`}
             </p>
             {estado.puntos.home === estado.puntos.away ? (
               <div className="flex gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm">
