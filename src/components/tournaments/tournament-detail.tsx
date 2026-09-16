@@ -1104,7 +1104,6 @@ export function TournamentDetail({
           partidos={envivoDemo !== "no" ? partidosDeMuestra(tournament) : enVivo.partidos}
           sponsors={allSponsors}
           getTeamById={getTeamById}
-          onActualizar={() => void enVivo.actualizar()}
         />
       )}
 

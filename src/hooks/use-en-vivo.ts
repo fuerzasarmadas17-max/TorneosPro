@@ -64,5 +64,5 @@ export function useEnVivo(tournamentId: string, activo: boolean) {
     };
   }, [activo, preguntar]);
 
-  return { partidos, actualizar: preguntar };
+  return { partidos };
 }

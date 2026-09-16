@@ -36,14 +36,12 @@ export function EnVivo({
   partidos,
   sponsors,
   getTeamById,
-  onActualizar,
   abiertoAlInicio = false,
 }: {
   tournament: Tournament;
   partidos: PartidoEnVivoDato[];
   sponsors: Sponsor[];
   getTeamById: (id: string) => Team | undefined;
-  onActualizar: () => void;
   /** Solo para las capturas del prototipo. */
   abiertoAlInicio?: boolean;
 }) {
@@ -92,7 +90,6 @@ export function EnVivo({
           partidos={visibles}
           sponsors={sponsors}
           getTeamById={getTeamById}
-          onActualizar={onActualizar}
         />
       )}
     </>

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -40,7 +39,6 @@ export default function HojaEnVivo({
   partidos,
   sponsors,
   getTeamById,
-  onActualizar,
 }: {
   abierto: boolean;
   onOpenChange: (abierto: boolean) => void;
@@ -49,7 +47,6 @@ export default function HojaEnVivo({
   partidos: PartidoEnVivoDato[];
   sponsors: Sponsor[];
   getTeamById: (id: string) => Team | undefined;
-  onActualizar: () => void;
 }) {
   // Re-dibuja cada 10 s para que "actualizado hace X" avance solo.
   const [, setTick] = useState(0);
@@ -173,16 +170,6 @@ export default function HojaEnVivo({
               </div>
             );
           })}
-        </div>
-
-        <div className="border-t p-3">
-          <button
-            type="button"
-            onClick={onActualizar}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold text-primary"
-          >
-            <RefreshCw className="h-4 w-4" /> Actualizar
-          </button>
         </div>
       </SheetContent>
     </Sheet>

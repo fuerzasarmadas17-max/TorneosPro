@@ -74,7 +74,10 @@ ahora.
    - **Abajo, con scroll**, una tarjeta por partido: hora y cancha, los dos
      equipos con escudo, los sets ganados grandes, el set que se juega
      ("Set 2, jugándose 14 – 11") y "Actualizado hace 1 minuto".
-   - **Al final**, "Actualizar".
+   - ~~**Al final**, "Actualizar".~~ **Se quitó el 2026-09-16** a pedido del
+     dueño: la hoja ya se actualiza sola cada 30 segundos, y como todos leen la
+     misma copia compartida, tocarlo traía el mismo marcador y parecía no hacer
+     nada.
 En celular la hoja sube desde abajo y ocupa casi toda la pantalla; en
 escritorio queda centrada, angosta, sobre la página oscurecida.
 
@@ -185,6 +188,18 @@ abajo.
    el papelito sean ~2 por minuto por torneo y no crezcan con la gente que mira.
    Si crecen, la copia no está haciendo su trabajo y ese es el problema, no los
    30 segundos.
+
+**El atraso que ve el público (medido en local por el dueño, 2026-09-16).** Se
+nota que tarda más de 30 segundos, y es esperable: se suman la espera de la
+planilla (hasta 30 s), la de la página que pregunta (hasta 30 s) y, en
+producción, la copia compartida (hasta 30 s). **Hasta ~90 s en producción,
+~45 s en promedio.** Al cerrar un set la planilla manda en el momento, así que
+ahí solo cuentan las dos últimas. **Decisión: se deja así y se revisa con esta
+misma medición.** Si hace falta bajarlo, la opción preferida es poner en 15 s
+solo lo del público (`REFRESCO_EN_VIVO_MS` y el `s-maxage` de la puerta):
+queda en ~60 s como máximo, la base se consulta 4 veces por minuto por torneo
+en vez de 2 —sigue sin crecer con la gente—, y lo que sí se duplica son las
+respuestas de la copia compartida por persona mirando.
 
 **Qué hacer según lo que salga:**
 
