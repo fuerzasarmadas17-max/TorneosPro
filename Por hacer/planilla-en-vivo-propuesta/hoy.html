@@ -1,0 +1,170 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Vista de Hoy — marcador en vivo</title>
+<style>
+/* Lo que ve el PÚBLICO al abrir el link del torneo mientras se juega.
+   Colores = tema oscuro de Torneos Pro. Celular 430 x 932. */
+:root{
+  --navy:#101A2E; --navy-2:#1C2740; --navy-3:#16203A;
+  --gold:#DFAE5C; --line:#2E3A55; --muted:#A9B2C4;
+  --ok:#4ADE80; --vivo:#FF5A5A;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:430px;height:932px;overflow:hidden;background:var(--navy);color:#fff;
+  font-family:-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.tel{width:430px;height:932px;display:flex;flex-direction:column}
+
+/* barra del torneo */
+.barra{display:flex;align-items:center;gap:11px;padding:14px 18px 12px;
+  border-bottom:1px solid var(--line)}
+.escudo{width:38px;height:38px;border-radius:10px;background:var(--gold);flex:none;
+  display:flex;align-items:center;justify-content:center;font-size:18px;color:#101A2E}
+.barra .t b{font-size:16px;display:block}
+.barra .t span{font-size:12px;color:var(--muted)}
+
+.cuerpo{flex:1;overflow:hidden;padding:16px 16px 0;display:flex;flex-direction:column;gap:11px}
+
+/* encabezado del bloque de HOY */
+.hoy{display:flex;align-items:center;justify-content:space-between}
+.hoy .tit{display:flex;align-items:center;gap:9px}
+.hoy .tit b{font-size:19px;font-weight:700}
+.vivo-pin{width:9px;height:9px;border-radius:999px;background:var(--vivo);
+  box-shadow:0 0 0 4px rgba(255,90,90,.18)}
+.hoy .cuantos{font-size:11px;color:var(--muted)}
+
+/* una tarjeta de partido */
+.p{border-radius:14px;background:var(--navy-2);border:1px solid var(--line);
+  padding:12px 13px;display:flex;flex-direction:column;gap:8px}
+.p .arriba{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.p .cuando{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.p .cuando b{color:#fff;font-weight:600;font-size:12px}
+.eq{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.eq .n{font-size:15px;font-weight:600;flex:1;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.eq .n.pierde{color:var(--muted);font-weight:500}
+.eq .m{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums;flex:none}
+.eq .m.pierde{color:var(--muted);font-weight:600}
+
+.tag{font-size:10px;letter-spacing:.06em;padding:4px 8px;border-radius:999px;
+  white-space:nowrap;display:flex;align-items:center;gap:5px;font-weight:700}
+.tag.fin{color:var(--ok);background:rgba(74,222,128,.10);border:1px solid rgba(74,222,128,.32)}
+.tag.viv{color:#fff;background:var(--vivo);border:1px solid var(--vivo)}
+.tag.prox{color:var(--muted);background:transparent;border:1px solid var(--line);font-weight:600}
+.tag .pin{width:6px;height:6px;border-radius:999px;background:#fff}
+
+/* el partido que se está jugando */
+.p.vivo{border-color:var(--vivo);background:linear-gradient(180deg,rgba(255,90,90,.07),rgba(255,90,90,0) 60%),var(--navy-2)}
+.set{display:flex;align-items:center;justify-content:space-between;
+  background:var(--navy-3);border:1px solid var(--line);border-radius:10px;padding:8px 11px}
+.set .e{font-size:10px;letter-spacing:.10em;color:var(--muted);text-transform:uppercase}
+.set .v{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.pie-vivo{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pie-vivo .cuando2{font-size:10.5px;color:var(--muted)}
+.actualizar{font-size:11px;font-weight:600;color:var(--gold);border:1px solid var(--line);
+  background:var(--navy-3);border-radius:999px;padding:6px 12px;white-space:nowrap}
+
+/* patrocinador: acá es donde rota cada 7 minutos si hay más de uno */
+.spon{border-radius:12px;border:1px dashed var(--line);background:var(--navy-3);
+  padding:11px 13px;display:flex;align-items:center;gap:11px}
+.spon .logo{width:40px;height:40px;border-radius:9px;background:var(--navy-2);
+  border:1px solid var(--line);flex:none;display:flex;align-items:center;justify-content:center;
+  font-size:10px;color:var(--muted)}
+.spon .txt{font-size:11.5px;color:var(--muted);line-height:1.45}
+.spon .txt b{color:#fff;display:block;font-size:13px;margin-bottom:2px;font-weight:600}
+
+/* las pestañas de siempre, abajo de todo lo de hoy */
+.divisor{display:flex;align-items:center;gap:10px;margin-top:2px}
+.divisor .l{flex:1;height:1px;background:var(--line)}
+.divisor span{font-size:10px;letter-spacing:.10em;color:var(--muted);text-transform:uppercase}
+.tabs{display:flex;gap:7px}
+.tb{flex:1;text-align:center;padding:9px 4px;border-radius:10px;border:1px solid var(--line);
+  background:var(--navy-2);font-size:11.5px;color:var(--muted)}
+.tb.on{border-color:var(--gold);color:#fff;font-weight:600}
+</style>
+
+<div class="tel">
+  <div class="barra">
+    <div class="escudo">🏐</div>
+    <div class="t">
+      <b>Copa Santo Coffee</b>
+      <span>Vóley · Categoría Libre</span>
+    </div>
+  </div>
+
+  <div class="cuerpo">
+
+    <div class="hoy">
+      <div class="tit">
+        <span class="vivo-pin"></span>
+        <b>Hoy, sábado 20</b>
+      </div>
+      <span class="cuantos">4 partidos</span>
+    </div>
+
+    <!-- YA SE JUGÓ -->
+    <div class="p">
+      <div class="arriba">
+        <span class="cuando">12:00 · <b>Cancha 1</b></span>
+        <span class="tag fin">✓ TERMINÓ</span>
+      </div>
+      <div class="eq"><span class="n">Titanes</span><span class="m">3</span></div>
+      <div class="eq"><span class="n pierde">Delfines</span><span class="m pierde">1</span></div>
+    </div>
+
+    <!-- SE ESTÁ JUGANDO -->
+    <div class="p vivo">
+      <div class="arriba">
+        <span class="cuando">14:00 · <b>Cancha 2</b></span>
+        <span class="tag viv"><span class="pin"></span> EN VIVO</span>
+      </div>
+      <div class="eq"><span class="n">Aura Voleibol</span><span class="m">1</span></div>
+      <div class="eq"><span class="n pierde">Caribe FC</span><span class="m pierde">0</span></div>
+      <div class="set">
+        <span class="e">Set 2, jugándose</span>
+        <span class="v">14 – 11</span>
+      </div>
+      <div class="pie-vivo">
+        <span class="cuando2">Actualizado hace 40 segundos</span>
+        <span class="actualizar">↻ Actualizar</span>
+      </div>
+    </div>
+
+    <!-- patrocinador -->
+    <div class="spon">
+      <div class="logo">LOGO</div>
+      <div class="txt">
+        <b>Santo Coffee</b>
+        Acá va el anunciante. Si hay más de uno, rota cada 7 minutos.
+      </div>
+    </div>
+
+    <!-- FALTAN -->
+    <div class="p">
+      <div class="arriba">
+        <span class="cuando">16:00 · <b>Cancha 2</b></span>
+        <span class="tag prox">FALTA</span>
+      </div>
+      <div class="eq"><span class="n">Halcones</span><span class="m pierde">–</span></div>
+      <div class="eq"><span class="n">Cóndores</span><span class="m pierde">–</span></div>
+    </div>
+
+    <div class="p">
+      <div class="arriba">
+        <span class="cuando">17:30 · <b>Cancha 1</b></span>
+        <span class="tag prox">FALTA</span>
+      </div>
+      <div class="eq"><span class="n">Real Norte</span><span class="m pierde">–</span></div>
+      <div class="eq"><span class="n">Juventud</span><span class="m pierde">–</span></div>
+    </div>
+
+    <div class="divisor"><div class="l"></div><span>Todo el torneo</span><div class="l"></div></div>
+    <div class="tabs">
+      <div class="tb on">Partidos</div>
+      <div class="tb">Tabla</div>
+      <div class="tb">Equipos</div>
+      <div class="tb">Goleadores</div>
+    </div>
+
+  </div>
+</div>
