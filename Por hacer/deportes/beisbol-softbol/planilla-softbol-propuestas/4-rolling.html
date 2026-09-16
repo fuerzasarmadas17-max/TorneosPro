@@ -1,0 +1,58 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<link rel="stylesheet" href="comun.css">
+<style>
+iframe{position:absolute;inset:0;width:430px;height:932px;border:0}
+.prev{display:flex;align-items:center;gap:12px;background:var(--navy-3);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.prev .big{font-size:28px;font-weight:800;color:#FCA5A5;min-width:62px;text-align:center}
+.prev .txt{font-size:12px;color:var(--muted);line-height:1.5}
+.prev .txt b{color:#fff}
+.dp{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#fff;padding:0 2px}
+.dp span{color:var(--muted);font-size:11px;display:block}
+.sw{width:42px;height:24px;border-radius:999px;background:var(--navy-3);border:1px solid var(--line);position:relative}
+.sw::after{content:"";position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:999px;background:var(--muted)}
+</style></head><body>
+<div class="tel">
+  <iframe src="2-juego.html"></iframe>
+  <div class="velo"></div>
+  <div class="hoja">
+    <div class="cab">
+      <div class="tt">Rolling de Andrés Pérez<span>Toca en orden: quién la fildeó y a quién le tiró</span></div>
+      <div class="x">✕</div>
+    </div>
+
+    <div class="campo">
+      <svg viewBox="0 0 398 300">
+        <path d="M199 292 L2 95 A280 280 0 0 1 396 95 Z" fill="rgba(31,58,44,.35)"/>
+        <path d="M199 280 L268 211 L199 142 L130 211 Z" fill="rgba(120,90,60,.25)" stroke="#2E3A55" stroke-width="2"/>
+        <!-- el tiro del 6 al 3 -->
+        <path d="M166 158 Q220 150 274 200" fill="none" stroke="#DFAE5C" stroke-width="2.5" stroke-dasharray="6 5"/>
+        <path d="M274 200 l-11 -2 l6 -9 z" fill="#DFAE5C"/>
+      </svg>
+      <div class="f" style="left:62px;top:86px"><span class="nn">7</span><span class="ss">Barrios</span></div>
+      <div class="f" style="left:158px;top:44px"><span class="nn">8</span><span class="ss">Montes</span></div>
+      <div class="f" style="left:246px;top:58px"><span class="nn">10</span><span class="ss">Lara</span></div>
+      <div class="f" style="left:336px;top:86px"><span class="nn">9</span><span class="ss">Suárez</span></div>
+      <div class="f on" style="left:146px;top:150px"><span class="nn">6</span><span class="ss">Ortega</span><span class="orden">1</span></div>
+      <div class="f" style="left:252px;top:150px"><span class="nn">4</span><span class="ss">Pineda</span></div>
+      <div class="f" style="left:104px;top:208px"><span class="nn">5</span><span class="ss">Rivas</span></div>
+      <div class="f on" style="left:294px;top:208px"><span class="nn">3</span><span class="ss">Guerra</span><span class="orden">2</span></div>
+      <div class="f" style="left:199px;top:214px"><span class="nn">1</span><span class="ss">Medina</span></div>
+      <div class="f" style="left:199px;top:270px"><span class="nn">2</span><span class="ss">Cantillo</span></div>
+    </div>
+
+    <div class="prev">
+      <div class="big">6-3</div>
+      <div class="txt">Asistencia para <b>Ortega</b> (short) · out para <b>Guerra</b> (1.ª)<br>Si lo sacó uno solo, toca solo a ese.</div>
+    </div>
+
+    <div class="dp">
+      <div>Fue doble play<span>Después eliges cuál corredor fue el otro out</span></div>
+      <div class="sw"></div>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <div class="btn tenue">Borrar</div>
+      <div class="btn oro">Anotar out 6-3</div>
+    </div>
+  </div>
+</div></body></html>

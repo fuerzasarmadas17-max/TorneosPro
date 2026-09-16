@@ -1,0 +1,73 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<link rel="stylesheet" href="comun.css">
+<style>
+/* Antes de empezar, paso 2: los seis que arrancan y en qué posición.
+   Las posiciones van dibujadas como se ven parado detrás de la línea de
+   fondo: arriba la red (4, 3, 2) y abajo el fondo (5, 6, 1). Es el orden que
+   la mesa tiene enfrente, no una lista del 1 al 6. */
+/* La cancha se lleva el alto libre: son seis casillas que hay que acertar de
+   pie y a un metro del teléfono, no una lista para leer. */
+.zona{display:flex;flex-direction:column}
+.cancha{grid-auto-rows:104px}
+.pos .v{font-size:30px}
+/* El aire sobrante queda acá, en la lista que va creciendo mientras se ubica
+   a la gente, y no como un hueco en el medio de la pantalla. */
+.dispo{flex:1;min-height:0}
+.red{font-size:9px;letter-spacing:.10em;color:var(--muted);text-align:center;
+  padding:5px 0;border-bottom:1px dashed var(--line);margin-bottom:8px}
+.dispo .fichas{margin-top:7px}
+.dispo .ficha{font-size:22px;padding:11px 14px}
+</style></head><body>
+<div class="tel">
+
+  <div class="barra">
+    <div class="t">Copa Santo Coffee · Cancha 2<b>Rotación de Aura Voley</b></div>
+    <div class="chip" style="color:var(--muted);background:transparent;border-color:var(--line)">Paso 2 de 2</div>
+  </div>
+
+  <div class="pant">
+
+    <div>
+      <div class="h1">¿Quiénes arrancan y dónde?</div>
+      <div class="sub">Tocá una posición y elegí el jugador. La <b style="color:#fff">1</b>
+        es la que saca primero.</div>
+    </div>
+
+    <div class="zona">
+      <div class="red">RED</div>
+      <div class="cancha">
+        <div class="pos"><span class="lbl">POS 4</span><span class="v vacio">—</span></div>
+        <div class="pos activa"><span class="lbl">POS 3</span><span class="v vacio">—</span></div>
+        <div class="pos"><span class="lbl">POS 2</span><span class="v">9</span></div>
+        <div class="pos"><span class="lbl">POS 5</span><span class="v vacio">—</span></div>
+        <div class="pos"><span class="lbl">POS 6</span><span class="v vacio">—</span></div>
+        <div class="pos saca"><span class="lbl">POS 1 · SACA</span><span class="v">7</span></div>
+      </div>
+    </div>
+
+    <div class="dispo">
+      <span class="etq">Sin ubicar · tocá uno para la POS 3</span>
+      <div class="fichas">
+        <div class="ficha">4</div>
+        <div class="ficha">11</div>
+        <div class="ficha">2</div>
+        <div class="ficha">5</div>
+        <div class="ficha">8</div>
+        <div class="ficha">A</div>
+      </div>
+    </div>
+
+    <div class="nota">
+      Los que queden sin ubicar van al <b>banco</b> y entran por cambio.
+      Después de esto no hay que tocar la rotación en todo el set:
+      <b>la app rota sola</b> cuando el equipo que recibe gana el punto.
+    </div>
+
+  </div>
+
+  <div class="pie">
+    <div class="btn tenue">Atrás</div>
+    <div class="btn oro">Empezar el set</div>
+  </div>
+
+</div></body></html>

@@ -1,0 +1,79 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<link rel="stylesheet" href="comun.css">
+<style>
+.pant{flex:1;display:flex;flex-direction:column;gap:11px;padding:14px 16px 0;min-height:0}
+.anterior{display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border-radius:12px;
+  border:1px solid var(--gold);color:var(--gold);font-size:14px;font-weight:600}
+.opc{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#fff}
+.opc span{color:var(--muted);font-size:11px;display:block;margin-top:1px}
+.sw{width:42px;height:24px;border-radius:999px;background:var(--gold);position:relative;flex:none}
+.sw::after{content:"";position:absolute;right:3px;top:3px;width:18px;height:18px;border-radius:999px;background:#101A2E}
+.lista{border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.fila{display:flex;align-items:center;gap:10px;padding:0 12px;height:38px;background:var(--navy-2)}
+.fila+.fila{border-top:1px solid var(--line)}
+.fila .o{width:18px;font-size:13px;font-weight:700;color:var(--muted);text-align:right}
+.fila .nom{flex:1;font-size:14px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fila .nom i{font-style:normal;color:var(--muted);font-size:12px;margin-left:4px}
+.fila .mover{color:var(--line);font-size:16px}
+.fila.ojo{background:rgba(223,174,92,.08)}
+.banco{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.bj{font-size:12px;color:#fff;background:var(--navy-3);border:1px solid var(--line);border-radius:8px;padding:6px 9px}
+.bj i{font-style:normal;color:var(--muted)}
+.nuevo{font-size:12px;color:var(--muted);text-decoration:underline;text-underline-offset:3px;padding:6px 4px}
+</style></head><body>
+<div class="tel">
+
+  <div class="barra">
+    <div class="t">Liga Bola Lenta · Campo 1<b>Tigres vs Caimanes</b></div>
+    <div class="chip gris">Paso 1 de 2</div>
+  </div>
+
+  <div class="pant">
+    <div>
+      <div class="h1">Lineup de Tigres</div>
+      <div class="sub">Orden al bate y posición de cada uno. Los de la nómina que no pongas quedan en el banco.</div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab on">Tigres<b>11 al bate</b></div>
+      <div class="tab">Caimanes<b>sin armar</b></div>
+    </div>
+
+    <div class="anterior">↺ Usar el lineup del partido anterior</div>
+
+    <div class="opc">
+      <div>Juegan 10 en el campo<span>Con short fielder (SF)</span></div>
+      <div class="sw"></div>
+    </div>
+
+    <div class="lista">
+      <div class="fila"><span class="o">1</span><span class="nom">Mario Díaz <i>#7</i></span><span class="posi">CF</span><span class="mover">≡</span></div>
+      <div class="fila"><span class="o">2</span><span class="nom">Julián Ruiz <i>#22</i></span><span class="posi">SS</span><span class="mover">≡</span></div>
+      <div class="fila"><span class="o">3</span><span class="nom">Andrés Pérez <i>#14</i></span><span class="posi">2B</span><span class="mover">≡</span></div>
+      <div class="fila"><span class="o">4</span><span class="nom">Carlos Rojas <i>#33</i></span><span class="posi">1B</span><span class="mover">≡</span></div>
+      <div class="fila"><span class="o">5</span><span class="nom">Luis Gómez <i>#9</i></span><span class="posi">3B</span><span class="mover">≡</span></div>
+      <div class="fila"><span class="o">6</span><span class="nom">Ramiro Vega <i>#5</i></span><span class="posi">LF</span><span class="mover">≡</span></div>
+      <div class="fila"><span class="o">7</span><span class="nom">Óscar Mercado <i>#18</i></span><span class="posi">RF</span><span class="mover">≡</span></div>
+      <div class="fila"><span class="o">8</span><span class="nom">Fabián Salas <i>#2</i></span><span class="posi">SF</span><span class="mover">≡</span></div>
+      <div class="fila"><span class="o">9</span><span class="nom">Diego Castro <i>#11</i></span><span class="posi">C</span><span class="mover">≡</span></div>
+      <div class="fila"><span class="o">10</span><span class="nom">Hernán Polo <i>#21</i></span><span class="posi">P</span><span class="mover">≡</span></div>
+      <div class="fila"><span class="o">11</span><span class="nom">Edwin Arrieta <i>#30</i></span><span class="posi eh">EH</span><span class="mover">≡</span></div>
+    </div>
+
+    <div>
+      <div class="etq" style="margin-bottom:7px">Banco · 3</div>
+      <div class="banco">
+        <span class="bj">Jorge Vega <i>#4</i></span>
+        <span class="bj">Kevin Ortiz <i>#16</i></span>
+        <span class="bj">Wilmer Paz <i>—</i></span>
+        <span class="nuevo">+ Jugador nuevo</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="pie">
+    <div class="btn tenue">Atrás</div>
+    <div class="btn oro">Seguir con Caimanes →</div>
+  </div>
+
+</div></body></html>

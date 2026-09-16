@@ -1,0 +1,85 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<link rel="stylesheet" href="comun.css">
+<style>
+/* Antes de empezar, paso 1, acostado.
+   Acostado hay ancho de sobra y poco alto, así que se parte en dos columnas:
+   a la izquierda lo que se toca (el teclado), a la derecha lo que se lee (lo
+   ya anotado). El teclado queda de un solo lado y no en el medio, para que la
+   mano que escribe no tape la lista. */
+body,.tel{width:932px;height:430px}
+.pant{flex-direction:row;gap:16px;padding:12px 14px}
+.izq{width:330px;flex:none;display:flex;flex-direction:column;gap:9px}
+.der{flex:1;min-width:0;display:flex;flex-direction:column;gap:9px}
+.h1{font-size:17px}
+.sub{font-size:12px;margin-top:4px}
+.teclado{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.teclado .k{border-radius:11px;background:var(--navy-2);border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:#fff}
+.teclado .k.chica{font-size:13px;color:var(--muted);font-weight:600}
+.fichas{flex:1;min-height:0;overflow:hidden}
+.cuenta{display:flex;justify-content:space-between;align-items:center}
+.cuenta .n{font-size:12px;color:var(--muted)}
+.cuenta .n b{color:#fff}
+.campo .in{padding:10px 12px;font-size:18px}
+.campo .add{padding:10px 16px;font-size:13px}
+</style></head><body>
+<div class="tel">
+
+  <div class="barra">
+    <div class="t">Copa Santo Coffee · Cancha 2<b>Aura Voley vs Caribe Voley</b></div>
+    <div class="chip" style="color:var(--muted);background:transparent;border-color:var(--line)">Paso 1 de 2</div>
+  </div>
+
+  <div class="pant">
+
+    <div class="izq">
+      <div>
+        <div class="h1">¿Quiénes juegan?</div>
+        <div class="sub">El número de cada jugador que puede entrar hoy. Si
+          alguno no tiene, poné una letra con ABC.</div>
+      </div>
+      <div class="campo">
+        <div class="in">15<span class="cur"></span></div>
+        <div class="add">Agregar</div>
+      </div>
+      <div class="teclado">
+        <div class="k">1</div><div class="k">2</div><div class="k">3</div>
+        <div class="k">4</div><div class="k">5</div><div class="k">6</div>
+        <div class="k">7</div><div class="k">8</div><div class="k">9</div>
+        <div class="k chica">ABC</div><div class="k">0</div><div class="k chica">⌫</div>
+      </div>
+    </div>
+
+    <div class="der">
+      <div class="tabs">
+        <div class="tab on">Aura Voley<b>8 anotados</b></div>
+        <div class="tab">Caribe Voley<b>sin anotar</b></div>
+      </div>
+      <div class="cuenta">
+        <span class="n"><b>8</b> anotados · mínimo 6</span>
+        <span class="etq">Tocá uno para quitarlo</span>
+      </div>
+      <div class="fichas">
+        <div class="ficha">4 <span class="x">✕</span></div>
+        <div class="ficha">11 <span class="x">✕</span></div>
+        <div class="ficha">2 <span class="x">✕</span></div>
+        <div class="ficha">5 <span class="x">✕</span></div>
+        <div class="ficha">9 <span class="x">✕</span></div>
+        <div class="ficha">7 <span class="x">✕</span></div>
+        <div class="ficha">8 <span class="x">✕</span></div>
+        <div class="ficha">A <span class="x">✕</span></div>
+      </div>
+      <div class="nota">
+        Estos son todos los que pueden jugar, no la rotación. <b>Los seis que
+        arrancan se eligen en el paso siguiente.</b>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="pie">
+    <div class="btn tenue">Atrás</div>
+    <div class="btn oro">Seguir con Caribe →</div>
+  </div>
+
+</div></body></html>

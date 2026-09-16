@@ -1,0 +1,129 @@
+/* Estilo compartido de las tres propuestas. Pantalla de celular 430 x 932.
+   Colores = tema oscuro de Torneos Pro (los mismos de imagenes/promo/estilo.css) */
+:root{
+  --navy:#101A2E;      /* fondo */
+  --navy-2:#1C2740;    /* tarjetas */
+  --navy-3:#16203A;    /* tarjetas hundidas */
+  --gold:#DFAE5C;      /* primario */
+  --line:#2E3A55;
+  --muted:#A9B2C4;
+  --ok:#4ADE80;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  width:430px;height:932px;overflow:hidden;
+  background:var(--navy);color:#fff;
+  font-family:-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.tel{width:430px;height:932px;display:flex;flex-direction:column}
+
+/* barra superior */
+.barra{display:flex;align-items:center;justify-content:space-between;
+  padding:14px 18px 10px;border-bottom:1px solid var(--line)}
+.barra .t{font-size:13px;color:var(--muted)}
+.barra .t b{color:#fff;display:block;font-size:15px;margin-top:2px}
+.chip{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ok);
+  background:rgba(74,222,128,.10);border:1px solid rgba(74,222,128,.35);
+  padding:5px 9px;border-radius:999px;white-space:nowrap}
+.punto-ok{width:6px;height:6px;border-radius:999px;background:var(--ok)}
+
+.pie{padding:12px 16px 20px;border-top:1px solid var(--line);display:flex;gap:10px}
+.btn{flex:1;text-align:center;padding:13px 8px;border-radius:12px;
+  border:1px solid var(--line);background:var(--navy-2);font-size:14px;font-weight:600;color:#fff}
+.btn.oro{background:var(--gold);color:#101A2E;border-color:var(--gold)}
+.btn.tenue{color:var(--muted)}
+
+/* números de rotación */
+.num{display:flex;align-items:center;justify-content:center;
+  border-radius:10px;background:var(--navy-3);border:1px solid var(--line);
+  font-size:19px;font-weight:700;color:#fff}
+.num.saca{background:var(--gold);color:#101A2E;border-color:var(--gold)}
+.etq{font-size:10px;letter-spacing:.10em;color:var(--muted);text-transform:uppercase}
+
+/* Acciones del equipo: cambio y tiempo.
+   Van del lado de SU equipo, nunca en el centro, porque las dos son de un
+   equipo y no del partido: el botón que ya sabe de quién se trata ahorra el
+   paso de preguntar "¿de cuál?". Se dibujan como botón y no como etiqueta —
+   antes eran una etiqueta gris que no parecía tocable. */
+.acc{display:flex;gap:6px}
+.mini{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+  border-radius:9px;border:1px solid var(--line);background:var(--navy-3);
+  font-size:12px;font-weight:600;color:#fff;padding:8px 6px;white-space:nowrap}
+/* Los dos tiempos del set, a la vista: dorado el que queda, hueco el gastado.
+   Así la mesa sabe cuántos le quedan sin abrir nada. */
+.to{display:flex;gap:4px}
+.to i{width:7px;height:7px;border-radius:999px;background:var(--gold);display:block}
+.to i.usado{background:transparent;border:1px solid var(--line)}
+/* Sin tiempos disponibles: el botón se apaga en vez de desaparecer, para que
+   se vea que existía y ya se usó. */
+.mini.agotado{color:var(--muted);background:transparent}
+
+/* --- Pantalla de cambio (sustitución) --------------------------------- */
+.tel{position:relative}
+.velo{position:absolute;inset:0;background:rgba(6,11,22,.72)}
+.hoja{position:absolute;background:var(--navy-2);border:1px solid var(--line);
+  display:flex;flex-direction:column;gap:12px}
+.hoja .cab{display:flex;align-items:center;justify-content:space-between}
+.hoja .cab .tt{font-size:16px;font-weight:700;color:#fff}
+.hoja .cab .tt span{color:var(--muted);font-weight:400}
+.hoja .cab .x{font-size:18px;color:var(--muted)}
+.paso .etq{display:block;margin-bottom:6px}
+.paso .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+
+/* Un jugador. El número puede ser una LETRA: hay planillas donde algún
+   jugador no tiene número y se lo identifica con una letra. Por eso la
+   casilla es cuadrada y el texto va centrado, no un ancho pensado para
+   dos dígitos. */
+.j{border-radius:10px;background:var(--navy-3);border:1px solid var(--line);
+  padding:7px 4px;text-align:center}
+.j .n{font-size:20px;font-weight:700;color:#fff;line-height:1.1}
+.j .e{font-size:9px;color:var(--muted);letter-spacing:.03em;margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.j.elegido{background:var(--gold);border-color:var(--gold)}
+.j.elegido .n{color:#101A2E}
+.j.elegido .e{color:rgba(16,26,46,.7)}
+/* Atado a otro jugador: no se puede usar en este cambio. Se muestra apagado
+   y con el motivo, en vez de esconderlo — si desaparece, la mesa lo busca. */
+.j.atado{opacity:.42}
+.j.atado .n{color:var(--muted)}
+
+.nota{font-size:11px;line-height:1.45;color:var(--muted);
+  background:var(--navy-3);border:1px solid var(--line);
+  border-radius:10px;padding:9px 10px}
+.nota b{color:#fff;font-weight:600}
+
+/* --- Pantallas de antes del partido (quiénes juegan, rotación) --------- */
+.pant{flex:1;display:flex;flex-direction:column;gap:14px;padding:16px;min-height:0}
+.h1{font-size:20px;font-weight:700;color:#fff;line-height:1.25}
+.sub{font-size:13px;color:var(--muted);line-height:1.5;margin-top:6px}
+
+.tabs{display:flex;gap:8px}
+.tab{flex:1;text-align:center;padding:9px 8px;border-radius:12px;border:1px solid var(--line);
+  background:var(--navy-2);font-size:13px;color:var(--muted);line-height:1.3}
+.tab b{display:block;font-size:11px;font-weight:400;margin-top:2px}
+.tab.on{border-color:var(--gold);color:#fff;font-weight:600}
+.tab.on b{color:var(--gold)}
+
+.campo{display:flex;gap:8px}
+.campo .in{flex:1;border-radius:12px;border:1px solid var(--gold);background:var(--navy-3);
+  padding:12px 14px;font-size:20px;font-weight:700;color:#fff;display:flex;align-items:center;gap:2px}
+.campo .in .cur{width:2px;height:22px;background:var(--gold);display:inline-block}
+.campo .add{flex:none;padding:12px 18px;border-radius:12px;background:var(--gold);
+  color:#101A2E;font-size:14px;font-weight:700;display:flex;align-items:center}
+
+/* Las etiquetas ya anotadas. Pueden ser número o letra. */
+.fichas{display:flex;flex-wrap:wrap;gap:8px;align-content:flex-start}
+.ficha{display:flex;align-items:center;gap:9px;border-radius:10px;background:var(--navy-3);
+  border:1px solid var(--line);padding:8px 10px;font-size:18px;font-weight:700;color:#fff}
+.ficha .x{font-size:13px;color:var(--muted);font-weight:400}
+
+/* Las seis posiciones de la rotación de arranque. */
+.cancha{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pos{border-radius:12px;background:var(--navy-3);border:1px solid var(--line);
+  padding:9px 6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.pos .lbl{font-size:9px;letter-spacing:.10em;color:var(--muted)}
+.pos .v{font-size:24px;font-weight:800;color:#fff;line-height:1}
+.pos .v.vacio{color:#2E3A55}
+.pos.activa{border-color:var(--gold);box-shadow:inset 0 0 0 1px rgba(223,174,92,.35)}
+.pos.saca .lbl{color:var(--gold)}

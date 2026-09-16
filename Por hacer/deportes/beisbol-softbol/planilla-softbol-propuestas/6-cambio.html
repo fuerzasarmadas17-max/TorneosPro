@@ -1,0 +1,57 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<link rel="stylesheet" href="comun.css">
+<style>
+iframe{position:absolute;inset:0;width:430px;height:932px;border:0}
+.sale{display:flex;align-items:center;gap:10px;background:var(--navy-3);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.sale .l{font-size:10px;letter-spacing:.1em;color:#FCA5A5;text-transform:uppercase}
+.sale .n{font-size:15px;font-weight:700;color:#fff;margin-top:2px}
+.sale .n i{font-style:normal;color:var(--muted);font-weight:400;font-size:12px}
+.tipo{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.tipo div{text-align:center;font-size:12px;font-weight:600;padding:9px 4px;border-radius:10px;border:1px solid var(--line);color:var(--muted);line-height:1.25}
+.tipo div.on{border-color:var(--gold);color:#fff;background:rgba(223,174,92,.10)}
+.lista{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.b{display:flex;align-items:center;gap:10px;padding:11px 12px;background:var(--navy-3)}
+.b+.b{border-top:1px solid var(--line)}
+.b .nom{flex:1;font-size:14px;color:#fff}
+.b .nom i{font-style:normal;color:var(--muted);font-size:12px;margin-left:4px}
+.b .det{font-size:11px;color:var(--muted)}
+.b .radio{width:20px;height:20px;border-radius:999px;border:1.5px solid var(--line)}
+.b.on{background:rgba(223,174,92,.12)}
+.b.on .radio{border:6px solid var(--gold)}
+.nuevo{text-align:center;font-size:12px;color:var(--muted);padding:2px 0 0}
+.nuevo u{text-underline-offset:3px}
+</style></head><body>
+<div class="tel">
+  <iframe src="2-juego.html"></iframe>
+  <div class="velo"></div>
+  <div class="hoja">
+    <div class="cab">
+      <div class="tt">Cambio en el 3.er turno de Tigres<span>Quien entra batea ahora, en el lugar del que sale</span></div>
+      <div class="x">✕</div>
+    </div>
+
+    <div class="sale">
+      <div style="flex:1"><div class="l">Sale</div><div class="n">Andrés Pérez <i>#14 · 2B</i></div></div>
+    </div>
+
+    <div class="tipo">
+      <div class="on">Bateador<br>emergente</div>
+      <div>Corredor<br>emergente</div>
+      <div>Cambio<br>defensivo</div>
+    </div>
+
+    <div>
+      <div class="etq" style="margin-bottom:7px">Entra, del banco</div>
+      <div class="lista">
+        <div class="b on"><span class="radio"></span><span class="nom">Jorge Vega <i>#4</i></span><span class="det">no ha jugado</span></div>
+        <div class="b"><span class="radio"></span><span class="nom">Kevin Ortiz <i>#16</i></span><span class="det">no ha jugado</span></div>
+        <div class="b"><span class="radio"></span><span class="nom">Wilmer Paz <i>—</i></span><span class="det">salió en la 2.ª</span></div>
+      </div>
+    </div>
+
+    <div class="nota">Vega también <b>toma la posición de Pérez (2B)</b> cuando Tigres salga a defender. Se puede cambiar después con "Cambio defensivo".</div>
+
+    <div class="btn oro">Entra Jorge Vega por Andrés Pérez</div>
+    <div class="nuevo">¿No está en el banco? <u>Agregar jugador nuevo</u></div>
+  </div>
+</div></body></html>

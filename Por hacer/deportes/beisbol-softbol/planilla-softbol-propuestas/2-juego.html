@@ -1,0 +1,139 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<link rel="stylesheet" href="comun.css">
+<style>
+/* La pizarra: carreras por entrada, C-H-E al final. La entrada en juego va marcada. */
+.piz{margin:10px 12px 0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--navy-2)}
+.piz table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.piz th,.piz td{font-size:12px;text-align:center;padding:5px 0;width:24px}
+.piz th{color:var(--muted);font-weight:500;font-size:10px}
+.piz td.eq,.piz th.eq{text-align:left;padding-left:10px;width:auto;color:#fff;font-weight:600}
+.piz td{color:#fff}
+.piz td.vacio{color:#3a4763}
+.piz .ahora{background:rgba(223,174,92,.14);color:var(--gold);font-weight:700}
+.piz .tot{border-left:1px solid var(--line);font-weight:800}
+.piz .tot.c{color:var(--gold);font-size:14px}
+.piz tr.turno td.eq::before{content:"● ";color:var(--gold)}
+
+/* La situación: entrada, outs y carreras de la entrada. */
+.sit{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 4px}
+.ent .a{font-size:22px;font-weight:800;line-height:1}
+.ent .b{font-size:11px;color:var(--muted);margin-top:3px}
+.outs{text-align:center}
+.outs .d{display:flex;gap:6px;justify-content:center;margin-top:5px}
+.outs .d i{width:16px;height:16px;border-radius:999px;border:1.5px solid var(--line);display:block}
+.outs .d i.on{background:var(--out);border-color:var(--out)}
+.cent{text-align:right}
+.cent .a{font-size:22px;font-weight:800;color:var(--gold);line-height:1}
+
+/* Diamante + al bate, lado a lado. */
+.medio{display:flex;gap:10px;padding:6px 12px 0;align-items:stretch}
+.diam{width:176px;height:164px;position:relative;flex:none}
+.diam svg{position:absolute;inset:0}
+.corr{position:absolute;transform:translate(-50%,-50%);font-size:10px;font-weight:700;color:#101A2E;
+  background:var(--gold);border-radius:6px;padding:2px 5px;white-space:nowrap}
+.bat{flex:1;border:1px solid var(--gold);border-radius:14px;background:var(--navy-2);padding:10px 11px;
+  display:flex;flex-direction:column;gap:3px}
+.bat .nom{font-size:17px;font-weight:700;line-height:1.2}
+.bat .nom i{font-style:normal;color:var(--muted);font-weight:400;font-size:13px}
+.bat .hoy{font-size:12px;color:var(--muted)}
+.bat .hoy b{color:#fff;font-weight:600}
+.bat .cambiar{margin-top:auto;text-align:center;border:1px solid var(--line);border-radius:9px;
+  padding:7px;font-size:12px;font-weight:600;background:var(--navy-3)}
+.sigue{font-size:11px;color:var(--muted);padding:6px 14px 0}
+.sigue b{color:#fff;font-weight:600}
+
+/* Los resultados del turno: tres filas, una por familia. */
+.res{padding:10px 12px 0;display:flex;flex-direction:column;gap:7px}
+.res .g{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.r{border-radius:12px;border:1px solid var(--line);background:var(--navy-2);height:52px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:14px;font-weight:700;line-height:1.1;text-align:center}
+.r small{font-size:10px;font-weight:500;color:var(--muted);margin-top:3px}
+.r.hit{border-color:rgba(223,174,92,.55);color:var(--gold)}
+.r.out{border-color:rgba(248,113,113,.45);color:#FCA5A5}
+.r.otro{color:#fff}
+
+.hist{margin:10px 12px 0;border-top:1px solid var(--line);padding-top:7px}
+.hist .h{display:flex;justify-content:space-between;gap:10px;padding:6px 2px;font-size:12px;color:var(--muted)}
+.hist .h+.h{border-top:1px solid rgba(46,58,85,.5)}
+.hist .h b{color:#fff;font-weight:600}
+.hist .h .c{color:var(--gold);font-weight:700;white-space:nowrap}
+.hist .h .o{color:#FCA5A5;white-space:nowrap}
+</style></head><body>
+<div class="tel">
+
+  <div class="barra">
+    <div class="t">Liga Bola Lenta · Campo 1<b>Tigres vs Caimanes</b></div>
+    <div class="chip"><span class="punto-ok"></span> Guardado en el teléfono</div>
+  </div>
+
+  <div class="piz"><table>
+    <tr><th class="eq"></th><th>1</th><th>2</th><th>3</th><th class="ahora">4</th><th>5</th><th>6</th><th>7</th><th class="tot">C</th><th>H</th><th>E</th></tr>
+    <tr><td class="eq">Caimanes</td><td>0</td><td>2</td><td>1</td><td>0</td><td class="vacio">·</td><td class="vacio">·</td><td class="vacio">·</td><td class="tot c">3</td><td>6</td><td>1</td></tr>
+    <tr class="turno"><td class="eq">Tigres</td><td>1</td><td>0</td><td>0</td><td class="ahora">2</td><td class="vacio">·</td><td class="vacio">·</td><td class="vacio">·</td><td class="tot c">3</td><td>7</td><td>0</td></tr>
+  </table></div>
+
+  <div class="sit">
+    <div class="ent"><div class="a">Baja 4.ª</div><div class="b">Batea Tigres</div></div>
+    <div class="outs"><div class="etq">Outs</div><div class="d"><i class="on"></i><i class="on"></i><i></i></div></div>
+    <div class="cent"><div class="a">+2</div><div class="etq" style="margin-top:4px">Carreras<br>esta entrada</div></div>
+  </div>
+
+  <div class="medio">
+    <div class="diam">
+      <svg viewBox="0 0 176 164">
+        <path d="M88 150 L160 82 L88 14 L16 82 Z" fill="rgba(31,58,44,.55)" stroke="#2E3A55" stroke-width="2"/>
+        <!-- home -->
+        <path d="M81 144 h14 v7 l-7 6 l-7 -6 z" fill="#fff"/>
+        <!-- 1ª con corredor -->
+        <rect x="151" y="73" width="18" height="18" transform="rotate(45 160 82)" fill="#DFAE5C"/>
+        <!-- 2ª vacía -->
+        <rect x="79" y="5" width="18" height="18" transform="rotate(45 88 14)" fill="#16203A" stroke="#A9B2C4" stroke-width="1.5"/>
+        <!-- 3ª con corredor -->
+        <rect x="7" y="73" width="18" height="18" transform="rotate(45 16 82)" fill="#DFAE5C"/>
+      </svg>
+      <span class="corr" style="left:150px;top:108px">Ruiz</span>
+      <span class="corr" style="left:26px;top:108px">Díaz</span>
+    </div>
+    <div class="bat">
+      <span class="etq">Al bate · 3.º</span>
+      <div class="nom">Andrés Pérez <i>#14</i></div>
+      <div class="hoy">Hoy: <b>1 de 1</b>, un doble</div>
+      <div class="cambiar">⇄ Cambiar bateador</div>
+    </div>
+  </div>
+  <div class="sigue">Sigue <b>Carlos Rojas</b> · después Luis Gómez</div>
+
+  <div class="res">
+    <span class="etq">¿Qué hizo Pérez?</span>
+    <div class="g">
+      <div class="r hit">Sencillo</div><div class="r hit">Doble</div><div class="r hit">Triple</div><div class="r hit">Jonrón</div>
+    </div>
+    <div class="g">
+      <div class="r out">Fly<small>¿quién?</small></div><div class="r out">Rolling<small>6-3, 4-3…</small></div><div class="r out">Línea<small>¿quién?</small></div><div class="r out">Ponche</div>
+    </div>
+    <div class="g">
+      <div class="r otro">Base por<br>bolas</div><div class="r otro">Error<small>¿de quién?</small></div><div class="r otro">Bola<br>ocupada</div><div class="r otro">Más<small>sacrificio, DP…</small></div>
+    </div>
+  </div>
+
+  <div class="hist">
+    <div style="display:flex;justify-content:space-between"><span class="etq">Esta entrada</span><span class="etq" style="color:var(--gold)">Ver las 6 jugadas</span></div>
+    <div class="h"><b>Ruiz — sencillo al 7</b><span>Díaz a 3.ª</span></div>
+    <div class="h"><b>Díaz — doble al 8</b><span class="c">anotan Salas y Castro</span></div>
+    <div class="h"><b>Arrieta — out 4-3</b><span class="o">2.º out</span></div>
+  </div>
+
+  <div class="pie">
+    <div class="btn tenue">← Deshacer</div>
+    <div class="btn">Corredores</div>
+    <div class="btn">Cambios</div>
+  </div>
+
+</div>
+<script>
+/* Las hojas que se dibujan encima pueden pedir otra situación: ?outs=1 */
+if (location.search.indexOf("outs=1") >= 0) {
+  document.querySelectorAll(".outs .d i")[1].classList.remove("on");
+}
+</script>
+</body></html>

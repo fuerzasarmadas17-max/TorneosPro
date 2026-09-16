@@ -1,0 +1,126 @@
+/* Estilo compartido de la planilla de softbol. Pantalla de celular 430 x 932.
+   Colores = tema oscuro de Torneos Pro, los mismos de la planilla de vóley. */
+:root{
+  --navy:#101A2E;      /* fondo */
+  --navy-2:#1C2740;    /* tarjetas */
+  --navy-3:#16203A;    /* tarjetas hundidas */
+  --gold:#DFAE5C;      /* primario */
+  --line:#2E3A55;
+  --muted:#A9B2C4;
+  --ok:#4ADE80;
+  --out:#F87171;       /* outs y jugadas de out */
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  width:430px;height:932px;overflow:hidden;
+  background:var(--navy);color:#fff;
+  font-family:-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.tel{width:430px;height:932px;display:flex;flex-direction:column;position:relative}
+
+.barra{display:flex;align-items:center;justify-content:space-between;
+  padding:14px 18px 10px;border-bottom:1px solid var(--line)}
+.barra .t{font-size:13px;color:var(--muted)}
+.barra .t b{color:#fff;display:block;font-size:15px;margin-top:2px}
+.chip{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ok);
+  background:rgba(74,222,128,.10);border:1px solid rgba(74,222,128,.35);
+  padding:5px 9px;border-radius:999px;white-space:nowrap}
+.chip.gris{color:var(--muted);background:transparent;border-color:var(--line)}
+.punto-ok{width:6px;height:6px;border-radius:999px;background:var(--ok)}
+
+.pie{padding:12px 16px 20px;border-top:1px solid var(--line);display:flex;gap:10px;margin-top:auto}
+.btn{flex:1;text-align:center;padding:13px 8px;border-radius:12px;
+  border:1px solid var(--line);background:var(--navy-2);font-size:14px;font-weight:600;color:#fff}
+.btn.oro{background:var(--gold);color:#101A2E;border-color:var(--gold)}
+.btn.tenue{color:var(--muted)}
+
+.etq{font-size:10px;letter-spacing:.10em;color:var(--muted);text-transform:uppercase}
+.h1{font-size:20px;font-weight:700;color:#fff;line-height:1.25}
+.sub{font-size:13px;color:var(--muted);line-height:1.5;margin-top:6px}
+.nota{font-size:11px;line-height:1.45;color:var(--muted);
+  background:var(--navy-3);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+.nota b{color:#fff;font-weight:600}
+
+.tabs{display:flex;gap:8px}
+.tab{flex:1;text-align:center;padding:9px 8px;border-radius:12px;border:1px solid var(--line);
+  background:var(--navy-2);font-size:13px;color:var(--muted);line-height:1.3}
+.tab b{display:block;font-size:11px;font-weight:400;margin-top:2px}
+.tab.on{border-color:var(--gold);color:#fff;font-weight:600}
+.tab.on b{color:var(--gold)}
+
+/* Posición defensiva: una pastilla con la sigla. EH = bateador extra, batea y
+   no fildea, por eso va apagada. */
+.posi{display:inline-flex;align-items:center;justify-content:center;min-width:36px;
+  padding:4px 7px;border-radius:8px;background:var(--navy-3);border:1px solid var(--line);
+  font-size:12px;font-weight:700;color:var(--gold)}
+.posi.eh{color:var(--muted)}
+
+/* Hoja que sube desde abajo sobre la pantalla del juego. */
+.velo{position:absolute;inset:0;background:rgba(6,11,22,.72)}
+.hoja{position:absolute;left:0;right:0;bottom:0;background:var(--navy-2);
+  border-top:1px solid var(--line);border-radius:22px 22px 0 0;
+  padding:16px 16px 22px;display:flex;flex-direction:column;gap:12px}
+.hoja .cab{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.hoja .cab .tt{font-size:17px;font-weight:700;color:#fff;line-height:1.3}
+.hoja .cab .tt span{display:block;font-size:12px;color:var(--muted);font-weight:400;margin-top:2px}
+.hoja .cab .x{font-size:18px;color:var(--muted)}
+
+/* El campo con las posiciones para tocar: se toca DÓNDE, no se escribe un
+   número. Sirve para fly, rolling, línea y error. */
+.campo{position:relative;height:300px;border-radius:16px;overflow:hidden;
+  background:radial-gradient(ellipse at 50% 100%,#1f3a2c 0%,#17291f 55%,#101A2E 100%);
+  border:1px solid var(--line)}
+.campo svg{position:absolute;inset:0}
+.f{position:absolute;transform:translate(-50%,-50%);width:50px;height:50px;border-radius:999px;
+  background:var(--navy-2);border:1.5px solid var(--line);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;line-height:1}
+.f .nn{font-size:18px;font-weight:800;color:#fff}
+.f .ss{font-size:8px;color:var(--muted);margin-top:2px;max-width:46px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.f.on{background:var(--gold);border-color:var(--gold)}
+.f.on .nn{color:#101A2E}.f.on .ss{color:rgba(16,26,46,.7)}
+.f .orden{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:999px;
+  background:#fff;color:#101A2E;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+
+/* --- Hoja de corredores ------------------------------------------------ */
+.dia{position:relative;height:150px;border-radius:14px;background:var(--navy-3);border:1px solid var(--line)}
+.dia svg{position:absolute;inset:0}
+.corr{position:absolute;transform:translate(-50%,-50%);font-size:11px;font-weight:700;color:#101A2E;
+  background:var(--gold);border-radius:6px;padding:3px 7px;white-space:nowrap}
+.corr.anota{background:var(--ok)}
+.corr.fuera{background:var(--out)}
+.cfila{border:1px solid var(--line);border-radius:12px;background:var(--navy-3);padding:8px 10px}
+.cfila .q{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.cfila .q b{font-size:14px;color:#fff}
+.cfila .q span{font-size:11px;color:var(--muted)}
+.ops{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.op{text-align:center;font-size:12px;font-weight:600;padding:7px 0;border-radius:8px;border:1px solid var(--line);color:var(--muted)}
+.op.on{background:var(--gold);border-color:var(--gold);color:#101A2E}
+.op.on.verde{background:var(--ok);border-color:var(--ok)}
+.op.x{color:#FCA5A5}
+.op.on.x{background:var(--out);border-color:var(--out);color:#101A2E}
+.fijo{font-size:13px;color:#FCA5A5;font-weight:600}
+/* La pregunta que aparece DEBAJO de un corredor cuando pasó algo que la app
+   no puede adivinar: por qué avanzó de más, o quién lo sacó. */
+.pregunta{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
+.pregunta .pp{font-size:12px;color:#fff;margin-bottom:6px}
+.pregunta .pp span{color:var(--muted)}
+.dos{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:6px}
+.posis{display:grid;grid-template-columns:repeat(10,1fr);gap:3px}
+.pz{text-align:center;border-radius:7px;border:1px solid var(--line);padding:5px 0 4px;line-height:1}
+.pz b{display:block;font-size:13px;color:#fff}
+.pz i{font-style:normal;display:block;font-size:7px;color:var(--muted);margin-top:2px;overflow:hidden;white-space:nowrap}
+.pz.on{background:var(--gold);border-color:var(--gold)}
+.pz.on b,.pz.on i{color:#101A2E}
+.pz .ord{display:none}
+.res1{font-size:12px;color:var(--muted);margin-top:6px}
+.res1 b{color:#fff}
+.resumen{display:flex;align-items:center;gap:10px;background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.4);
+  border-radius:12px;padding:9px 12px;font-size:12px;color:#fff;line-height:1.4}
+.resumen .big{font-size:20px;font-weight:800;color:#FCA5A5;white-space:nowrap}
+.rbi{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:#fff;padding:0 2px}
+.rbi span{display:block;font-size:11px;color:var(--muted)}
+.step{display:flex;align-items:center;gap:12px}
+.step i{font-style:normal;width:32px;height:32px;border-radius:9px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff}
+.step b{font-size:20px;min-width:14px;text-align:center}
+iframe{position:absolute;inset:0;width:430px;height:932px;border:0}

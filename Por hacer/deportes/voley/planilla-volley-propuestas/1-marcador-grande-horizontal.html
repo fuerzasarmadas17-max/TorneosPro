@@ -1,0 +1,126 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<link rel="stylesheet" href="comun.css">
+<style>
+/* Horizontal: el celular o la tablet acostados, 932 x 430.
+   La idea de la propuesta 1 se mantiene —el marcador manda y los botones de
+   punto son enormes— pero cambia el reparto: acostado no hay alto para apilar,
+   y sí hay ancho. Entonces cada equipo se lleva UN LADO ENTERO de la pantalla,
+   que es donde caen los pulgares cuando se sostiene el aparato con las dos
+   manos. El centro queda para lo que se mira y no se toca. */
+body,.tel{width:932px;height:430px}
+
+.cuerpo{flex:1;display:flex;gap:10px;padding:8px 14px 12px;min-height:0}
+
+/* --- Los dos lados: el equipo entero, y su botón de punto es el lado --- */
+.lado{flex:1;min-width:0;border-radius:18px;border:1px solid var(--line);
+  background:var(--navy-2);display:flex;flex-direction:column;
+  align-items:center;padding:12px 12px 10px}
+.lado.saca{border-color:var(--gold);box-shadow:inset 0 0 0 1px rgba(223,174,92,.35)}
+.lado .n{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.lado .p{font-size:76px;line-height:.95;font-weight:800;margin-top:2px;
+  font-variant-numeric:tabular-nums}
+.lado .p.lider{color:var(--gold)}
+.lado .zona{flex:1;width:100%;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:2px}
+.lado .mas{font-size:52px;font-weight:300;line-height:1;color:var(--gold)}
+.lado .txt{font-size:13px;color:var(--muted)}
+
+/* Rotación: la de cada equipo vive en su propio lado, no en una franja aparte.
+   Todo lo de un equipo queda junto y se lee sin cruzar la pantalla. */
+.lado .acc{width:100%;margin-bottom:7px}
+.lado .rotcab{width:100%;display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:5px}
+.lado .grid{width:100%;display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.lado .num{height:38px;font-size:18px}
+
+/* --- El centro: lo que se mira, nunca lo que se toca por error --- */
+.centro{width:288px;flex:none;display:flex;flex-direction:column;gap:8px;min-height:0}
+.sets{border-radius:14px;border:1px solid var(--line);background:var(--navy-3);
+  padding:8px 10px 9px;text-align:center}
+.sets .v{font-size:28px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums}
+.sets .lbl{font-size:10px;color:var(--muted);letter-spacing:.10em;margin-top:1px}
+.saque{font-size:12px;color:var(--gold);text-align:center}
+
+.ult{flex:1;min-height:0;overflow:hidden;border-top:1px solid var(--line);padding-top:7px}
+.ult .titulo{font-size:10px;letter-spacing:.10em;color:var(--muted);text-transform:uppercase}
+.ult .h{display:flex;justify-content:space-between;padding:6px 2px;font-size:12px;color:var(--muted)}
+.ult .h+.h{border-top:1px solid rgba(46,58,85,.5)}
+.ult .h b{color:#fff;font-weight:600}
+.ult .h span{font-variant-numeric:tabular-nums}
+
+/* Acciones en el centro y no abajo de todo: acostado, el borde inferior queda
+   justo donde apoyan los pulgares que están tocando los lados. */
+.acciones{display:flex;flex-direction:column;gap:7px}
+.acciones .fila{display:flex;gap:7px}
+.acciones .btn{padding:10px 6px;font-size:13px}
+</style></head><body>
+<div class="tel">
+
+  <div class="barra">
+    <div class="t">Copa Santo Coffee · Cancha 2<b>Set 3</b></div>
+    <div class="chip"><span class="punto-ok"></span> Guardado en el teléfono</div>
+  </div>
+
+  <div class="cuerpo">
+
+    <div class="lado saca">
+      <div class="n">Aura Voley</div>
+      <div class="p lider">18</div>
+      <div class="zona">
+        <div class="mas">+</div>
+        <div class="txt">Punto Aura</div>
+      </div>
+      <div class="acc">
+        <div class="mini">Cambio</div>
+        <div class="mini">Tiempo <span class="to"><i></i><i class="usado"></i></span></div>
+      </div>
+      <div class="rotcab"><span class="etq">En cancha</span></div>
+      <div class="grid">
+        <div class="num">4</div><div class="num">11</div><div class="num">2</div>
+        <div class="num">5</div><div class="num">9</div><div class="num saca">7</div>
+      </div>
+    </div>
+
+    <div class="centro">
+      <div class="sets">
+        <div class="v">1 – 1</div>
+        <div class="lbl">SETS</div>
+      </div>
+      <div class="saque">● Saca Aura Voley — número 7</div>
+
+      <div class="ult">
+        <div class="titulo">Últimos puntos</div>
+        <div class="h"><span>18 – 16</span><b>Punto Aura</b><span>saca 7</span></div>
+        <div class="h"><span>17 – 16</span><b>Punto Caribe</b><span>rotó Caribe</span></div>
+        <div class="h"><span>17 – 15</span><b>Punto Aura</b><span>saca 7</span></div>
+        <div class="h"><span>16 – 15</span><b>Punto Aura</b><span>rotó Aura</span></div>
+        <div class="h"><span>15 – 15</span><b>Punto Caribe</b><span>saca 6</span></div>
+      </div>
+
+      <div class="acciones">
+        <div class="btn tenue">← Deshacer</div>
+        <div class="btn oro">Cerrar set</div>
+      </div>
+    </div>
+
+    <div class="lado">
+      <div class="n">Caribe Voley</div>
+      <div class="p">16</div>
+      <div class="zona">
+        <div class="mas">+</div>
+        <div class="txt">Punto Caribe</div>
+      </div>
+      <div class="acc">
+        <div class="mini">Cambio</div>
+        <div class="mini">Tiempo <span class="to"><i></i><i></i></span></div>
+      </div>
+      <div class="rotcab"><span class="etq">En cancha</span></div>
+      <div class="grid">
+        <div class="num">3</div><div class="num">8</div><div class="num">12</div>
+        <div class="num">6</div><div class="num">1</div><div class="num">10</div>
+      </div>
+    </div>
+
+  </div>
+</div></body></html>
