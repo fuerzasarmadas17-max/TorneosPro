@@ -50,7 +50,7 @@ export interface SportImage {
  * archivo y su entrada acá, sin tocar ningún componente.
  *
  * Ver `Por hacer/fotos-de-tarjetas.md` para el mecanismo y
- * `Por hacer/prompts-fotos-tarjetas.md` para el prompt exacto con el que se
+ * `Por hacer/web/prompts-fotos-tarjetas.md` para el prompt exacto con el que se
  * generó cada una (útil si hay que rehacer alguna: reescribirlo de memoria
  * pierde el par de colores, el ángulo y la jugada asignados).
  *

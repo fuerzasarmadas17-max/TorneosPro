@@ -3,7 +3,7 @@
  *
  * Vive fuera del componente a propósito: acá se decide cuánta plata recibe
  * cada organizador, y eso tiene que poder leerse y probarse sin JSX alrededor.
- * Ver `Por hacer/monetizacion-analitica-publicidad.md`.
+ * Ver `Por hacer/publicidad/monetizacion-analitica-publicidad.md`.
  */
 
 /** Lo que devuelve la RPC `get_ad_analytics`. Cada corte viene YA agregado

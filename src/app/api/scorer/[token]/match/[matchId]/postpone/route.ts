@@ -26,7 +26,7 @@ import type { EstadoAplazado } from "@/lib/volley/planilla";
  * `volleyball_sets` se quedan como estaban. El marcador oficial del partido
  * sigue vacío hasta que el partido termine de verdad.
  *
- * Ver `Por hacer/APLAZADO-PLANILLA-URGENTE.md`.
+ * Ver `Por hacer/deportes/voley/APLAZADO-PLANILLA-URGENTE.md`.
  */
 
 /** Un número de set o de puntos que la planilla podría haber generado. */

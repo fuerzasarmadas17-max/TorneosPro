@@ -84,7 +84,7 @@ import {
 } from "@/lib/ads/campaign-filter";
 
 /**
- * Panel admin de Publicidad (Pieza 2 de Por hacer/modal-publicidad-y-tienda.md).
+ * Panel admin de Publicidad (Pieza 2 de Por hacer/publicidad/modal-publicidad-y-tienda.md).
  *
  * Inventario 100% nuestro: campañas de anunciantes externos que el super admin
  * gestiona a mano. NO es `sponsors` (esos son los 6 espacios del organizador).
@@ -1354,7 +1354,7 @@ function AdsContent() {
                     que decide: sin ella, precio 0 es ambiguo — puede ser una
                     campaña social o una comercial a la que todavía no le
                     pusieron precio, y el organizador ve "Sin pagar" en las dos.
-                    Ver Por hacer/monetizacion-analitica-publicidad.md. */}
+                    Ver Por hacer/publicidad/monetizacion-analitica-publicidad.md. */}
                 <label className="flex cursor-pointer items-start gap-2 pt-1 text-xs">
                   <input
                     type="checkbox"

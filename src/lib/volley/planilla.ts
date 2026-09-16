@@ -25,7 +25,7 @@
  * nunca un id: el día que se quieran estadísticas por jugador habrá que atarlas,
  * y ese día se agrega un campo al lado sin romper lo viejo.
  *
- * Ver `Por hacer/planilla-en-vivo-volley.md`.
+ * Ver `Por hacer/deportes/voley/planilla-en-vivo-volley.md`.
  */
 
 /** El número de camiseta como lo ve la mesa. Puede ser una letra. */
@@ -380,7 +380,7 @@ export function planillaNueva(matchId: string, jugadoresEnCancha: number): Plani
 // solo la pestaña de Aplazados y la planilla el día que se reprograme.
 //
 // Es lo mismo que se hace en papel: la hoja a medio llenar va a una carpeta, no
-// al acta del torneo. Ver `Por hacer/APLAZADO-PLANILLA-URGENTE.md`.
+// al acta del torneo. Ver `Por hacer/deportes/voley/APLAZADO-PLANILLA-URGENTE.md`.
 
 /** Cómo iba un partido la última vez que se aplazó. Es lo que viaja al servidor
  *  y lo que vuelve el día que se juegue. */

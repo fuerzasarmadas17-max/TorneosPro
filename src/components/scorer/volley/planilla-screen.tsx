@@ -12,7 +12,7 @@
  * marcador en vez de volver a preguntar la nómina.
  *
  * Mientras el partido está en juego no se manda nada al servidor. Ver
- * `Por hacer/planilla-en-vivo-volley.md`.
+ * `Por hacer/deportes/voley/planilla-en-vivo-volley.md`.
  */
 
 import { useCallback, useState } from "react";
@@ -83,7 +83,7 @@ interface Props {
    * Por dónde iba el partido la última vez que se aplazó, o `null` si nunca se
    * aplazó. Viene del servidor. Con esto la mesa lo retoma en el marcador que
    * quedó en vez de arrancarlo de cero sin enterarse de que ya se jugó medio
-   * set. Ver `Por hacer/APLAZADO-PLANILLA-URGENTE.md`.
+   * set. Ver `Por hacer/deportes/voley/APLAZADO-PLANILLA-URGENTE.md`.
    */
   aplazado?: EstadoAplazado | null;
   /** Si este partido puede quedar empatado. Va en grupos y liga, no en

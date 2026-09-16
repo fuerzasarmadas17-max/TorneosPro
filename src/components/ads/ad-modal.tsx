@@ -8,7 +8,7 @@ import { adCapReached, recordAdShown } from "@/lib/ad-frequency";
 import { useAuth } from "@/context/auth-context";
 
 /**
- * Modal de publicidad (Pieza 2 de Por hacer/modal-publicidad-y-tienda.md).
+ * Modal de publicidad (Pieza 2 de Por hacer/publicidad/modal-publicidad-y-tienda.md).
  *
  * Se muestra al espectador ANÓNIMO en la vista pública del torneo, hasta
  * `AD_DAILY_CAP` veces por persona, por torneo y por día (ver

@@ -273,7 +273,7 @@ export interface Match {
    * rechaza. Esto lo leen solo la pestaña de Aplazados y la planilla el día que
    * el partido se reprograme, y se borra cuando el resultado se guarda.
    *
-   * Ver `Por hacer/APLAZADO-PLANILLA-URGENTE.md`.
+   * Ver `Por hacer/deportes/voley/APLAZADO-PLANILLA-URGENTE.md`.
    */
   volleyPartialState?: EstadoAplazado | null;
 }
