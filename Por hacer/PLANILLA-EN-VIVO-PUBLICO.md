@@ -230,6 +230,18 @@ decidido: **no cuentan.**
 
 ---
 
+## 6.5 Ojo: el papelito tiene que decir de qué copa es el partido
+
+Lo pidió el dueño el 2026-09-16, pensando en el torneo de varias copas
+(`grupos-y-copas.md`): cuando un torneo tenga Copa Oro, Plata y Bronce corriendo
+a la vez, la vista de "Hoy" no puede mostrar *"Final · Cancha 2"* sin decir de
+cuál de las seis.
+
+**Hoy es gratis acordarse**, porque esto todavía no está construido. Es un campo
+más en el papelito y una línea en la tarjeta.
+
+---
+
 ## 7. Dos límites que conviene tener claros
 
 **a) Esto solo existe donde hay planilla, y la planilla solo existe en vóley.**
