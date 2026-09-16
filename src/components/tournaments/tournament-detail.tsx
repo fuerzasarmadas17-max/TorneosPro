@@ -47,6 +47,7 @@ import { getSportCategory, Tournament, Sponsor, Match } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { getAgeFromBirthDate, getShortName } from "@/lib/name-utils";
 import { SponsorBanner } from "@/components/sponsors/sponsor-banner";
+import { EnVivo, partidosDeMuestra } from "@/components/tournaments/en-vivo";
 import { SponsorForm } from "@/components/sponsors/sponsor-form";
 import { SponsorPicker } from "@/components/sponsors/sponsor-picker";
 import { ensureLibrarySponsor } from "@/lib/db/sponsors";
@@ -581,7 +582,16 @@ export function TournamentDetail({
   isAuthenticated = false,
   organizer,
 }: TournamentDetailProps) {
-  const { updateTournamentProps, updatePlayoffConfig, applyExternalMatchUpdate } = useTournaments();
+  const { updateTournamentProps, updatePlayoffConfig, applyExternalMatchUpdate, getTeamById } = useTournaments();
+  // PROTOTIPO del marcador en vivo: solo con ?envivo=demo, solo en vóley y
+  // NUNCA en producción, porque inventa marcadores sobre equipos reales.
+  // Ver components/tournaments/en-vivo.tsx.
+  const [envivoDemo, setEnvivoDemo] = useState<"no" | "cerrado" | "abierto">("no");
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    const v = new URLSearchParams(window.location.search).get("envivo");
+    setEnvivoDemo(v === "demo" ? "cerrado" : v === "demo-abierto" ? "abierto" : "no");
+  }, []);
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   // Whether the current viewer is the tournament's actual organizer (the
@@ -1082,6 +1092,15 @@ export function TournamentDetail({
         onOpenChange={setShowFinalConfig}
         tournament={tournament}
       />
+
+      {envivoDemo !== "no" && tournament.sport === "volleyball" && (
+        <EnVivo
+          abiertoAlInicio={envivoDemo === "abierto"}
+          partidos={partidosDeMuestra(tournament)}
+          sponsors={allSponsors}
+          getTeamById={getTeamById}
+        />
+      )}
 
       {/* Sponsors Banner */}
       {allSponsors.length > 0 && (
