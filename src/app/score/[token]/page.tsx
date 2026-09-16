@@ -36,6 +36,7 @@ import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
 import { PlayerCombobox } from "@/components/forms/player-combobox";
 import { PlanillaScreen } from "@/components/scorer/volley/planilla-screen";
 import { planillaVolleyVisible } from "@/lib/volley/planilla-flag";
+import type { EstadoAplazado } from "@/lib/volley/planilla";
 import { useEnviosPendientes } from "@/components/scorer/volley/use-envios-pendientes";
 import { listarPendientes } from "@/lib/volley/envio";
 import { FairPlayPicker } from "@/components/forms/fair-play-picker";
@@ -85,6 +86,11 @@ interface ScorerMatch {
     home_points: number;
     away_points: number;
   }[];
+  /** Por qué se aplazó, si está aplazado. */
+  postponedReason: string | null;
+  /** Solo vóley: por dónde iba el partido la última vez que se aplazó a mitad
+   *  de camino. NO es el resultado — el marcador del partido sigue vacío. */
+  volleyPartialState: EstadoAplazado | null;
 }
 
 interface ScorerTeam {
@@ -299,6 +305,7 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
         jugadoresEnCancha={matchTournament.playersOnCourt ?? 6}
         bestOf={matchTournament.bestOf ?? 3}
         scorerName={scorerName}
+        aplazado={match.volleyPartialState}
         permiteEmpate={volleyballDrawAllowed(matchTournament.format, match.phase)}
         onBack={() => {
           setPlanillaMatchId(null);
@@ -497,6 +504,18 @@ function MatchListScreen({
             !isCompleted &&
             getSportCategory(matchTournament?.sport ?? "futbol") === "volleyball";
           const esperandoEnvio = sinMandar.includes(m.id);
+          // Un partido que se fue a la lluvia a mitad de camino. Tiene que
+          // verse distinto de uno que nunca arrancó: si sale como "Pendiente",
+          // alguien lo abre, lo carga de cero y pisa medio set ya jugado sin
+          // enterarse.
+          const aplazado = m.status === "postponed" ? m.volleyPartialState : null;
+          const esAplazado = m.status === "postponed";
+          const setsDeAplazado = aplazado
+            ? {
+                home: aplazado.setsCerrados.filter((x) => x.home > x.away).length,
+                away: aplazado.setsCerrados.filter((x) => x.away > x.home).length,
+              }
+            : null;
           return (
             <div key={m.id} className="space-y-2">
             <button
@@ -517,6 +536,10 @@ function MatchListScreen({
                   <Badge variant="outline" className="border-primary text-primary">
                     <CloudOff className="h-3 w-3 mr-1" /> Sin mandar
                   </Badge>
+                ) : esAplazado ? (
+                  <Badge variant="outline" className="border-amber-500 text-amber-600">
+                    <CloudOff className="h-3 w-3 mr-1" /> Aplazado
+                  </Badge>
                 ) : (
                   <Badge variant="outline">
                     <Clock className="h-3 w-3 mr-1" /> Pendiente
@@ -532,6 +555,22 @@ function MatchListScreen({
                 {m.date} · {m.time}
                 {m.venue ? ` · ${m.venue}` : ""}
               </div>
+              {esAplazado && (
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+                  {m.postponedReason && (
+                    <div className="font-medium">Aplazado por {m.postponedReason}</div>
+                  )}
+                  {aplazado && setsDeAplazado && (
+                    <div className="text-muted-foreground">
+                      Iba {setsDeAplazado.home}–{setsDeAplazado.away}
+                      {aplazado.enCurso
+                        ? ` · set ${aplazado.enCurso.n}: ${aplazado.enCurso.home}–${aplazado.enCurso.away}`
+                        : ""}
+                      . Se retoma desde ahí en la planilla.
+                    </div>
+                  )}
+                </div>
+              )}
               {isCompleted && (
                 <div className="text-sm font-bold">
                   {m.homeScore} - {m.awayScore}
@@ -550,7 +589,11 @@ function MatchListScreen({
                 onClick={() => onAbrirPlanilla(m.id)}
               >
                 <ClipboardList className="h-4 w-4 mr-2" />
-                {esperandoEnvio ? "Mandar el resultado" : "Planilla en vivo"}
+                {esperandoEnvio
+                  ? "Mandar el resultado"
+                  : aplazado
+                    ? "Retomar la planilla"
+                    : "Planilla en vivo"}
               </Button>
             )}
             </div>
@@ -1068,6 +1111,36 @@ function MatchScreen({
       )}
 
       <div className={`space-y-5 ${isBaseball ? "hidden md:block" : ""}`}>
+      {/* Este partido se fue a la lluvia a mitad de camino y tiene medio set ya
+          jugado guardado. Cargarlo desde acá lo daría por terminado y borraría
+          ese marcador sin que nadie se entere: la planilla es la que sabe
+          retomarlo. Se avisa y no se bloquea, porque puede ser justamente lo que
+          el organizador quiere hacer si el partido no se va a jugar nunca. */}
+      {match.status === "postponed" && match.volleyPartialState && (
+        <div className="flex gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+          <CloudOff className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <div>
+            <p className="font-semibold">Este partido venía aplazado.</p>
+            <p className="text-muted-foreground">
+              {(() => {
+                const a = match.volleyPartialState;
+                const g = {
+                  home: a.setsCerrados.filter((x) => x.home > x.away).length,
+                  away: a.setsCerrados.filter((x) => x.away > x.home).length,
+                };
+                return `Iba ${g.home}–${g.away}${
+                  a.enCurso
+                    ? ` y el set ${a.enCurso.n} iba ${a.enCurso.home}–${a.enCurso.away}`
+                    : ""
+                }.`;
+              })()}{" "}
+              Si lo guardás acá, se da por terminado con lo que escribas y se
+              pierde ese marcador. Para retomarlo, volvé y usá la planilla.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="text-center space-y-1">
         <p className="text-xs text-muted-foreground">{match.date} · {match.time}</p>
         <h1 className="text-xl font-bold">

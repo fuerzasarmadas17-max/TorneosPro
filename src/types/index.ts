@@ -1,3 +1,5 @@
+import type { EstadoAplazado } from "@/lib/volley/planilla";
+
 export interface Sponsor {
   id: string;
   imageUrl: string;
@@ -261,6 +263,19 @@ export interface Match {
    *  no se le dio a nadie (es opcional). Solo se usa en torneos que tengan la
    *  stat `fair_play` habilitada; vale FAIR_PLAY_POINTS en la tabla. */
   fairPlayTeamId?: string | null;
+  /**
+   * Solo vóley: por dónde iba el partido la última vez que se aplazó a mitad de
+   * camino.
+   *
+   * NO es el resultado. El marcador oficial sigue siendo `homeScore`/`awayScore`
+   * y `sets`, y esos quedan vacíos hasta que el partido termine de verdad: un
+   * 1-0 en un partido a 3 sets no es un resultado de vóley y el validador lo
+   * rechaza. Esto lo leen solo la pestaña de Aplazados y la planilla el día que
+   * el partido se reprograme, y se borra cuando el resultado se guarda.
+   *
+   * Ver `Por hacer/APLAZADO-PLANILLA-URGENTE.md`.
+   */
+  volleyPartialState?: EstadoAplazado | null;
 }
 
 export interface StandingsEntry {

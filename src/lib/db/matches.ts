@@ -95,6 +95,11 @@ export async function updateMatchResult(
       away_score: awayScore,
       winner_id: winnerId,
       status: "completed",
+      // Vóley: el partido terminó, así que lo que se había guardado de cuando
+      // se aplazó ya no sirve. A partir de acá el marcador oficial es el
+      // marcador y esa casilla no tiene por qué seguir dando vueltas. Se
+      // escribe siempre: en los otros deportes ya era NULL.
+      volley_partial_state: null,
       walkover,
       ...(fairPlayTeamId !== undefined
         ? { fair_play_team_id: fairPlayTeamId }

@@ -19,22 +19,27 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { ChevronLeft, Loader2, CloudOff, TriangleAlert, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { LineupScreen } from "./lineup-screen";
 import { MarcadorScreen } from "./marcador-screen";
 import { CambioSheet } from "./cambio-sheet";
 import {
   type Alineacion,
+  type EstadoAplazado,
   type Etiqueta,
   type Evento,
   type Lado,
   type Planilla,
   alineacionVacia,
+  armarAplazado,
   avisoDeCambioDeCancha,
   esSetDecisivo,
   estadoDelSet,
   huecos,
   izquierdaPropuesta,
+  planillaDesdeAplazado,
   planillaNueva,
+  saquePropuesto,
   setsGanados as contarSets,
 } from "@/lib/volley/planilla";
 import { volleyballSetWarnings } from "@/lib/volleyball-sets";
@@ -46,16 +51,21 @@ import {
   pendienteDe,
 } from "@/lib/volley/envio";
 import {
+  borrarPlanilla,
   guardarPlanilla,
   leerPlanilla,
 } from "@/lib/volley/planilla-storage";
 
 type Paso =
+  /** "Este partido venía aplazado": se retoma o se empieza de cero. */
+  | "retomar"
   | "rotacion-home"
   | "rotacion-away"
   | "arranque"
   | "marcador"
-  | "terminado";
+  | "terminado"
+  /** El partido se aplazó y el aplazamiento sale para el servidor. */
+  | "aplazado";
 
 interface Props {
   token: string;
@@ -69,6 +79,13 @@ interface Props {
   bestOf: 3 | 5;
   /** Quién está anotando. Va en el resultado, igual que en la carga a mano. */
   scorerName: string;
+  /**
+   * Por dónde iba el partido la última vez que se aplazó, o `null` si nunca se
+   * aplazó. Viene del servidor. Con esto la mesa lo retoma en el marcador que
+   * quedó en vez de arrancarlo de cero sin enterarse de que ya se jugó medio
+   * set. Ver `Por hacer/APLAZADO-PLANILLA-URGENTE.md`.
+   */
+  aplazado?: EstadoAplazado | null;
   /** Si este partido puede quedar empatado. Va en grupos y liga, no en
    *  playoffs, donde alguien tiene que pasar de ronda. Lo decide el servidor
    *  igual; acá sirve para no ofrecer algo que después va a rechazar. */
@@ -87,6 +104,7 @@ export function PlanillaScreen({
   jugadoresEnCancha,
   bestOf,
   scorerName,
+  aplazado,
   permiteEmpate,
   onBack,
   onEnviado,
@@ -96,8 +114,21 @@ export function PlanillaScreen({
   // la mesa toca "Planilla en vivo": nunca se dibuja en el servidor, así que no
   // hay renderizado previo con el que pueda no coincidir.
   const [inicial] = useState(() => {
-    const planilla = leerPlanilla(token, matchId) ?? planillaNueva(matchId, jugadoresEnCancha);
-    const paso: Paso = planilla.setActual ? "marcador" : "rotacion-home";
+    const guardada = leerPlanilla(token, matchId);
+    // Un partido que venía aplazado arranca con los sets que ya se jugaron y
+    // con la pantalla que lo cuenta. Solo si no hay nada en este teléfono: si la
+    // mesa ya empezó a anotar hoy, lo de hoy manda y no se le pisa nada.
+    const retomando = !guardada && !!aplazado;
+    const planilla =
+      guardada ??
+      (aplazado
+        ? planillaDesdeAplazado(matchId, jugadoresEnCancha, aplazado)
+        : planillaNueva(matchId, jugadoresEnCancha));
+    const paso: Paso = retomando
+      ? "retomar"
+      : planilla.setActual
+        ? "marcador"
+        : "rotacion-home";
     // Si el set ya había arrancado, las alineaciones que se ven son las del
     // arranque de ese set y no dos canchas vacías.
     const alineaciones: Record<Lado, Alineacion> = planilla.setActual
@@ -109,13 +140,28 @@ export function PlanillaScreen({
     // Un partido que terminó y quedó sin mandar entra derecho a su pantalla,
     // con el motivo a la vista. Si no, la mesa lo daría por guardado.
     const pendiente = pendienteDe(matchId);
+    const pasoConPendiente: Paso =
+      pendiente?.tipo === "aplazado" ? "aplazado" : "terminado";
+    // El set que se retoma arranca donde lo dejó la lluvia. Si el partido se
+    // aplazó justo entre dos sets, no hay nada que retomar y el que sigue
+    // arranca 0–0 como cualquiera.
+    const enCurso = retomando ? (aplazado?.enCurso ?? null) : null;
     return {
       planilla,
-      paso: pendiente ? ("terminado" as Paso) : paso,
+      paso: pendiente ? pasoConPendiente : paso,
       alineaciones,
-      saque: planilla.setActual?.saqueInicial ?? null,
-      izquierda: planilla.setActual?.izquierda ?? izquierdaPropuesta(planilla, bestOf),
+      // El saque viene marcado: "sacaba Aura" es verdad se juegue donde se
+      // juegue. El lado NO, aunque lo tengamos guardado — "izquierda" es la
+      // izquierda de la mesa, y la de hoy puede estar sentada en otra punta.
+      saque: planilla.setActual?.saqueInicial
+        ?? enCurso?.saca
+        ?? saquePropuesto(planilla, bestOf),
+      izquierda: retomando
+        ? null
+        : (planilla.setActual?.izquierda ?? izquierdaPropuesta(planilla, bestOf)),
       pendiente,
+      vieneDe: enCurso ? { home: enCurso.home, away: enCurso.away } : null,
+      yaCambiaronDeCancha: enCurso?.yaCambiaronDeCancha === true,
     };
   });
 
@@ -135,6 +181,20 @@ export function PlanillaScreen({
   const [cambioDe, setCambioDe] = useState<Lado | null>(null);
   /** El "¿cerramos el set?" abierto. */
   const [cerrando, setCerrando] = useState(false);
+  /** El "¿aplazamos el partido?" abierto, con el motivo que escribe la mesa. */
+  const [aplazando, setAplazando] = useState(false);
+  const [motivo, setMotivo] = useState("");
+  /**
+   * De dónde arranca el marcador del próximo set, cuando el partido viene
+   * aplazado. Vive acá y no en la planilla porque el set todavía no existe: se
+   * le pega recién al arrancarlo, igual que el saque y los lados.
+   */
+  const [vieneDe, setVieneDe] = useState<{ home: number; away: number } | null>(
+    inicial.vieneDe
+  );
+  const [yaCambiaronDeCancha, setYaCambiaronDeCancha] = useState(
+    inicial.yaCambiaronDeCancha
+  );
   /** Cómo va el envío del resultado al servidor. */
   const [envio, setEnvio] = useState<ResultadoDelEnvio | "enviando" | null>(
     inicial.pendiente
@@ -191,6 +251,7 @@ export function PlanillaScreen({
       homePoints: estado.puntos.home,
       awayPoints: estado.puntos.away,
       izquierdaAlCerrar: estado.izquierda,
+      saqueInicial: setActual.saqueInicial,
     };
     const siguiente: Planilla = {
       ...planilla,
@@ -212,10 +273,15 @@ export function PlanillaScreen({
       home: alineacionVacia(jugadoresEnCancha),
       away: alineacionVacia(jugadoresEnCancha),
     });
-    setSaqueInicial(null);
-    // Cambian de cancha: se propone al revés. En el decisivo no hay propuesta,
-    // porque se sortea de nuevo.
+    // Las dos cosas del sorteo se proponen al revés del set anterior: saca el
+    // que recibió y cada uno cruza de cancha. En el decisivo ninguna de las dos
+    // se propone, porque se sortea todo de nuevo.
+    setSaqueInicial(saquePropuesto(siguiente, bestOf));
     setIzquierda(izquierdaPropuesta(siguiente, bestOf));
+    // Lo que venía del aplazamiento se gastó en el set que se acaba de cerrar:
+    // el que sigue arranca 0–0 como cualquier otro.
+    setVieneDe(null);
+    setYaCambiaronDeCancha(false);
     setPaso("rotacion-home");
   };
 
@@ -261,6 +327,53 @@ export function PlanillaScreen({
     onBack();
   };
 
+  const listoAplazado = () => {
+    toast.success("Partido aplazado. El organizador ya lo ve en su pestaña.");
+    onEnviado();
+    onBack();
+  };
+
+  /**
+   * El partido se fue a la lluvia. Guarda por dónde iba y lo manda a Aplazados.
+   *
+   * No entra por la puerta del resultado: un 1-0 en un partido a 3 sets no es un
+   * resultado de vóley y el servidor lo rechazaría, con razón. Va a una casilla
+   * aparte, y el marcador del partido queda vacío hasta que se juegue de verdad.
+   */
+  const aplazarPartido = async () => {
+    const texto = motivo.trim();
+    if (!texto) {
+      toast.error("Escribí por qué se aplazó el partido.");
+      return;
+    }
+    const pendiente: EnvioPendiente = {
+      token,
+      matchId,
+      tipo: "aplazado",
+      creadoEn: new Date().toISOString(),
+      cuerpo: {
+        scorerName,
+        motivo: texto,
+        estado: armarAplazado(planilla, estado, texto, scorerName),
+      },
+    };
+    encolar(pendiente);
+    // La planilla se borra del teléfono ACÁ, apenas queda encolada, y no cuando
+    // el servidor confirme. Si se dejara, la misma mesa con el mismo link
+    // volvería a abrir el partido y entraría derecho al marcador viejo, con la
+    // rotación de gente que ya no está, salteándose la pantalla que avisa que
+    // venía aplazado. Lo anotado no se pierde: la foto ya está en la cola.
+    borrarPlanilla(token, matchId);
+
+    setAplazando(false);
+    setCerrando(false);
+    setPaso("aplazado");
+    setEnvio("enviando");
+    const r = await intentarEnviar(pendiente);
+    setEnvio(r);
+    if (r.estado === "enviado") listoAplazado();
+  };
+
   /** Cortar el partido con la serie igualada, sin jugar el set que falta. */
   const cortarEmpatado = () => {
     setPaso("terminado");
@@ -276,7 +389,10 @@ export function PlanillaScreen({
     // puede haber cambiado lo que lo causaba.
     const r = await intentarEnviar({ ...pendiente, errorPermanente: undefined });
     setEnvio(r);
-    if (r.estado === "enviado") listo();
+    if (r.estado === "enviado") {
+      if (pendiente.tipo === "aplazado") listoAplazado();
+      else listo();
+    }
   };
 
   const empezarElSet = () => {
@@ -295,11 +411,141 @@ export function PlanillaScreen({
         alineacion: alineaciones,
         saqueInicial,
         izquierda,
+        // Solo cuando el partido viene aplazado: el set arranca donde lo dejó
+        // la lluvia, y si ese día ya se habían cambiado de cancha, el aviso de
+        // los 8 puntos no vuelve a saltar.
+        ...(vieneDe ? { vieneDe } : {}),
+        ...(yaCambiaronDeCancha ? { cambioDeCanchaHecho: true } : {}),
         eventos: [],
       },
     });
     setPaso("marcador");
   };
+
+  // ------------------------------------------------------------------
+  // Paso 0 — este partido venía aplazado
+  // ------------------------------------------------------------------
+  //
+  // Va antes de la rotación, que es donde la mesa toca primero. Y es una
+  // pregunta y no algo automático a propósito: la mesa de hoy no estaba el día
+  // de la lluvia y tiene que poder decir "acá dice 15–10 pero acordamos jugarlo
+  // entero".
+  if (paso === "retomar" && aplazado) {
+    const cuenta = contarSets(planilla);
+    const enCurso = aplazado.enCurso;
+    const fecha = new Date(aplazado.aplazadoEn).toLocaleDateString("es-CO", {
+      day: "numeric",
+      month: "long",
+    });
+    return (
+      <div className="flex min-h-dvh flex-col bg-background">
+        <AvisoSinGuardado visible={sinGuardado} />
+        <header className="border-b px-4 py-3">
+          <p className="truncate text-sm text-muted-foreground">{tituloArriba}</p>
+          <h1 className="truncate font-semibold">
+            {homeTeamName} vs {awayTeamName}
+          </h1>
+        </header>
+
+        <div className="flex flex-1 flex-col gap-4 p-4">
+          <div className="rounded-xl border-2 border-primary/50 bg-primary/10 p-4">
+            <p className="flex items-center gap-2 text-lg font-bold">
+              <CloudOff className="h-5 w-5 shrink-0 text-primary" />
+              Este partido venía aplazado
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Aplazado el {fecha} por {aplazado.motivo}
+              {aplazado.mesa ? `, anotaba ${aplazado.mesa}` : ""}.
+            </p>
+          </div>
+
+          <div className="divide-y rounded-lg border">
+            <div className="flex items-baseline justify-between px-3 py-3">
+              <span className="text-sm text-muted-foreground">Va</span>
+              <span className="text-2xl font-bold tabular-nums">
+                {cuenta.home} – {cuenta.away}
+              </span>
+            </div>
+            {planilla.setsCerrados.map((s2) => (
+              <div key={s2.numero} className="flex justify-between px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Set {s2.numero}</span>
+                <span className="font-semibold tabular-nums">
+                  {s2.homePoints} – {s2.awayPoints}
+                </span>
+              </div>
+            ))}
+            {enCurso && (
+              <div className="flex justify-between bg-primary/5 px-3 py-2 text-sm">
+                <span className="font-semibold">Set {enCurso.n}, a medias</span>
+                <span className="font-bold tabular-nums">
+                  {enCurso.home} – {enCurso.away}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {enCurso ? (
+            <p className="text-sm text-muted-foreground">
+              El set {enCurso.n} se retoma en{" "}
+              <span className="font-semibold text-foreground">
+                {enCurso.home}–{enCurso.away}
+              </span>
+              . La rotación se carga de cero: pueden jugar otros. Ese día sacaba{" "}
+              <span className="font-semibold text-foreground">
+                {nombre[enCurso.saca]}
+              </span>{" "}
+              y{" "}
+              <span className="font-semibold text-foreground">
+                {nombre[enCurso.izquierda]}
+              </span>{" "}
+              estaba a la izquierda de la mesa.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Se aplazó justo entre dos sets, así que el set {cuenta.home + cuenta.away + 1}{" "}
+              arranca de cero.
+            </p>
+          )}
+
+          <div className="mt-auto space-y-2">
+            <Button
+              className="h-14 w-full text-base"
+              onClick={() => setPaso("rotacion-home")}
+            >
+              {enCurso
+                ? `Retomar en ${enCurso.home}–${enCurso.away}`
+                : "Seguir el partido"}
+            </Button>
+            {/* La salida para cuando los dos equipos acordaron jugarlo entero
+                otra vez. Sin esto, un partido queda condenado a retomarse en
+                15–10 para siempre. */}
+            <Button
+              variant="outline"
+              className="h-12 w-full"
+              onClick={() => {
+                const limpia = planillaNueva(matchId, jugadoresEnCancha);
+                actualizar(limpia);
+                setVieneDe(null);
+                setYaCambiaronDeCancha(false);
+                setSaqueInicial(null);
+                setIzquierda(null);
+                setPaso("rotacion-home");
+              }}
+            >
+              Empezar todo de cero
+            </Button>
+          </div>
+        </div>
+
+        <footer className="border-t p-4">
+          <Button variant="outline" className="h-12 w-full text-base" onClick={onBack}>
+            <ChevronLeft className="mr-1 h-4 w-4" />
+            Volver a los partidos
+          </Button>
+        </footer>
+      </div>
+    );
+  }
 
   // ------------------------------------------------------------------
   // Paso 2 — la rotación de arranque, un equipo por vez
@@ -315,6 +561,7 @@ export function PlanillaScreen({
           key={lado}
           tituloArriba={tituloArriba}
           teamName={nombre[lado]}
+          rivalName={nombre[lado === "home" ? "away" : "home"]}
           jugadoresEnCancha={jugadoresEnCancha}
           paso={lado === "home" ? "Paso 1 de 2" : "Paso 2 de 2"}
           nomina={planilla.nomina[lado]}
@@ -361,6 +608,16 @@ export function PlanillaScreen({
         </header>
 
         <div className="flex flex-1 flex-col gap-4 p-4">
+          {vieneDe && (
+            <div className="rounded-xl border-2 border-primary/50 bg-primary/10 p-3 text-sm">
+              <span className="font-semibold">
+                El set {numeroDelSet} se retoma en {vieneDe.home}–{vieneDe.away}.
+              </span>{" "}
+              Viene del día que se aplazó el partido. El marcador arranca ahí y
+              no en cero.
+            </div>
+          )}
+
           <div>
             <h2 className="text-2xl font-bold">¿Quién saca primero?</h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -369,8 +626,27 @@ export function PlanillaScreen({
             </p>
             {decisivo && (
               <p className="mt-2 text-sm font-semibold text-primary">
-                Set decisivo: se sortea de nuevo.
+                Set decisivo: se sortean de nuevo el saque y la cancha.
               </p>
+            )}
+            {vieneDe && aplazado?.enCurso ? (
+              <p className="mt-2 text-sm text-muted-foreground">
+                Ya está marcado{" "}
+                <span className="font-semibold text-foreground">
+                  {nombre[aplazado.enCurso.saca]}
+                </span>
+                , que era el que sacaba cuando se aplazó. Si hoy saca el otro,
+                tocá el otro.
+              </p>
+            ) : (
+              saqueInicial !== null &&
+              numeroDelSet > 1 &&
+              !decisivo && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Ya está marcado el que recibió en el set anterior. Si sacó
+                  otro, tocá el otro.
+                </p>
+              )
             )}
           </div>
 
@@ -399,11 +675,27 @@ export function PlanillaScreen({
               del medio ya viene marcado al revés del anterior. */}
           <div className="space-y-2">
             <h3 className="text-lg font-bold">¿Quién queda a la izquierda de la mesa?</h3>
-            {izquierda !== null && numeroDelSet > 1 && !decisivo && (
+            {/* Un lado que se decidió desde otra silla no se marca, se cuenta.
+                "Izquierda" es la izquierda de LA MESA, y la de hoy puede estar
+                sentada en otra punta, en otra cancha o del otro lado del
+                coliseo: marcarlo confundiría más de lo que ayuda. */}
+            {vieneDe && aplazado?.enCurso ? (
               <p className="text-sm text-muted-foreground">
-                Cambiaron de cancha, ya está marcado al revés del set anterior.
-                Si no cambiaron, tocá el otro.
+                Ese día,{" "}
+                <span className="font-semibold text-foreground">
+                  {nombre[aplazado.enCurso.izquierda]}
+                </span>{" "}
+                estaba a la izquierda de la mesa. Elegí mirando la cancha de hoy.
               </p>
+            ) : (
+              izquierda !== null &&
+              numeroDelSet > 1 &&
+              !decisivo && (
+                <p className="text-sm text-muted-foreground">
+                  Cambiaron de cancha, ya está marcado al revés del set
+                  anterior. Si no cambiaron, tocá el otro.
+                </p>
+              )
             )}
             <div className="grid grid-cols-2 gap-2">
               {(["home", "away"] as Lado[]).map((l) => (
@@ -500,6 +792,73 @@ export function PlanillaScreen({
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Mandando el resultado...
+            </p>
+          ) : (
+            <Button variant="outline" className="h-12" onClick={onBack}>
+              <ChevronLeft className="mr-1 h-4 w-4" />
+              Volver a los partidos
+            </Button>
+          )}
+        </div>
+
+        {envio !== null && envio !== "enviando" && envio.estado !== "enviado" && (
+          <ModalDelEnvio
+            envio={envio}
+            onReintentar={reintentar}
+            onMasTarde={onBack}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ------------------------------------------------------------------
+  // Partido aplazado — el aplazamiento sale para el servidor
+  // ------------------------------------------------------------------
+  if (paso === "aplazado") {
+    const cuenta = contarSets(planilla);
+    const aMedias = planilla.setActual;
+    const puntosAMedias = aMedias ? estadoDelSet(aMedias).puntos : null;
+    return (
+      <div className="flex min-h-dvh flex-col bg-background">
+        <AvisoSinGuardado visible={sinGuardado} />
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
+          <CloudOff className="h-12 w-12 text-primary" />
+          <div>
+            <p className="text-xl font-bold">Partido aplazado</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Se retoma en este mismo marcador cuando el organizador lo
+              reprograme.
+            </p>
+          </div>
+          <div className="w-full max-w-sm divide-y rounded-lg border text-sm">
+            <div className="flex items-baseline justify-between px-3 py-3">
+              <span className="text-muted-foreground">Va</span>
+              <span className="text-2xl font-bold tabular-nums">
+                {cuenta.home} – {cuenta.away}
+              </span>
+            </div>
+            {planilla.setsCerrados.map((s2) => (
+              <div key={s2.numero} className="flex justify-between px-3 py-2">
+                <span className="text-muted-foreground">Set {s2.numero}</span>
+                <span className="font-semibold tabular-nums">
+                  {s2.homePoints} – {s2.awayPoints}
+                </span>
+              </div>
+            ))}
+            {aMedias && puntosAMedias && (
+              <div className="flex justify-between bg-primary/5 px-3 py-2">
+                <span className="font-semibold">Set {aMedias.numero}, a medias</span>
+                <span className="font-bold tabular-nums">
+                  {puntosAMedias.home} – {puntosAMedias.away}
+                </span>
+              </div>
+            )}
+          </div>
+          {envio === "enviando" ? (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Mandando el aplazamiento...
             </p>
           ) : (
             <Button variant="outline" className="h-12" onClick={onBack}>
@@ -677,6 +1036,76 @@ export function PlanillaScreen({
                 onClick={cerrarSet}
               >
                 Cerrar set
+              </Button>
+            </div>
+            {/* La salida cuando se fue a la lluvia. Va acá, chiquita y abajo,
+                por dos razones: al lado de los botones de punto se aprieta sin
+                querer y se arruina un partido, y este cartel es la zona de las
+                cosas que se hacen una vez. Y va SIEMPRE visible, sin importar
+                el marcador: "Cerrar set" se bloquea con el set empatado, así
+                que si llueve a 0–0 o a 3–3 por ese camino no habría forma de
+                aplazar. */}
+            <button
+              type="button"
+              onClick={() => {
+                setCerrando(false);
+                setMotivo("");
+                setAplazando(true);
+              }}
+              className="w-full py-1 text-center text-sm text-muted-foreground underline underline-offset-4"
+            >
+              El partido se aplazó
+            </button>
+          </div>
+        </div>
+      )}
+
+      {aplazando && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm space-y-4 rounded-2xl border bg-background p-5">
+            <div>
+              <h2 className="text-lg font-bold">El partido queda aplazado</h2>
+              {/* Decir en palabras lo que se va a guardar, igual que el cambio
+                  dice "Entra el 8 por el 9": se lee antes de apretar. */}
+              <p className="mt-1 text-sm text-muted-foreground">
+                Va{" "}
+                <span className="font-semibold text-foreground">
+                  {ganados.home}–{ganados.away}
+                </span>{" "}
+                y el set {setActual.numero} iba{" "}
+                <span className="font-semibold text-foreground">
+                  {estado.puntos.home}–{estado.puntos.away}
+                </span>
+                . Cuando se reprograme se retoma justo ahí.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="motivo-aplazo" className="text-sm font-medium">
+                ¿Por qué se aplazó?
+              </label>
+              <Input
+                id="motivo-aplazo"
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                placeholder="Lluvia"
+                maxLength={200}
+                className="h-12"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="h-12 flex-1"
+                onClick={() => setAplazando(false)}
+              >
+                Seguir anotando
+              </Button>
+              <Button
+                className="h-12 flex-1"
+                disabled={!motivo.trim()}
+                onClick={aplazarPartido}
+              >
+                Guardar
               </Button>
             </div>
           </div>

@@ -203,6 +203,8 @@ export function mapMatch(row: Record<string, unknown>): Match {
     groupId: (row.group_id as string) ?? undefined,
     walkover: (row.walkover as boolean) ?? undefined,
     fairPlayTeamId: (row.fair_play_team_id as string) ?? null,
+    volleyPartialState:
+      (row.volley_partial_state as Match["volleyPartialState"]) ?? null,
   };
 }
 
@@ -318,6 +320,10 @@ export function toDbMatch(m: Partial<Match>): Record<string, unknown> {
   if (m.groupId !== undefined) db.group_id = m.groupId;
   if (m.walkover !== undefined) db.walkover = m.walkover;
   if (m.fairPlayTeamId !== undefined) db.fair_play_team_id = m.fairPlayTeamId;
+  // Se manda tal cual, incluido `null`: así reprogramar un partido con "que se
+  // juegue de cero" puede vaciar la casilla.
+  if (m.volleyPartialState !== undefined)
+    db.volley_partial_state = m.volleyPartialState;
   return db;
 }
 

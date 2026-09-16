@@ -14,17 +14,24 @@
  * rechaza, y con razón: es la regla que impide que un partido a medio cargar
  * desordene la tabla de posiciones.
  *
+ * LA OTRA COSA QUE VIAJA POR ACÁ: el aplazamiento. Si se va a la lluvia en el
+ * segundo set, cómo iba el partido sale por una puerta distinta (`/postpone`) y
+ * a una casilla distinta, justo porque por la del resultado no puede entrar. Y
+ * viaja por esta cola por la misma razón que el resultado, o más: si llueve, es
+ * bastante probable que no haya señal.
+ *
  * NO SE MANDAN LOS PUNTOS, solo los parciales de cada set. Es lo único que el
  * sistema guarda hoy de un partido de vóley. Mandar punto por punto es la
  * entrega 2, y como la planilla ya guarda la lista adentro del teléfono, ese día
  * es agregar el envío y nada más.
  */
 
+import type { EstadoAplazado } from "./planilla";
 import { borrarPlanilla } from "./planilla-storage";
 
 const CLAVE = "planilla_volley_envios";
 
-/** Lo que viaja al endpoint del planillero. */
+/** Lo que viaja al endpoint del planillero cuando el partido TERMINÓ. */
 export interface CuerpoDelEnvio {
   scorerName: string;
   homeScore: number;
@@ -32,11 +39,18 @@ export interface CuerpoDelEnvio {
   sets: { setNumber: number; homePoints: number; awayPoints: number }[];
 }
 
-export interface EnvioPendiente {
+/** Lo que viaja cuando el partido se APLAZÓ a mitad de camino. No es un
+ *  resultado: va a una casilla aparte y el marcador del partido no se toca. */
+export interface CuerpoDelAplazado {
+  scorerName: string;
+  motivo: string;
+  estado: EstadoAplazado;
+}
+
+interface EnvioBase {
   token: string;
   matchId: string;
-  cuerpo: CuerpoDelEnvio;
-  /** Cuándo terminó el partido, para poder decir "hace 20 minutos". */
+  /** Cuándo terminó o se aplazó el partido, para poder decir "hace 20 minutos". */
   creadoEn: string;
   /**
    * Por qué no se pudo mandar, cuando reintentar no va a servir: el link
@@ -45,6 +59,19 @@ export interface EnvioPendiente {
    */
   errorPermanente?: string;
 }
+
+/**
+ * Lo que queda esperando en el teléfono. Son dos cosas distintas que viajan por
+ * el mismo camino: el resultado de un partido terminado y el aplazamiento de uno
+ * que se fue a la lluvia.
+ *
+ * `tipo` es opcional en el resultado a propósito: en los teléfonos que ya tienen
+ * algo encolado de antes no existe esa clave, y sin el `?` esas colas quedarían
+ * ilegibles y se perderían partidos ya jugados.
+ */
+export type EnvioPendiente =
+  | (EnvioBase & { tipo?: "resultado"; cuerpo: CuerpoDelEnvio })
+  | (EnvioBase & { tipo: "aplazado"; cuerpo: CuerpoDelAplazado });
 
 // ============================================================
 // La cola, en el teléfono
@@ -105,17 +132,25 @@ export type ResultadoDelEnvio =
 export async function intentarEnviar(
   envio: EnvioPendiente
 ): Promise<ResultadoDelEnvio> {
+  // Un partido a medias no entra por la puerta del resultado: esa valida el
+  // partido completo y lo rechazaría, y con razón.
+  const puerta = envio.tipo === "aplazado" ? "postpone" : "result";
+  const que = envio.tipo === "aplazado" ? "aplazamiento" : "resultado";
+
   let res: Response;
   try {
-    res = await fetch(`/api/scorer/${envio.token}/match/${envio.matchId}/result`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(envio.cuerpo),
-    });
+    res = await fetch(
+      `/api/scorer/${envio.token}/match/${envio.matchId}/${puerta}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(envio.cuerpo),
+      }
+    );
   } catch {
     return {
       estado: "sin-red",
-      mensaje: "No hay señal. El resultado queda guardado y sale solo cuando vuelva.",
+      mensaje: `No hay señal. El ${que} queda guardado y sale solo cuando vuelva.`,
     };
   }
 
@@ -134,7 +169,7 @@ export async function intentarEnviar(
     };
   }
 
-  let mensaje = "El servidor rechazó el resultado.";
+  let mensaje = `El servidor rechazó el ${que}.`;
   try {
     const json = (await res.json()) as { error?: string };
     if (json?.error) mensaje = json.error;

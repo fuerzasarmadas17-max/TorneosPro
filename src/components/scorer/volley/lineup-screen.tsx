@@ -46,6 +46,9 @@ interface Props {
   teamName: string;
   /** "Paso 1 de 2" o "Paso 2 de 2". */
   paso: string;
+  /** El otro equipo. Va apagado al lado del propio: ver los dos juntos es lo
+   *  que deja saber de cuál de los dos es esta rotación. */
+  rivalName: string;
   jugadoresEnCancha: number;
   /** Todos los que pueden entrar hoy, de este equipo: en cancha y banco. */
   nomina: Etiqueta[];
@@ -64,6 +67,7 @@ type Destino = number | null;
 export function LineupScreen({
   tituloArriba,
   teamName,
+  rivalName,
   paso,
   jugadoresEnCancha,
   nomina,
@@ -98,6 +102,14 @@ export function LineupScreen({
     setDestino(d);
     setBuffer("");
     setError(null);
+  };
+
+  /** Tocar una posición abre el teclado de una (dueño, 2026-09-15). Antes el
+   *  toque solo la marcaba como activa y había que apretar además "Agregar un
+   *  nuevo jugador": dos toques para lo que la mesa pide en uno. */
+  const tocarPosicion = (posicion: number) => {
+    abrir(posicion);
+    setEscribiendo(true);
   };
 
   /** Pone a alguien en la posición abierta y salta a la siguiente vacía. El que
@@ -141,14 +153,31 @@ export function LineupScreen({
     // min-h-dvh y no min-h-screen: en el celular, screen cuenta también lo que
     // tapa la barra del navegador y los botones de abajo quedaban escondidos.
     <div className="min-h-dvh flex flex-col bg-background">
-      <header className="flex items-center justify-between gap-3 border-b px-4 py-3">
-        <div className="min-w-0">
+      {/* El equipo manda en el header (dueño, 2026-09-15). Antes era "Rotación de
+          Aura" en una línea chica y del mismo grosor de punta a punta: el
+          nombre, que es lo único que cambia entre las dos pantallas, se perdía
+          entre las palabras. Ahora el nombre va grande y solo, y el rival
+          apagado al lado — con los dos a la vista no hay forma de cargarle la
+          rotación al equipo equivocado. */}
+      <header className="border-b px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
           <p className="truncate text-sm text-muted-foreground">{tituloArriba}</p>
-          <h1 className="truncate font-semibold">Rotación de {teamName}</h1>
+          <span className="shrink-0 rounded-full border px-2.5 py-0.5 text-xs text-muted-foreground">
+            {paso}
+          </span>
         </div>
-        <span className="shrink-0 rounded-full border px-3 py-1 text-sm text-muted-foreground">
-          {paso}
-        </span>
+        <div className="mt-2 flex items-center gap-3">
+          <span className="h-9 w-1.5 shrink-0 rounded-full bg-primary" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] uppercase leading-none tracking-widest text-muted-foreground">
+              Rotación de
+            </p>
+            <h1 className="truncate text-2xl font-bold leading-tight">{teamName}</h1>
+          </div>
+          <span className="max-w-[35%] shrink-0 truncate text-sm text-muted-foreground">
+            vs {rivalName}
+          </span>
+        </div>
       </header>
 
       <div className="flex flex-1 flex-col gap-4 p-4 landscape:flex-row landscape:items-start">
@@ -177,7 +206,7 @@ export function LineupScreen({
                 // Con el teclado abierto las casillas se achican para que la
                 // cancha y el teclado entren juntos de pie.
                 compacta={destino !== null}
-                onTocar={abrir}
+                onTocar={tocarPosicion}
               />
             ))}
           </div>
@@ -229,10 +258,10 @@ export function LineupScreen({
                 Listo
               </Button>
             </div>
-            {/* El teclado no se muestra hasta que lo piden (dueño, 2026-09-12):
-                sin él, la pantalla deja ver la cancha y los ya anotados. Una
-                vez abierto se queda abierto al saltar de posición, para anotar
-                a los que arrancan de corrido. */}
+            {/* Al entrar el teclado está escondido y la pantalla deja ver la
+                cancha y los ya anotados (dueño, 2026-09-12). Lo abre tocar una
+                posición o el botón de abajo, y una vez abierto se queda abierto
+                al saltar de posición, para anotar a los que arrancan de corrido. */}
             {escribiendo ? (
               <>
                 <div className="flex gap-2">

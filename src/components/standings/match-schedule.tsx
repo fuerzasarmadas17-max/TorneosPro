@@ -606,6 +606,40 @@ function MatchDisplay({
           </div>
         )}
 
+        {/* Vóley: el partido se fue a la lluvia a mitad de camino y quedó
+            guardado por dónde iba. NO es el resultado —el marcador del partido
+            sigue vacío y la tabla de posiciones no lo cuenta— es lo que la
+            planilla va a retomar el día que se reprograme. */}
+        {isPostponed && match.volleyPartialState && postponingId !== match.id && reschedulingId !== match.id && (
+          <div className="px-3 py-2 bg-amber-500/5 border-t border-amber-500/20 text-xs text-amber-700">
+            {(() => {
+              const a = match.volleyPartialState;
+              const g = {
+                home: a.setsCerrados.filter((x) => x.home > x.away).length,
+                away: a.setsCerrados.filter((x) => x.away > x.home).length,
+              };
+              const parciales = a.setsCerrados
+                .map((x) => `${x.home}-${x.away}`)
+                .join(", ");
+              return (
+                <>
+                  <span className="font-semibold">
+                    Iba {g.home}–{g.away}
+                    {parciales ? ` (${parciales})` : ""}
+                    {a.enCurso
+                      ? ` · set ${a.enCurso.n}: ${a.enCurso.home}–${a.enCurso.away}`
+                      : ""}
+                  </span>
+                  <span className="block opacity-80">
+                    Se retoma desde ahí cuando se reprograme
+                    {a.mesa ? ` · anotaba ${a.mesa}` : ""}
+                  </span>
+                </>
+              );
+            })()}
+          </div>
+        )}
+
         {/* Match details row: time, venue (read-only) */}
         {(match.time || match.venue) ? (
           <div className="flex items-center gap-x-4 px-3 py-2 bg-muted/30 border-t">

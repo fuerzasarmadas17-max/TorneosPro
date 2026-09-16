@@ -204,6 +204,10 @@ export async function POST(
       away_score: awayScore,
       winner_id: winnerId,
       status: "completed",
+      // El partido terminó: lo que se había guardado de cuando se aplazó ya no
+      // sirve, y dejarlo haría que la planilla ofreciera retomar un partido que
+      // ya está cargado. Ver `Por hacer/APLAZADO-PLANILLA-URGENTE.md`.
+      volley_partial_state: null,
       // Se escribe siempre, no solo cuando es true: así corregir un partido
       // mal cargado como W lo desmarca. El cliente manda el marcador
       // reglamentario; acá solo registramos la marca.

@@ -68,6 +68,21 @@ export interface SetEnJuego {
   /** Quién sacó el primer punto del set. */
   saqueInicial: Lado;
   /**
+   * De dónde arranca el marcador de este set. Solo lo tiene un set que se
+   * retoma de un partido aplazado; en un set normal no existe y arranca 0–0.
+   *
+   * Es un punto de partida y NO una lista de puntos inventados: los puntos de
+   * antes de la lluvia no son eventos de este set. Por eso Deshacer no puede
+   * bajar de acá (correcto: eso pasó otro día), el historial no muestra puntos
+   * que nadie anotó, y la rotación gira desde la rotación de hoy en vez de dar
+   * veinticinco vueltas con jugadores que no estaban.
+   */
+  vieneDe?: { home: number; away: number };
+  /** Los equipos ya se cambiaron de cancha en este set decisivo, aunque el
+   *  cambio no esté en la lista de eventos: pasó antes de que se aplazara. Sin
+   *  esto, el aviso de los 8 puntos vuelve a saltar al retomar. */
+  cambioDeCanchaHecho?: boolean;
+  /**
    * El equipo que arrancó el set a la izquierda de la mesa. Opcional porque las
    * planillas guardadas antes del 2026-09-13 no lo tienen: ahí es el local.
    */
@@ -86,6 +101,11 @@ export interface SetCerrado {
   /** Quién estaba a la izquierda al terminar. De acá sale la propuesta del set
    *  siguiente, que es al revés. No viaja al servidor. */
   izquierdaAlCerrar?: Lado;
+  /** Quién sacó el primer punto de este set. De acá sale la propuesta de saque
+   *  del set siguiente: saca el que recibió. Opcional porque las planillas
+   *  guardadas antes del 2026-09-15 no lo tienen; ahí no se propone nada y la
+   *  mesa lo elige como siempre. No viaja al servidor. */
+  saqueInicial?: Lado;
 }
 
 export interface Planilla {
@@ -195,7 +215,9 @@ export interface EstadoDelSet {
  *  ahora mismo. Es la única fuente de verdad de la pantalla del marcador. */
 export function estadoDelSet(set: SetEnJuego): EstadoDelSet {
   const estado: EstadoDelSet = {
-    puntos: { home: 0, away: 0 },
+    // Un set normal arranca en 0–0; uno que se retoma de un partido aplazado
+    // arranca donde lo dejó la lluvia.
+    puntos: { home: set.vieneDe?.home ?? 0, away: set.vieneDe?.away ?? 0 },
     saca: set.saqueInicial,
     enCancha: {
       home: [...set.alineacion.home],
@@ -264,6 +286,10 @@ export const TIEMPOS_POR_SET = 2;
 //     al revés del anterior y la mesa lo puede corregir.
 //   - Set decisivo (el 3.º de 3, el 5.º de 5): sorteo otra vez, y a mitad de set
 //     cambian de cancha.
+//
+// El saque va igual (dueño, 2026-09-15): en el set 1 lo dice la mesa, en los del
+// medio saca el que recibió en el anterior —o sea, al revés, como la cancha— y
+// en el decisivo se sortea de nuevo junto con el lado.
 
 export function otroLado(lado: Lado): Lado {
   return lado === "home" ? "away" : "home";
@@ -295,6 +321,21 @@ export function izquierdaPropuesta(planilla: Planilla, bestOf: number): Lado | n
 }
 
 /**
+ * Quién se propone que saque primero en el set que sigue, o `null` si hay que
+ * preguntarlo (el primero y el decisivo, que se sortean).
+ *
+ * Saca el que recibió en el set anterior, así que sale al revés igual que el
+ * lado. Es una propuesta y no una imposición: la mesa la puede corregir de un
+ * toque, como la de la cancha.
+ */
+export function saquePropuesto(planilla: Planilla, bestOf: number): Lado | null {
+  const numero = planilla.setsCerrados.length + 1;
+  if (numero === 1 || esSetDecisivo(numero, bestOf)) return null;
+  const anterior = planilla.setsCerrados[planilla.setsCerrados.length - 1];
+  return anterior?.saqueInicial ? otroLado(anterior.saqueInicial) : null;
+}
+
+/**
  * El puntaje del aviso de cambio de cancha que hay que mostrar ahora, o `null`.
  *
  * Solo en el set decisivo, y solo mientras no se hayan cambiado todavía: un
@@ -306,6 +347,7 @@ export function avisoDeCambioDeCancha(
   bestOf: number
 ): number | null {
   if (!esSetDecisivo(set.numero, bestOf)) return null;
+  if (set.cambioDeCanchaHecho) return null;
   if (set.eventos.some((e) => e.t === "cambio-de-cancha")) return null;
   const maximo = Math.max(estado.puntos.home, estado.puntos.away);
   const descartados = set.avisosDeCanchaDescartados ?? [];
@@ -323,6 +365,107 @@ export function planillaNueva(matchId: string, jugadoresEnCancha: number): Plani
     jugadoresEnCancha,
     nomina: { home: [], away: [] },
     setsCerrados: [],
+    setActual: null,
+  };
+}
+
+// ============================================================
+// Aplazar a mitad de camino
+// ============================================================
+//
+// Un partido que se va a la lluvia en el segundo set no es un resultado: un 1-0
+// en un partido a 3 sets no existe, y `validateVolleyballSets` lo rechaza a
+// propósito. Por eso lo que va quedando no se escribe en el marcador del
+// partido sino en una casilla aparte (`matches.volley_partial_state`), que leen
+// solo la pestaña de Aplazados y la planilla el día que se reprograme.
+//
+// Es lo mismo que se hace en papel: la hoja a medio llenar va a una carpeta, no
+// al acta del torneo. Ver `Por hacer/APLAZADO-PLANILLA-URGENTE.md`.
+
+/** Cómo iba un partido la última vez que se aplazó. Es lo que viaja al servidor
+ *  y lo que vuelve el día que se juegue. */
+export interface EstadoAplazado {
+  setsCerrados: { n: number; home: number; away: number }[];
+  /** El set que se estaba jugando. `null` si se aplazó justo entre dos sets. */
+  enCurso: {
+    n: number;
+    home: number;
+    away: number;
+    /** Quién estaba sacando. El día que se retome viene marcado: es un dato
+     *  absoluto, no depende de dónde se siente la mesa. */
+    saca: Lado;
+    /** Quién estaba a la izquierda de la mesa ESE día. Se guarda para
+     *  mostrarlo, no para marcarlo: la mesa de hoy puede estar sentada en otra
+     *  punta, y un lado decidido desde otra silla confunde más de lo que ayuda. */
+    izquierda: Lado;
+    yaCambiaronDeCancha: boolean;
+  } | null;
+  motivo: string;
+  aplazadoEn: string;
+  /** Quién estaba anotando ese día, para que el organizador sepa a quién
+   *  preguntarle. */
+  mesa: string;
+}
+
+/** Arma la foto de cómo va el partido, para mandarla al aplazarlo. */
+export function armarAplazado(
+  planilla: Planilla,
+  estado: EstadoDelSet | null,
+  motivo: string,
+  mesa: string
+): EstadoAplazado {
+  const set = planilla.setActual;
+  return {
+    setsCerrados: planilla.setsCerrados.map((s) => ({
+      n: s.numero,
+      home: s.homePoints,
+      away: s.awayPoints,
+    })),
+    enCurso:
+      set && estado
+        ? {
+            n: set.numero,
+            home: estado.puntos.home,
+            away: estado.puntos.away,
+            saca: estado.saca,
+            izquierda: estado.izquierda,
+            // Se pierde el matiz de "la mesa dijo que no cambiaban a los 8 pero
+            // todavía falta preguntarle a los 13". Es un aviso, no un dato del
+            // partido, y no vale una vuelta más de complejidad.
+            yaCambiaronDeCancha:
+              set.cambioDeCanchaHecho === true ||
+              set.eventos.some((e) => e.t === "cambio-de-cancha"),
+          }
+        : null,
+    motivo,
+    aplazadoEn: new Date().toISOString(),
+    mesa,
+  };
+}
+
+/**
+ * La planilla con la que arranca el día que el partido se retoma.
+ *
+ * Trae los sets ya cerrados y nada más: la nómina y la rotación se cargan de
+ * cero porque probablemente no vayan los mismos jugadores. El marcador del set
+ * a medias no va acá — va en `vieneDe` cuando la mesa arranque el set, después
+ * de elegir el saque y los lados.
+ */
+export function planillaDesdeAplazado(
+  matchId: string,
+  jugadoresEnCancha: number,
+  aplazado: EstadoAplazado
+): Planilla {
+  return {
+    version: 1,
+    matchId,
+    jugadoresEnCancha,
+    nomina: { home: [], away: [] },
+    setsCerrados: aplazado.setsCerrados.map((s) => ({
+      numero: s.n,
+      homePoints: s.home,
+      awayPoints: s.away,
+    })),
     setActual: null,
   };
 }
@@ -410,7 +553,12 @@ export interface LineaDelHistorial {
  */
 export function historial(set: SetEnJuego): LineaDelHistorial[] {
   const lineas: LineaDelHistorial[] = [];
-  const puntos: Record<Lado, number> = { home: 0, away: 0 };
+  // Mismo arranque que `estadoDelSet`: si el set se retoma de un partido
+  // aplazado, el historial de hoy cuenta desde ahí y no desde 0–0.
+  const puntos: Record<Lado, number> = {
+    home: set.vieneDe?.home ?? 0,
+    away: set.vieneDe?.away ?? 0,
+  };
   let saca = set.saqueInicial;
   const cancha: Record<Lado, Alineacion> = {
     home: [...set.alineacion.home],
