@@ -48,6 +48,7 @@ import { supabase } from "@/lib/supabase";
 import { getAgeFromBirthDate, getShortName } from "@/lib/name-utils";
 import { SponsorBanner } from "@/components/sponsors/sponsor-banner";
 import { EnVivo, partidosDeMuestra } from "@/components/tournaments/en-vivo";
+import { useEnVivo } from "@/hooks/use-en-vivo";
 import { SponsorForm } from "@/components/sponsors/sponsor-form";
 import { SponsorPicker } from "@/components/sponsors/sponsor-picker";
 import { ensureLibrarySponsor } from "@/lib/db/sponsors";
@@ -583,15 +584,17 @@ export function TournamentDetail({
   organizer,
 }: TournamentDetailProps) {
   const { updateTournamentProps, updatePlayoffConfig, applyExternalMatchUpdate, getTeamById } = useTournaments();
-  // PROTOTIPO del marcador en vivo: solo con ?envivo=demo, solo en vóley y
-  // NUNCA en producción, porque inventa marcadores sobre equipos reales.
-  // Ver components/tournaments/en-vivo.tsx.
+  // Marcador en vivo (solo vóley). Con `?envivo=demo` y FUERA de producción
+  // muestra marcadores inventados, para ver la pantalla sin una planilla
+  // andando. Ver components/tournaments/en-vivo.tsx.
   const [envivoDemo, setEnvivoDemo] = useState<"no" | "cerrado" | "abierto">("no");
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
     const v = new URLSearchParams(window.location.search).get("envivo");
     setEnvivoDemo(v === "demo" ? "cerrado" : v === "demo-abierto" ? "abierto" : "no");
   }, []);
+  const esVoley = tournament.sport === "volleyball";
+  const enVivo = useEnVivo(tournament.id, esVoley && envivoDemo === "no");
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   // Whether the current viewer is the tournament's actual organizer (the
@@ -1093,12 +1096,15 @@ export function TournamentDetail({
         tournament={tournament}
       />
 
-      {envivoDemo !== "no" && tournament.sport === "volleyball" && (
+      {esVoley && (
         <EnVivo
+          key={envivoDemo}
+          tournament={tournament}
           abiertoAlInicio={envivoDemo === "abierto"}
-          partidos={partidosDeMuestra(tournament)}
+          partidos={envivoDemo !== "no" ? partidosDeMuestra(tournament) : enVivo.partidos}
           sponsors={allSponsors}
           getTeamById={getTeamById}
+          onActualizar={() => void enVivo.actualizar()}
         />
       )}
 

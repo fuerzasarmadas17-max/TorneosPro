@@ -1,9 +1,11 @@
 # El marcador en vivo, para el público
 
-**Estado:** diseño hablado con el dueño el 2026-09-16. **La pantalla ya está
-aprobada** (sección 2): prototipo en `src/components/tournaments/en-vivo.tsx`,
-visible solo con `?envivo=demo` y con marcadores inventados. Falta que la
-planilla mande el dato y que la pantalla lo lea.
+**Estado:** **construido el 2026-09-16, falta correr el SQL y probarlo en una
+cancha.** La planilla manda la foto (`use-mandar-en-vivo.ts`), el servidor la
+guarda en `match_live_scores` y la página la muestra (`en-vivo.tsx`,
+`en-vivo-hoja.tsx`, `use-en-vivo.ts`). Antes de desplegar hay que correr
+`supabase/migrations/20260916_marcador_en_vivo.sql`. Con `?envivo=demo`, fuera
+de producción, se ve con marcadores inventados.
 **Maquetas:** `planilla-en-vivo-propuesta/envivo.html` (se abre en el navegador
 y funciona: el aviso abre la hoja y los patrocinadores rotan; con `?rapido=1`
 rotan cada 3 segundos para ver el ciclo) y sus capturas `envivo-aviso.png`,
@@ -358,21 +360,24 @@ alimentarse.
 
 ## 9. El orden en que se construye
 
-1. ~~**La vista de "Hoy"**~~ → **el aviso EN VIVO y la hoja** (sección 2).
-   **Prototipo hecho y aprobado** (`src/components/tournaments/en-vivo.tsx`,
-   solo con `?envivo=demo`); falta conectarlo al dato real. Todavía muestra
-   todos los patrocinadores juntos: le falta la rotación del punto 5.
-2. **La puerta chiquita con copia compartida**, y que los refrescos no cuenten en
-   la analítica. Las dos van desde el día uno, no después.
-3. **El envío desde la planilla**: al cambiar el marcador (máximo cada 30 s), al
-   cerrar set de inmediato, apenas vuelve la señal, y el latido cada 2 minutos.
-4. **El "EN VIVO" por reloj**: 5 minutos sin envío y sale de la hoja; vuelve
-   solo con el próximo envío. Con el "actualizado hace X" y el botón Actualizar.
-5. **La rotación de patrocinadores**: de a 3, cada 2 minutos (sección 6).
-6. **Las reglas para no poner lenta la página** (6.1) no son un paso aparte: se
-   cumplen en cada uno de los anteriores. **Antes de soltarlo**, medir la carga
-   del torneo en un celular de gama media con y sin en vivo; tiene que dar lo
-   mismo.
+Hecho el 2026-09-16, todo junto:
+
+1. ✅ **El aviso EN VIVO y la hoja** (sección 2). La hoja se baja recién al
+   tocar el aviso.
+2. ✅ **La puerta chiquita con copia compartida**: `GET
+   /api/tournaments/[id]/en-vivo`, 30 segundos en la red de Vercel. No pasa por
+   la analítica.
+3. ✅ **El envío desde la planilla**: `POST /api/scorer/[token]/match/[id]/en-vivo`.
+   Al cambiar el marcador (máximo cada 30 s), al cerrar set y al volver la señal
+   de inmediato, y el latido cada 2 minutos. Guarda en `match_live_scores`, una
+   fila por partido, fuera del tiempo real de `matches`.
+4. ✅ **El "EN VIVO" por reloj**: 5 minutos sin envío y sale; al guardar el
+   resultado o aplazar sale en el momento.
+5. ✅ **La rotación de patrocinadores**: de a 3, cada 2 minutos.
+6. **Falta:** correr el SQL, desplegar, verificar en producción que la copia
+   compartida funcione (el encabezado `Cache-Control` de la puerta del público),
+   probarlo con una planilla de verdad, y medir la carga del torneo en un
+   celular de gama media con y sin en vivo.
 
 Comparte la casilla y el camino con el de aplazados (`APLAZADO-PLANILLA-URGENTE.md`),
 que ya está construido: es el mismo dato con otro motivo. Conviene reusar eso y

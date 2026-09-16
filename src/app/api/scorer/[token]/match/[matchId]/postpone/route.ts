@@ -192,6 +192,10 @@ export async function POST(
     );
   }
 
+  // Aplazado ya no está en juego: sale del marcador en vivo ahora y no a los
+  // 5 minutos. Si falla da igual, el en vivo lo saca solo por la hora.
+  await supabaseAdmin.from("match_live_scores").delete().eq("match_id", matchId);
+
   recordScorerUsage(token).catch((err) => {
     console.error("recordScorerUsage failed", err);
   });

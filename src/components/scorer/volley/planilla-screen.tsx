@@ -11,7 +11,9 @@
  * estaba. Al volver a entrar, si el set ya había arrancado, se entra derecho al
  * marcador en vez de volver a preguntar la nómina.
  *
- * Mientras el partido está en juego no se manda nada al servidor. Ver
+ * Mientras el partido está en juego el RESULTADO no se manda: se manda al
+ * terminar. Lo único que sale antes es la foto para el marcador en vivo del
+ * público (`use-mandar-en-vivo.ts`), que no es el resultado. Ver
  * `Por hacer/deportes/voley/planilla-en-vivo-volley.md`.
  */
 
@@ -23,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { LineupScreen } from "./lineup-screen";
 import { MarcadorScreen } from "./marcador-screen";
 import { CambioSheet } from "./cambio-sheet";
+import { useMandarEnVivo } from "./use-mandar-en-vivo";
 import {
   type Alineacion,
   type EstadoAplazado,
@@ -214,6 +217,16 @@ export function PlanillaScreen({
       if (!ok) setSinGuardado(true);
     },
     [token, matchId]
+  );
+
+  // El marcador en vivo del público: mientras el partido está en juego. Entre
+  // dos sets también cuenta (la mesa está armando la rotación del siguiente).
+  // Terminado o aplazado ya no: esas puertas lo sacan del en vivo.
+  useMandarEnVivo(
+    token,
+    matchId,
+    planilla,
+    paso !== "terminado" && paso !== "aplazado" && paso !== "retomar"
   );
 
   const nombre: Record<Lado, string> = { home: homeTeamName, away: awayTeamName };

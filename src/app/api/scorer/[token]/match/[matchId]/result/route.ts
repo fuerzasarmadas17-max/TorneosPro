@@ -332,6 +332,11 @@ export async function POST(
     }
   }
 
+  // El partido terminó: sale del marcador en vivo ahora y no a los 5 minutos.
+  // Si falla da igual, el en vivo lo saca solo por la hora. Ver
+  // `Por hacer/deportes/voley/PLANILLA-EN-VIVO-PUBLICO.md`.
+  await supabaseAdmin.from("match_live_scores").delete().eq("match_id", matchId);
+
   // 4) Bump usage del link (fire and forget — no bloqueamos si falla).
   recordScorerUsage(token).catch((err) => {
     console.error("recordScorerUsage failed", err);
