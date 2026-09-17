@@ -55,9 +55,18 @@ export function getWalkoverRule(sport: Sport, bestOf?: 3 | 5): WalkoverRule {
     };
   }
 
-  // Fútbol, futsal y microfútbol comparten el 3-0 reglamentario. Básquet y el
-  // resto caen acá también: mantiene el comportamiento que ya tenía la
-  // descalificación, que daba 3-0 a todo lo que no fuera vóley.
+  // Básquet: 20-0, el marcador reglamentario de un partido perdido por no
+  // presentarse (FIBA). Antes caía en el 3-0 del fútbol y se veía raro.
+  if (category === "basketball") {
+    return {
+      winnerScore: 20,
+      loserScore: 0,
+      description: "20 - 0 en puntos",
+    };
+  }
+
+  // Fútbol, futsal y microfútbol comparten el 3-0 reglamentario. El resto cae
+  // acá también: mantiene el comportamiento que ya tenía la descalificación.
   return {
     winnerScore: 3,
     loserScore: 0,

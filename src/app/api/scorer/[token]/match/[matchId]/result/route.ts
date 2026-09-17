@@ -4,7 +4,7 @@ import {
   validateVolleyballSets,
   volleyballDrawAllowed,
 } from "@/lib/volleyball-sets";
-import { validateRacketScore } from "@/lib/score-errors";
+import { validateBasketballScore, validateRacketScore } from "@/lib/score-errors";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import {
   validateScorerToken,
@@ -184,6 +184,15 @@ export async function POST(
     const racketError = validateRacketScore(homeScore, awayScore);
     if (racketError) {
       return NextResponse.json({ error: racketError }, { status: 400 });
+    }
+  }
+
+  // Básquet: no hay empate. Se revisa acá además del navegador porque el link
+  // del planillero es un endpoint público.
+  if (tournament && getSportCategory(tournament.sport) === "basketball") {
+    const basketballError = validateBasketballScore(homeScore, awayScore);
+    if (basketballError) {
+      return NextResponse.json({ error: basketballError }, { status: 400 });
     }
   }
 

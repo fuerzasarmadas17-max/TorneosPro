@@ -167,6 +167,21 @@ export function validateRacketScore(
 }
 
 /**
+ * Básquet: no hay empate. Si el tiempo reglamentario termina igual se juegan
+ * tiempos extra hasta que alguien gane, así que un 70-70 es un marcador mal
+ * cargado o un partido que todavía no terminó.
+ */
+export function validateBasketballScore(
+  homeScore: number,
+  awayScore: number
+): string | null {
+  if (homeScore === awayScore) {
+    return `En básquet no hay empate: un partido no puede terminar ${homeScore}-${awayScore}. Si terminaron iguales se juega tiempo extra; cargá el marcador final.`;
+  }
+  return null;
+}
+
+/**
  * La validación completa del marcador para los deportes que NO son vóley
  * (vóley tiene la suya en lib/volleyball-sets.ts, porque además cuadra los
  * parciales). Devuelve el marcador listo para guardar, o el mensaje.
@@ -183,6 +198,11 @@ export function validateScoreForSport(
   // Raqueta: el marcador son sets y no hay empate posible.
   if (sport && getSportCategory(sport) === "no-stats") {
     const error = validateRacketScore(parsed.home, parsed.away);
+    if (error) return { ok: false, error };
+  }
+
+  if (sport && getSportCategory(sport) === "basketball") {
+    const error = validateBasketballScore(parsed.home, parsed.away);
     if (error) return { ok: false, error };
   }
 
