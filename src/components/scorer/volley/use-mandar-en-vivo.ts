@@ -123,9 +123,20 @@ export function useMandarEnVivo(
     }, 15_000);
     const volvioLaSenal = () => mandarAhoraRef.current();
     window.addEventListener("online", volvioLaSenal);
+    // Si la mesa cambia de app o bloquea el celular, el navegador congela los
+    // temporizadores y el envío programado no sale hasta que vuelva. Por eso se
+    // manda YA al esconderse, y otra vez al volver, si hay algo nuevo.
+    const alCambiarVisibilidad = () => {
+      const hayNuevo =
+        actual.current.foto &&
+        JSON.stringify(actual.current.foto) !== ultimo.current.clave;
+      if (hayNuevo) mandarAhoraRef.current();
+    };
+    document.addEventListener("visibilitychange", alCambiarVisibilidad);
     return () => {
       clearInterval(latido);
       window.removeEventListener("online", volvioLaSenal);
+      document.removeEventListener("visibilitychange", alCambiarVisibilidad);
       if (pendiente.current) {
         clearTimeout(pendiente.current);
         pendiente.current = null;

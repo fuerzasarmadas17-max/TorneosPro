@@ -24,7 +24,12 @@ export function useEnVivo(tournamentId: string, activo: boolean) {
 
   const preguntar = useCallback(async () => {
     try {
-      const res = await fetch(`/api/tournaments/${tournamentId}/en-vivo`);
+      // `no-store`: que el NAVEGADOR no guarde su propia copia. La copia
+      // compartida vive en la red de Vercel y dura 30 s; si además el celular
+      // se quedara con una, el marcador podría llegar minutos tarde.
+      const res = await fetch(`/api/tournaments/${tournamentId}/en-vivo`, {
+        cache: "no-store",
+      });
       if (!res.ok) return;
       const json = (await res.json()) as { partidos?: PartidoEnVivoDato[] };
       // La copia compartida puede tener hasta ~1 minuto: lo que ya venció en

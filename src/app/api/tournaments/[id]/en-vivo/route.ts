@@ -26,7 +26,17 @@ import {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const CACHE = "public, s-maxage=30, stale-while-revalidate=30";
+/**
+ * La copia compartida es SOLO de la red de Vercel (`Vercel-CDN-Cache-Control`,
+ * que no le llega al navegador), 30 segundos y sin servir copias vencidas. Al
+ * navegador se le dice que no guarde nada: medido el 2026-09-16, con
+ * `stale-while-revalidate` la red servía una copia vencida un ciclo más, y un
+ * `public` suelto le permite al celular quedarse con su propia copia.
+ */
+const CACHE = {
+  "Vercel-CDN-Cache-Control": "max-age=30",
+  "Cache-Control": "no-store",
+};
 
 export async function GET(
   _request: NextRequest,
@@ -53,7 +63,7 @@ export async function GET(
   // si no, cada persona mirando consultaría la base cada 30 segundos mientras
   // dure la falla, que es justo lo que la copia evita.
   if (error) {
-    return NextResponse.json({ partidos: [] }, { headers: { "Cache-Control": CACHE } });
+    return NextResponse.json({ partidos: [] }, { headers: CACHE });
   }
 
   const partidos: PartidoEnVivoDato[] = [];
@@ -63,5 +73,5 @@ export async function GET(
     partidos.push({ matchId: row.match_id, foto, actualizadoEn: row.updated_at });
   }
 
-  return NextResponse.json({ partidos }, { headers: { "Cache-Control": CACHE } });
+  return NextResponse.json({ partidos }, { headers: CACHE });
 }
