@@ -364,9 +364,8 @@ esté anotando en la app. En fútbol nadie tiene el celular en la mano durante e
 partido, así que no hay de dónde sacar el dato. Es "los partidos de vóley en
 vivo", no "los partidos en vivo de Torneos Pro".
 
-**b) La planilla sigue apagada** hasta que el dueño la pruebe en una cancha de
-verdad (`PLANILLA_VOLLEY_ENABLED`). Sin eso prendido, esto no tiene de dónde
-alimentarse.
+**b) La planilla está prendida para todos desde el 2026-09-17** (se quitó el
+interruptor y el `?planilla=1`). El marcador en vivo se alimenta de ella.
 
 ---
 

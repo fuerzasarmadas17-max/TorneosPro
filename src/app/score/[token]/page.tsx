@@ -35,7 +35,6 @@ import { parseMatchScore, validateScoreForSport } from "@/lib/score-errors";
 import { buildWalkoverSets, getWalkoverRule } from "@/lib/walkover";
 import { PlayerCombobox } from "@/components/forms/player-combobox";
 import { PlanillaScreen } from "@/components/scorer/volley/planilla-screen";
-import { planillaVolleyVisible } from "@/lib/volley/planilla-flag";
 import type { EstadoAplazado } from "@/lib/volley/planilla";
 import { useEnviosPendientes } from "@/components/scorer/volley/use-envios-pendientes";
 import { listarPendientes } from "@/lib/volley/envio";
@@ -140,10 +139,6 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
   // Partido abierto en la planilla en vivo de vóley. Es otra pantalla que la
   // de cargar el resultado: acá se anota punto por punto.
   const [planillaMatchId, setPlanillaMatchId] = useState<string | null>(null);
-  // La planilla está apagada para todos hasta que esté el marcador; con
-  // `?planilla=1` en el link se puede mirar. Se calcula en el navegador y no
-  // al renderizar en el servidor, que no conoce la URL de la visita.
-  const [planillaVisible, setPlanillaVisible] = useState(false);
   // Partidos de la planilla que terminaron y todavía no llegaron al servidor.
   // La lista los marca: si no, la mesa los ve como pendientes de anotar y los
   // anota de nuevo, o peor, se va creyendo que ya están.
@@ -181,11 +176,6 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setPlanillaVisible(planillaVolleyVisible(window.location.search));
-  }, []);
 
   // Un resultado de la planilla que quedó sin mandar sale solo al abrir la
   // página o cuando vuelve la red, sin que la mesa tenga que estar pendiente.
@@ -351,7 +341,6 @@ export default function ScorePage({ params }: { params: Promise<{ token: string 
     <MatchListScreen
       data={data}
       scorerName={scorerName}
-      planillaVisible={planillaVisible}
       sinMandar={sinMandar}
       onAbrirPlanilla={(id) => setPlanillaMatchId(id)}
       onSelectMatch={(id) => setActiveMatchId(id)}
@@ -420,7 +409,6 @@ function NameScreen({ tournamentName, onSubmit }: { tournamentName: string; onSu
 function MatchListScreen({
   data,
   scorerName,
-  planillaVisible,
   sinMandar,
   onAbrirPlanilla,
   onSelectMatch,
@@ -429,7 +417,6 @@ function MatchListScreen({
 }: {
   data: ScorerData;
   scorerName: string;
-  planillaVisible: boolean;
   sinMandar: string[];
   onAbrirPlanilla: (id: string) => void;
   onSelectMatch: (id: string) => void;
@@ -500,7 +487,6 @@ function MatchListScreen({
           // anotar y pisaría un resultado que ya está bien.
           const matchTournament = data.tournaments.find((t) => t.id === m.tournamentId);
           const conPlanilla =
-            planillaVisible &&
             !isCompleted &&
             getSportCategory(matchTournament?.sport ?? "futbol") === "volleyball";
           const esperandoEnvio = sinMandar.includes(m.id);

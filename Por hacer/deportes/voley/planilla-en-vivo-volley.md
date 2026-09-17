@@ -451,10 +451,9 @@ para que la entrega 2 sea agregar el envío y nada más.
 al terminar el resultado sale para el servidor solo; si no hay señal queda en
 una cola en el teléfono y sale cuando vuelve, aunque hayan cerrado la pestaña.
 
-**La planilla está APAGADA** igual: `PLANILLA_VOLLEY_ENABLED` en
-`src/lib/volley/planilla-flag.ts`. Ya no falta código, falta la prueba en una
-cancha de verdad, y esa decisión es del dueño. Se prende poniendo `true` y
-desplegando. Para verla sin prenderla, agregarle `?planilla=1` al link del
+**La planilla está PRENDIDA para todos desde el 2026-09-17**, a pedido del
+dueño. Se quitó el interruptor (`planilla-flag.ts` y el `?planilla=1`): el botón
+"Planilla en vivo" sale en todo partido de vóley sin terminar del link del
 planillero.
 
 **Lo que sigue faltando es la entrega 3**, abrir sin señal. Una vez cargada la
