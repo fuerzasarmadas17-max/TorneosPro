@@ -201,6 +201,16 @@ queda en ~60 s como máximo, la base se consulta 4 veces por minuto por torneo
 en vez de 2 —sigue sin crecer con la gente—, y lo que sí se duplica son las
 respuestas de la copia compartida por persona mirando.
 
+**Primera prueba en producción (2026-09-16).** El dueño vio **casi 3 minutos** de
+atraso probando planilla y página en el mismo iPhone. Medido: el servidor más la
+copia compartida tardaban hasta ~36 s; el resto se sumaba en el celular. Se
+corrigió (commit 7cc380d): la copia compartida quedó solo en la red de Vercel
+(`Vercel-CDN-Cache-Control`, sin copias vencidas) y el navegador no guarda nada
+(`no-store`); y la planilla manda al esconderse la pestaña, porque Safari congela
+los temporizadores. Medido después: **2 a 23 s** del envío a la copia pública. El
+dueño volvió a probar con PC y celular: **~1 minuto**, y le parece un buen
+tiempo. Se sigue probando.
+
 **Qué hacer según lo que salga:**
 
 - Todo tranquilo → se deja en 30.
