@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Tournament } from "@/types";
+import { Tournament, TournamentCup } from "@/types";
+import { getCupFinalists } from "@/data/helpers";
 import { useTournaments } from "@/context/tournament-context";
 import {
   Dialog,
@@ -23,6 +24,10 @@ interface PlayoffFinalConfigDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   tournament: Tournament;
+  /** Torneo con copas: la final de qué copa. `tournament` es el torneo
+   *  entero. El formato es uno solo para todas las copas: si otra copa ya lo
+   *  eligió, acá solo se arma la final con ese formato. */
+  cup?: TournamentCup;
 }
 
 const FORMAT_OPTIONS: { value: FinalFormat; label: string; description: string; count: number }[] = [
@@ -61,8 +66,11 @@ export function PlayoffFinalConfigDialog({
   open,
   onOpenChange,
   tournament,
+  cup,
 }: PlayoffFinalConfigDialogProps) {
   const { configurePlayoffFinal, teams } = useTournaments();
+  // Con copas, si el formato ya lo eligió otra copa, no se puede cambiar.
+  const lockedFormat = cup ? tournament.playoffFinalFormat : undefined;
   const [format, setFormat] = useState<FinalFormat>(
     tournament.playoffFinalFormat ??
       (tournament.playoffDoubleLeg ? "double_leg" : "single")
@@ -72,12 +80,22 @@ export function PlayoffFinalConfigDialog({
   >(() => Array.from({ length: 7 }, () => ({ date: "", time: "", venue: "" })));
   const [saving, setSaving] = useState(false);
 
-  const matchCount = FORMAT_OPTIONS.find((f) => f.value === format)?.count ?? 1;
+  const matchCount =
+    FORMAT_OPTIONS.find((f) => f.value === (lockedFormat ?? format))?.count ?? 1;
 
   // Surface the finalists in the modal so the organizer sees who's playing.
   // Same double-leg-aware lookup as configurePlayoffFinal: the ida row holds
   // the teams (vuelta keeps null teams until reconfiguration runs).
   const { teamA, teamB } = useMemo(() => {
+    if (cup) {
+      const f = getCupFinalists(tournament, cup.id);
+      const name = (id: string | undefined, fallback: string) =>
+        id ? teams.find((t) => t.id === id)?.name ?? fallback : fallback;
+      return {
+        teamA: name(f?.home, "Finalista A"),
+        teamB: name(f?.away, "Finalista B"),
+      };
+    }
     const playoff = tournament.matches.filter((m) => m.phase === "playoff");
     if (playoff.length === 0) return { teamA: null, teamB: null };
     const maxRound = Math.max(...playoff.map((m) => m.round));
@@ -92,7 +110,7 @@ export function PlayoffFinalConfigDialog({
       ? teams.find((t) => t.id === ida.awayTeamId)?.name ?? "Finalista B"
       : "Finalista B";
     return { teamA, teamB };
-  }, [tournament.matches, tournament.playoffDoubleLeg, teams]);
+  }, [tournament, cup, teams]);
 
   const setSchedule = (
     i: number,
@@ -114,7 +132,12 @@ export function PlayoffFinalConfigDialog({
       time: s.time || undefined,
       venue: s.venue || undefined,
     }));
-    const ok = await configurePlayoffFinal(tournament.id, format, relevant);
+    const ok = await configurePlayoffFinal(
+      tournament.id,
+      lockedFormat ?? format,
+      relevant,
+      cup?.id
+    );
     setSaving(false);
     if (ok) {
       toast.success("Final configurada");
@@ -130,17 +153,30 @@ export function PlayoffFinalConfigDialog({
         <DialogHeader>
           <div className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-amber-500" />
-            <DialogTitle>Configurar la final</DialogTitle>
+            <DialogTitle>
+              {cup ? `Final — ${cup.name}` : "Configurar la final"}
+            </DialogTitle>
           </div>
           <DialogDescription>
             <span className="font-medium text-foreground">{teamA}</span>{" "}
             vs{" "}
             <span className="font-medium text-foreground">{teamB}</span>
-            {" — "}elegí cómo se juega y, si querés, dejá las fechas armadas.
+            {lockedFormat
+              ? ` — se juega igual que las otras finales: ${FORMAT_OPTIONS.find((f) => f.value === lockedFormat)?.label.toLowerCase()}. Si querés, dejá las fechas armadas.`
+              : " — elegí cómo se juega y, si querés, dejá las fechas armadas."}
+            {cup && !lockedFormat && (
+              <>
+                {" "}
+                <span className="font-medium text-foreground">
+                  El formato que elijas vale para las finales de todas las copas.
+                </span>
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         {/* Format selection */}
+        {!lockedFormat && (
         <div className="space-y-2">
           <Label className="text-sm">Formato</Label>
           <div className="space-y-2">
@@ -167,6 +203,7 @@ export function PlayoffFinalConfigDialog({
             ))}
           </div>
         </div>
+        )}
 
         {/* Schedule inputs per match */}
         <div className="space-y-2">

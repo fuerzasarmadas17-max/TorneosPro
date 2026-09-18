@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Tournament, Match } from "@/types";
+import { Tournament, Match, TournamentCup } from "@/types";
 import { getClassifiedTeamsRanked, getRoundLabel } from "@/data/helpers";
 import { useTournaments } from "@/context/tournament-context";
+import { getCupClassified } from "@/lib/copas";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +32,10 @@ interface BracketMatchupBuilderProps {
    *  phaseConfigs.phase for multi-phase). Used to compute the classified
    *  team list. */
   fromPhase: number;
+  /** Torneo con copas: la copa cuyos cruces se arman. `tournament` tiene que
+   *  venir ya recortado a esa copa (`scopeToCup`), y los clasificados salen de
+   *  los puestos de la copa en vez de "los N primeros". */
+  cup?: TournamentCup;
 }
 
 /**
@@ -46,12 +51,16 @@ export function BracketMatchupBuilder({
   onOpenChange,
   tournament,
   fromPhase,
+  cup,
 }: BracketMatchupBuilderProps) {
   const { configureBracketSlots, updateTournamentProps, teams } = useTournaments();
 
   const classified = useMemo(
-    () => getClassifiedTeamsRanked(tournament, fromPhase),
-    [tournament, fromPhase]
+    () =>
+      cup
+        ? getCupClassified(tournament, cup)
+        : getClassifiedTeamsRanked(tournament, fromPhase),
+    [tournament, fromPhase, cup]
   );
 
   const nameOf = (id: string | null) =>
@@ -275,7 +284,9 @@ export function BracketMatchupBuilder({
           bracket overflows. */}
       <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden !flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
-          <DialogTitle>Crear enfrentamientos</DialogTitle>
+          <DialogTitle>
+            Crear enfrentamientos{cup ? ` — ${cup.name}` : ""}
+          </DialogTitle>
           <DialogDescription>
             Asigná los clasificados a los lugares del bracket. El mismo equipo
             no se puede repetir.
@@ -354,6 +365,7 @@ export function BracketMatchupBuilder({
                     Cada llave del bracket se juega a dos partidos. Los partidos
                     de vuelta se crean cuando hagas click en{" "}
                     <strong>Generar fixture</strong>.
+                    {cup && " Vale para todas las copas."}
                   </div>
                 </div>
               </label>

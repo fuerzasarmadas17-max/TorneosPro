@@ -131,6 +131,25 @@ export function getTierPrice(teamCount: number): number {
   return TIER_PRICES[getTier(teamCount)];
 }
 
+/**
+ * Recargo por jugar con varias copas (Oro, Plata, Bronce): un porcentaje del
+ * precio de lista del torneo, cobrado UNA vez sin importar cuántas copas. Es
+ * porcentaje y no plata fija para que acompañe solo a los precios de los
+ * paquetes. Ver `Por hacer/torneos/grupos-y-copas.md`, sección 6.
+ */
+export const CUPS_SURCHARGE_RATE = 0.15;
+
+/** El recargo de copas sobre un precio de lista, en pesos redondos. */
+export function getCupsSurcharge(listPrice: number): number {
+  return Math.round(listPrice * CUPS_SURCHARGE_RATE);
+}
+
+/** Un precio de lista con el recargo de copas encima. Un torneo que ya pagó
+ *  las copas lleva el recargo también en las ampliaciones de equipos. */
+export function withCupsSurcharge(listPrice: number): number {
+  return listPrice + getCupsSurcharge(listPrice);
+}
+
 export interface TournamentPriceInfo {
   tier: TournamentTier;
   price: number;

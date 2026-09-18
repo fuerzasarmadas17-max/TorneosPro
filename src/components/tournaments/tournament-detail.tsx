@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BracketView } from "@/components/brackets/bracket-view";
 import { PlayoffBracketView } from "@/components/brackets/playoff-bracket-view";
+import { CupsView } from "@/components/brackets/cups-view";
 import { StandingsTable } from "@/components/standings/standings-table";
 import { BaseballStandingsTable } from "@/components/standings/baseball-standings-table";
 import { BasketballStandingsTable } from "@/components/standings/basketball-standings-table";
@@ -38,12 +39,12 @@ import {
 import { useTournaments } from "@/context/tournament-context";
 import { useAuth } from "@/context/auth-context";
 import { AdminActions } from "@/components/tournaments/admin-actions";
-import { CardImagePicker } from "@/components/tournaments/card-image-picker";
 import { getSportInfo } from "@/data/sports";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
 import type { TournamentOrganizer } from "@/lib/db/tournaments-server";
 import { getDepartmentLabel, getMunicipalityLabel } from "@/data/colombia";
-import { getSportCategory, Tournament, Sponsor, Match } from "@/types";
+import { getSportCategory, Tournament, TournamentCup, Sponsor, Match } from "@/types";
+import { cupNeedsFinalSetup, getCupFinalists } from "@/data/helpers";
 import { supabase } from "@/lib/supabase";
 import { getAgeFromBirthDate, getShortName } from "@/lib/name-utils";
 import { SponsorBanner } from "@/components/sponsors/sponsor-banner";
@@ -671,8 +672,42 @@ export function TournamentDetail({
   // session like the rest of the modals.
   const finalBecameKnownRef = useRef<boolean>(false);
   const [showFinalConfig, setShowFinalConfig] = useState(false);
+  // Con copas: de qué copa es la final que hay que configurar. Cada copa llega
+  // a su final en otro momento; la primera elige el formato de todas y a las
+  // demás se les arma con ese. `cupsWithKnownFinal` recuerda las copas cuya
+  // final ya se vio en esta sesión, para no abrir la ventana dos veces.
+  const [finalConfigCup, setFinalConfigCup] = useState<TournamentCup | undefined>();
+  const cupsWithKnownFinal = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!tournament.cups?.length) return;
+    const known = new Set(
+      tournament.cups
+        .filter((c) => getCupFinalists(tournament, c.id))
+        .map((c) => c.id)
+    );
+    // Primera pasada: lo que ya estaba al entrar no dispara nada.
+    if (cupsWithKnownFinal.current === null) {
+      cupsWithKnownFinal.current = known;
+      return;
+    }
+    const seen = cupsWithKnownFinal.current;
+    cupsWithKnownFinal.current = known;
+    if (!isOrganizer) return;
+    const nueva = tournament.cups.find(
+      (c) =>
+        known.has(c.id) &&
+        !seen.has(c.id) &&
+        (!tournament.playoffFinalFormat || cupNeedsFinalSetup(tournament, c.id))
+    );
+    if (nueva) {
+      setFinalConfigCup(nueva);
+      setShowFinalConfig(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournament.matches, tournament.cups, tournament.playoffFinalFormat, isOrganizer]);
   useEffect(() => {
     if (!isOrganizer) return;
+    if (tournament.cups?.length) return; // las copas van por el efecto de arriba
     if (tournament.format !== "group-playoff" && tournament.format !== "elimination") return;
     if (tournament.playoffFinalFormat) return; // already configured
     const playoff = tournament.matches.filter(
@@ -698,7 +733,8 @@ export function TournamentDetail({
       // Reset so a future "finals re-determined" still fires.
       finalBecameKnownRef.current = false;
     }
-  }, [tournament.matches, tournament.format, tournament.playoffFinalFormat, isOrganizer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournament.matches, tournament.format, tournament.playoffFinalFormat, tournament.cups, isOrganizer]);
 
   // Pieza H: champion celebration modal. Fires when tournament.status flips
   // from any other value to "completed" during the session, gated on the
@@ -1091,9 +1127,11 @@ export function TournamentDetail({
       {/* Pieza I: prompt to choose the final's format (single / ida y vuelta /
           best-of-5 / best-of-7) once both finalists are known. */}
       <PlayoffFinalConfigDialog
+        key={finalConfigCup?.id ?? "final"}
         open={showFinalConfig}
         onOpenChange={setShowFinalConfig}
         tournament={tournament}
+        cup={tournament.cups?.length ? finalConfigCup : undefined}
       />
 
       {esVoley && (
@@ -1185,7 +1223,11 @@ export function TournamentDetail({
           })}
           {isTabVisible("playoffs") && (
             <TabsContent value="playoffs" className="mt-4">
-              <PlayoffBracketView tournament={tournament} canEdit={canEdit} />
+              {tournament.cups?.length ? (
+                <CupsView tournament={tournament} canEdit={canEdit} />
+              ) : (
+                <PlayoffBracketView tournament={tournament} canEdit={canEdit} />
+              )}
             </TabsContent>
           )}
           {isTabVisible("schedule") && (
@@ -1232,7 +1274,11 @@ export function TournamentDetail({
           </TabsContent>
           {isTabVisible("playoffs") && (
             <TabsContent value="playoffs" className="mt-4">
-              <PlayoffBracketView tournament={tournament} canEdit={canEdit} />
+              {tournament.cups?.length ? (
+                <CupsView tournament={tournament} canEdit={canEdit} />
+              ) : (
+                <PlayoffBracketView tournament={tournament} canEdit={canEdit} />
+              )}
             </TabsContent>
           )}
           {isTabVisible("schedule") && (
@@ -1426,9 +1472,6 @@ function ConfigurationDialog({
   const [playersOnCourt, setPlayersOnCourt] = useState<4 | 5 | 6>(
     tournament.playersOnCourt ?? 6
   );
-  const [cardImage, setCardImage] = useState<string | null | undefined>(
-    tournament.cardImage
-  );
 
   // Per-group cupos draft, keyed by phase number → groupId → count (as string
   // for input bindings). Seeded from the saved perGroup map when present, or
@@ -1509,10 +1552,6 @@ function ConfigurationDialog({
       if (trimmedDesc !== (tournament.description ?? "")) updates.description = trimmedDesc || undefined;
       if (startDate && startDate !== tournament.startDate) updates.startDate = startDate;
       if (endDate !== (tournament.endDate ?? "")) updates.endDate = endDate || undefined;
-      // `cardImage` se compara contra undefined en los dos lados: volver a
-      // "Automática" tiene que poder BORRAR una elección previa, y para eso
-      // el update debe viajar aunque el valor nuevo sea undefined.
-      if (cardImage !== tournament.cardImage) updates.cardImage = cardImage ?? null;
       if (Object.keys(updates).length > 0) onUpdate(updates);
     } else if (section === "visibility") {
       onUpdate({ visibleTabs: visibilityDraft });
@@ -1695,18 +1734,6 @@ function ConfigurationDialog({
                       onChange={(e) => setEndDate(e.target.value)}
                     />
                   </div>
-                </div>
-                <div className="space-y-1.5 border-t pt-3">
-                  <Label>Foto de la tarjeta</Label>
-                  <p className="text-xs text-muted-foreground">
-                    La imagen con la que tu torneo aparece en la portada y en
-                    el listado. Elegí la que corresponda a tu categoría.
-                  </p>
-                  <CardImagePicker
-                    sport={tournament.sport}
-                    value={cardImage}
-                    onChange={setCardImage}
-                  />
                 </div>
               </div>
             )}

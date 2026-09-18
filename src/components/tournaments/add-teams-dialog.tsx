@@ -27,6 +27,7 @@ import {
   TIER_LABELS,
   TIER_ORDER,
   formatCOP,
+  withCupsSurcharge,
 } from "@/lib/pricing";
 import {
   generateIncrementalMatches,
@@ -273,7 +274,11 @@ export function AddTeamsDialog({ tournament }: AddTeamsDialogProps) {
     if (newIdx > currentIdx) {
       await updateTournamentProps(tournament.id, {
         tier: newTierInfo.tier,
-        price: newTierInfo.price,
+        // Con copas pagadas el precio lleva el recargo, igual que en el
+        // servidor (`computeUpgradeQuote`).
+        price: tournament.cupsSurchargePaid
+          ? withCupsSurcharge(newTierInfo.price)
+          : newTierInfo.price,
       });
     }
     toast.success(

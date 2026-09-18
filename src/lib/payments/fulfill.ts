@@ -1,12 +1,14 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { createTournament as dbCreateTournament } from "@/lib/db/tournaments";
+import { createTournament as dbCreateTournament, replaceTournamentCups } from "@/lib/db/tournaments";
 import { toDbMatch } from "@/lib/db/mappers";
 import {
   generateIncrementalMatches,
   generateIncrementalMatchesForGroup,
 } from "@/data/helpers";
+import { applyPaidCups, markCupsSurchargePaid } from "@/lib/payments/cups";
 import {
   Tournament,
+  TournamentCup,
   TournamentGroup,
   PlayoffConfig,
   PhaseConfig,
@@ -56,6 +58,12 @@ export async function fulfillTournamentPayment(
   // Tier upgrade of an existing tournament.
   if (data.type === "upgrade" && data.tournamentId) {
     return upgradeTournamentFromPayment(payment, data);
+  }
+
+  // Recargo por jugar con varias copas: no crea nada nuevo, deja el recargo
+  // pagado y crea las copas que el organizador armó antes de pagar.
+  if (data.type === "cups" && data.tournamentId) {
+    return cupsSurchargeFromPayment(payment, data);
   }
 
   const teamCount = Number(data.teamCount) || 0;
@@ -175,6 +183,15 @@ export async function fulfillTournamentPayment(
     }
   }
 
+  const cupDrafts = Array.isArray(data.cups)
+    ? (data.cups as Record<string, unknown>[]).map((c, i) => ({
+        name: String(c.name ?? "").trim(),
+        sortOrder: i + 1,
+        positionFrom: Number(c.positionFrom),
+        positionTo: Number(c.positionTo),
+      }))
+    : [];
+
   const tournament: Tournament = {
     id: "temp",
     name: String(data.name ?? "").trim(),
@@ -207,6 +224,8 @@ export async function fulfillTournamentPayment(
     scope: (data.scope as TournamentScope) || undefined,
     department: (data.department as string) || undefined,
     municipality: (data.municipality as string) || undefined,
+    // Grupos + múltiples copas: el recargo ya viene dentro del precio pagado.
+    ...(cupDrafts.length >= 2 ? { cupsSurchargePaid: true } : {}),
   };
 
   const tournamentId = await dbCreateTournament(
@@ -239,6 +258,11 @@ export async function fulfillTournamentPayment(
     return (fresh?.tournament_id as string) ?? null;
   }
 
+  // Grupos + múltiples copas: las copas se crean junto con el torneo.
+  if (cupDrafts.length >= 2) {
+    await replaceTournamentCups(tournamentId, cupDrafts, supabaseAdmin);
+  }
+
   // Mark coupon as used (only if not already claimed).
   if (payment.coupon_id) {
     await supabaseAdmin
@@ -253,6 +277,33 @@ export async function fulfillTournamentPayment(
   }
 
   console.log(`Tournament ${tournamentId} fulfilled for payment ${payment.id}`);
+  return tournamentId;
+}
+
+async function cupsSurchargeFromPayment(
+  payment: PaymentRecord,
+  data: Record<string, unknown>
+): Promise<string | null> {
+  const tournamentId = data.tournamentId as string;
+
+  // Idempotent claim: only the first caller (webhook OR confirm) proceeds.
+  const { data: claimed } = await supabaseAdmin
+    .from("payments")
+    .update({ tournament_id: tournamentId, status: "approved" })
+    .eq("id", payment.id)
+    .is("tournament_id", null)
+    .select("id")
+    .single();
+  if (!claimed) return tournamentId;
+
+  try {
+    await markCupsSurchargePaid(tournamentId, Number(data.listSurcharge) || 0);
+    const cups = (data.cups as Omit<TournamentCup, "id">[] | undefined) ?? [];
+    if (cups.length >= 2) await applyPaidCups(tournamentId, cups);
+    console.log(`Tournament ${tournamentId} cups surcharge paid, payment ${payment.id}`);
+  } catch (err) {
+    console.error("Error applying cups from payment:", err);
+  }
   return tournamentId;
 }
 

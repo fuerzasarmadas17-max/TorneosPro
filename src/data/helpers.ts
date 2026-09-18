@@ -1,4 +1,14 @@
-import { FAIR_PLAY_POINTS, getWinPoints, Match, MatchEventType, MatchPhase, Sport, StandingsEntry, Team, Tournament, TournamentGroup, PlayoffConfig, PhaseConfig, User } from "@/types";
+import { FAIR_PLAY_POINTS, getWinPoints, Match, MatchEventType, MatchPhase, Sport, StandingsEntry, Team, Tournament, TournamentCup, TournamentGroup, PlayoffConfig, PhaseConfig, User } from "@/types";
+
+type FinalFormat = NonNullable<Tournament["playoffFinalFormat"]>;
+
+/** Cuántos partidos tiene la serie final en cada formato. */
+export const FINAL_SERIES_LENGTH: Record<FinalFormat, number> = {
+  single: 1,
+  double_leg: 2,
+  best_of_5: 5,
+  best_of_7: 7,
+};
 
 /**
  * Pieza I: identify the winner of the final series, if any.
@@ -10,12 +20,33 @@ import { FAIR_PLAY_POINTS, getWinPoints, Match, MatchEventType, MatchPhase, Spor
  *   matches; champion is the first team to win ceil(N/2).
  *
  * Returns null when the series is still open (no team has clinched yet).
+ *
+ * Con varias copas, "el campeón del torneo" es el de la copa principal (la
+ * Oro). El de cada copa sale de `getCupChampion`, y si el torneo terminó lo
+ * dice `isBracketFinished`, no esta función.
  */
 export function getFinalSeriesChampion(tournament: Tournament): string | null {
+  const principal = getPrincipalCup(tournament);
+  if (principal) return getCupChampion(tournament, principal.id);
+
   const playoff = tournament.matches.filter(
     (m) =>
       m.phase === "playoff" || (!m.phase && tournament.format === "elimination")
   );
+  return getSeriesChampion(
+    playoff,
+    tournament.playoffFinalFormat,
+    !!tournament.playoffDoubleLeg
+  );
+}
+
+/** El ganador de la serie final de UNA llave: `matches` son los partidos de
+ *  esa llave y nada más. */
+function getSeriesChampion(
+  playoff: Match[],
+  finalFormat: Tournament["playoffFinalFormat"],
+  bracketDoubleLeg: boolean
+): string | null {
   if (playoff.length === 0) return null;
   const maxRound = Math.max(...playoff.map((m) => m.round));
   const lastRound = playoff
@@ -23,12 +54,8 @@ export function getFinalSeriesChampion(tournament: Tournament): string | null {
     .sort((a, b) => a.matchNumber - b.matchNumber);
 
   // Best-of-N: count wins per team across the series.
-  if (
-    tournament.playoffFinalFormat === "best_of_5" ||
-    tournament.playoffFinalFormat === "best_of_7"
-  ) {
-    const target =
-      tournament.playoffFinalFormat === "best_of_5" ? 3 : 4;
+  if (finalFormat === "best_of_5" || finalFormat === "best_of_7") {
+    const target = finalFormat === "best_of_5" ? 3 : 4;
     const wins: Record<string, number> = {};
     for (const m of lastRound) {
       if (m.status === "completed" && m.winnerId) {
@@ -43,10 +70,10 @@ export function getFinalSeriesChampion(tournament: Tournament): string | null {
 
   // Double-leg final: champion is whoever has aggregate winner on the
   // vuelta (the last completed match of the pair).
-  if (tournament.playoffFinalFormat === "double_leg" ||
+  if (finalFormat === "double_leg" ||
       // Implicit double_leg when only the bracket-wide flag is set and
       // no explicit final format chosen.
-      (!tournament.playoffFinalFormat && tournament.playoffDoubleLeg)) {
+      (!finalFormat && bracketDoubleLeg)) {
     const finalMatch = lastRound[lastRound.length - 1];
     return finalMatch?.status === "completed" ? finalMatch.winnerId ?? null : null;
   }
@@ -55,6 +82,134 @@ export function getFinalSeriesChampion(tournament: Tournament): string | null {
   // single final match.
   const finalMatch = lastRound[0];
   return finalMatch?.status === "completed" ? finalMatch?.winnerId ?? null : null;
+}
+
+// --- Copas (torneo con varias llaves en paralelo) ---
+//
+// Una copa es una llave con nombre: sus partidos son `phase: "playoff"` con
+// `cupId`. El formato de la final se elige una sola vez para todo el torneo
+// (`playoffFinalFormat`), pero cada copa llega a su final en otro momento: la
+// primera que llega lo elige, y a las demás hay que "armarles" la final con
+// ese formato cuando llegan. Hasta que eso pasa, esa copa se lee con el
+// formato natural de su llave (partido único, o ida y vuelta si la llave es de
+// ida y vuelta). Ver `Por hacer/torneos/grupos-y-copas.md`, secciones 3 y 5.
+
+/** La copa principal (la de `sortOrder` más bajo), o undefined si el torneo es
+ *  de una sola llave. */
+export function getPrincipalCup(tournament: Tournament): TournamentCup | undefined {
+  if (!tournament.cups?.length) return undefined;
+  return [...tournament.cups].sort((a, b) => a.sortOrder - b.sortOrder)[0];
+}
+
+/** Los partidos de la llave de una copa. */
+export function getCupMatches(tournament: Tournament, cupId: string): Match[] {
+  return tournament.matches.filter(
+    (m) => m.phase === "playoff" && m.cupId === cupId
+  );
+}
+
+/** El formato que tiene la llave sin que nadie arme la final: ida y vuelta si
+ *  toda la llave se juega así, si no partido único. */
+function naturalFinalFormat(tournament: Tournament): FinalFormat {
+  return tournament.playoffDoubleLeg ? "double_leg" : "single";
+}
+
+/**
+ * ¿La final de esta copa ya tiene la forma del formato elegido? Es decir: la
+ * última ronda tiene tantos partidos como pide el formato, todos con los dos
+ * finalistas puestos. Sin formato elegido no hay nada que armar.
+ */
+export function isCupFinalReady(tournament: Tournament, cupId: string): boolean {
+  const format = tournament.playoffFinalFormat;
+  if (!format) return true;
+  const matches = getCupMatches(tournament, cupId);
+  if (matches.length === 0) return false;
+  const maxRound = Math.max(...matches.map((m) => m.round));
+  const finals = matches.filter((m) => m.round === maxRound);
+  return (
+    finals.length === FINAL_SERIES_LENGTH[format] &&
+    finals.every((m) => !!m.homeTeamId && !!m.awayTeamId)
+  );
+}
+
+/** El formato con el que hay que LEER la final de esta copa hoy: el elegido
+ *  si la final ya está armada, si no ninguno (la llave natural). */
+export function getCupFinalFormat(
+  tournament: Tournament,
+  cupId: string
+): Tournament["playoffFinalFormat"] {
+  return isCupFinalReady(tournament, cupId)
+    ? tournament.playoffFinalFormat
+    : undefined;
+}
+
+/**
+ * ¿Hay que armarle la final a esta copa? Pasa cuando el formato ya se eligió
+ * (lo eligió otra copa), esta copa ya tiene a sus dos finalistas, la final no
+ * tiene ningún resultado y el formato elegido no es el que la llave ya trae.
+ */
+export function cupNeedsFinalSetup(tournament: Tournament, cupId: string): boolean {
+  const format = tournament.playoffFinalFormat;
+  if (!format) return false;
+  if (format === naturalFinalFormat(tournament)) return false;
+  if (isCupFinalReady(tournament, cupId)) return false;
+  const finalists = getCupFinalists(tournament, cupId);
+  if (!finalists) return false;
+  const matches = getCupMatches(tournament, cupId);
+  const maxRound = Math.max(...matches.map((m) => m.round));
+  const finalRounds = tournament.playoffDoubleLeg ? [maxRound - 1, maxRound] : [maxRound];
+  return !matches.some(
+    (m) =>
+      finalRounds.includes(m.round) &&
+      (m.homeScore != null || m.awayScore != null || m.winnerId != null)
+  );
+}
+
+/** Los dos finalistas de una copa, o null si todavía no se conocen. En una
+ *  llave de ida y vuelta viven en la ida de la final (la vuelta puede estar
+ *  vacía hasta que se arme). */
+export function getCupFinalists(
+  tournament: Tournament,
+  cupId: string
+): { home: string; away: string } | null {
+  const matches = getCupMatches(tournament, cupId);
+  if (matches.length === 0) return null;
+  const maxRound = Math.max(...matches.map((m) => m.round));
+  const ready = isCupFinalReady(tournament, cupId) && !!tournament.playoffFinalFormat;
+  const idaRound = !ready && tournament.playoffDoubleLeg ? maxRound - 1 : maxRound;
+  const first = matches
+    .filter((m) => m.round === idaRound)
+    .sort((a, b) => a.matchNumber - b.matchNumber)[0];
+  if (!first?.homeTeamId || !first?.awayTeamId) return null;
+  return { home: first.homeTeamId, away: first.awayTeamId };
+}
+
+/** El campeón de una copa, o null si su final no terminó. */
+export function getCupChampion(tournament: Tournament, cupId: string): string | null {
+  const matches = getCupMatches(tournament, cupId);
+  const ready = isCupFinalReady(tournament, cupId);
+  // La final todavía no tiene la forma del formato elegido (un mejor de 5 que
+  // sigue siendo un partido): no se puede coronar a nadie hasta armarla.
+  if (!ready && tournament.playoffFinalFormat !== naturalFinalFormat(tournament)) {
+    return null;
+  }
+  return getSeriesChampion(
+    matches,
+    ready ? tournament.playoffFinalFormat : undefined,
+    !!tournament.playoffDoubleLeg
+  );
+}
+
+/**
+ * ¿Terminaron los playoffs? Con una sola llave, cuando la final tiene campeón.
+ * Con copas, cuando TODAS lo tienen: si no, el torneo se daría por terminado
+ * con la primera final que se juegue y las otras copas a medio jugar.
+ */
+export function isBracketFinished(tournament: Tournament): boolean {
+  if (tournament.cups?.length) {
+    return tournament.cups.every((c) => getCupChampion(tournament, c.id) != null);
+  }
+  return getFinalSeriesChampion(tournament) != null;
 }
 
 // --- Per-group advancement helpers ---
@@ -631,7 +786,7 @@ export function rankTeamsInGroup(
     .map((e) => e.teamId);
 }
 
-function nextPowerOf2(n: number): number {
+export function nextPowerOf2(n: number): number {
   let p = 1;
   while (p < n) p *= 2;
   return p;

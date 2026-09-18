@@ -34,8 +34,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Minus, Trophy, ListOrdered, Network } from "lucide-react";
-import { getTournamentPriceInfo, TournamentPriceInfo, checkFreeTier, FREE_TIER_LIMITS, distributeTeamsToGroups } from "@/lib/pricing";
+import { Plus, Minus, Trophy, ListOrdered, Network, Medal, Loader2 } from "lucide-react";
+import { getTournamentPriceInfo, TournamentPriceInfo, checkFreeTier, FREE_TIER_LIMITS, distributeTeamsToGroups, withCupsSurcharge, CUPS_SURCHARGE_RATE } from "@/lib/pricing";
+import { CupDraft, DEFAULT_CUP_NAMES, MAX_CUPS, defaultCups, previewCups, validateCups } from "@/lib/copas";
+import { replaceTournamentCups } from "@/lib/db/tournaments";
 import { TournamentCostDialog, FORMAT_LABELS } from "./tournament-cost-dialog";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabase";
@@ -85,11 +87,24 @@ const FORMAT_OPTIONS: {
     value: "group-playoff",
     icon: Network,
     title: "Grupos + Playoffs",
-    tagline: "Fase de grupos y luego copa",
+    tagline: "Grupos y luego eliminación",
     description: "Primero grupos (todos contra todos) y los mejores pasan a una llave de eliminación.",
     paid: true,
   },
 ];
+
+/** "Grupos + múltiples copas": por dentro es un torneo de grupos + playoffs
+ *  que después de los grupos arma varias llaves (Oro, Plata, Bronce) en vez de
+ *  una. Va aparte de las tres de arriba porque tiene un recargo. Ver
+ *  `Por hacer/torneos/grupos-y-copas.md`. */
+const MULTI_CUPS_OPTION = {
+  icon: Medal,
+  title: "Grupos + múltiples copas",
+  tagline: "Grupos y luego varias copas",
+  description:
+    "Después de los grupos, nadie se va a casa: cada uno sigue en una copa según su puesto (Oro, Plata, Bronce), cada copa con su campeón.",
+};
+const MULTI_CUPS_LABEL = "Grupos + múltiples copas";
 
 const WIZARD_STEPS = [
   { label: "Esencial" },
@@ -189,6 +204,11 @@ export function CreateTournamentForm() {
   const [playersOnCourt, setPlayersOnCourt] = useState<4 | 5 | 6>(6);
   const [hasPhase2, setHasPhase2] = useState(false);
   const [phase2GroupCount, setPhase2GroupCount] = useState("2");
+  // Grupos + múltiples copas. `format` queda en "group-playoff"; esto dice que
+  // después de los grupos hay varias copas. `cupDrafts` vacío = las copas por
+  // defecto (se calculan con el tamaño de los grupos, que puede cambiar).
+  const [multiCups, setMultiCups] = useState(false);
+  const [cupDrafts, setCupDrafts] = useState<CupDraft[]>([]);
 
   // Default cupo that fills any group whose value isn't explicitly set.
   const DEFAULT_ADVANCE = "2";
@@ -269,6 +289,50 @@ export function CreateTournamentForm() {
     }
   };
 
+  // Un torneo "de mentira" con los grupos del wizard, solo para calcular las
+  // copas con las mismas funciones que usa el torneo de verdad (reparto,
+  // validación, cuántos equipos y descansos tiene cada copa).
+  const cupsPreviewTournament = (): Tournament => {
+    const total = parseInt(teamCount) || 0;
+    const sizes = total > 0 && groups.length > 0 ? distributeTeamsToGroups(total, groups.length) : [];
+    return {
+      id: "wizard",
+      name: "",
+      sport: (sport || "futbol") as Sport,
+      format: "group-playoff",
+      plan: "paid",
+      status: "upcoming",
+      createdBy: "",
+      teamIds: [],
+      matches: [],
+      createdAt: "",
+      startDate: "",
+      groups: groups.map((g, i) => ({
+        id: g.id,
+        name: g.name,
+        phase: 1,
+        teamIds: Array.from({ length: sizes[i]?.teamCount ?? 0 }, (_, k) => `${g.id}-${k}`),
+      })),
+    };
+  };
+  const effectiveCups: CupDraft[] = multiCups
+    ? cupDrafts.length > 0
+      ? cupDrafts
+      : defaultCups(cupsPreviewTournament(), MAX_CUPS)
+    : [];
+  const updateCupDraft = (i: number, patch: Partial<CupDraft>) =>
+    setCupDrafts(effectiveCups.map((c, j) => (j === i ? { ...c, ...patch } : c)));
+  const setCupCount = (n: number) => {
+    const next = effectiveCups.slice(0, n);
+    for (let i = next.length; i < n; i++) {
+      const last = next[next.length - 1];
+      const block = last ? last.positionTo - last.positionFrom + 1 : 2;
+      const from = last ? last.positionTo + 1 : 1;
+      next.push({ name: DEFAULT_CUP_NAMES[i], sortOrder: i + 1, positionFrom: from, positionTo: from + block - 1 });
+    }
+    setCupDrafts(next);
+  };
+
   // Per-step validation — reuses the exact same checks/messages as the final
   // submit so gating "Siguiente" and the final create stay consistent.
   const getStepError = (s: number): string | null => {
@@ -304,7 +368,10 @@ export function CreateTournamentForm() {
         if (perGroup < 2) {
           return `No hay suficientes ${participantLabel.toLowerCase()} para ${groups.length} grupos (minimo 2 por grupo)`;
         }
-        if (format === "group-playoff" && !hasPhase2) {
+        if (multiCups) {
+          const cupsError = validateCups(cupsPreviewTournament(), effectiveCups);
+          if (cupsError) return cupsError;
+        } else if (format === "group-playoff" && !hasPhase2) {
           // Validate per-group cupos for single-phase format.
           for (const g of groups) {
             const n = parseInt(readAdvance1(g.id));
@@ -432,6 +499,10 @@ export function CreateTournamentForm() {
       // Legacy uniform fields (kept for back-compat with in-flight payments).
       advanceCount: format === "group-playoff" ? (hasPhase2 ? legacy2 : legacy1) : null,
       hasPhase2,
+      // Grupos + múltiples copas: fulfill.ts las crea junto con el torneo.
+      cups: multiCups
+        ? effectiveCups.map((c, i) => ({ ...c, name: c.name.trim(), sortOrder: i + 1 }))
+        : null,
       phase1AdvancePerGroup: hasPhase2 ? legacy1 : null,
       phase2GroupCount: hasPhase2 ? p2Count : null,
       phase2AdvancePerGroup: hasPhase2 ? legacy2 : null,
@@ -459,13 +530,19 @@ export function CreateTournamentForm() {
     const count = parseInt(teamCount);
 
     // Free tier: create directly without cost dialog
-    if (canUseFree) {
+    if (canUseFree && !multiCups) {
       createTournament("free");
       return;
     }
 
-    // Paid: calculate tier price and show confirmation dialog
-    const info = getTournamentPriceInfo(count);
+    // Paid: calculate tier price and show confirmation dialog. Con copas, el
+    // recargo va dentro del precio: así el bono se le aplica igual que al
+    // resto (un 50% también descuenta el recargo; un 100% lo deja en $0 y la
+    // deuda contra publicidad lo incluye, porque sale del precio).
+    const base = getTournamentPriceInfo(count);
+    const info = multiCups
+      ? { ...base, price: withCupsSurcharge(base.price), tierLabel: `${base.tierLabel} + copas` }
+      : base;
     setPriceInfo(info);
     setShowCostDialog(true);
   };
@@ -608,6 +685,8 @@ export function CreateTournamentForm() {
         scope: scope as TournamentScope,
         department: department || undefined,
         municipality: municipality || undefined,
+        // El recargo de copas ya va dentro del precio de este torneo.
+        ...(multiCups && plan === "paid" ? { cupsSurchargePaid: true } : {}),
       };
 
       const newTournament = await addTournament(tournament);
@@ -640,6 +719,21 @@ export function CreateTournamentForm() {
         );
         setCreating(false);
         return;
+      }
+
+      // Grupos + múltiples copas: las copas se crean junto con el torneo. Si
+      // falla, el torneo queda de una sola llave y el organizador las arma
+      // desde la pestaña Playoffs sin volver a pagar (el recargo ya consta).
+      if (multiCups && newTournament?.id) {
+        const saved = await replaceTournamentCups(
+          newTournament.id,
+          effectiveCups.map((c, i) => ({ ...c, name: c.name.trim(), sortOrder: i + 1 }))
+        );
+        if (!saved) {
+          toast.error(
+            "El torneo se creó, pero no pudimos guardar las copas. Armalas desde la pestaña Playoffs."
+          );
+        }
       }
 
       // Link coupon to tournament (used_by/used_at already set above)
@@ -847,7 +941,7 @@ export function CreateTournamentForm() {
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
                   {FORMAT_OPTIONS.map((opt) => {
-                    const selected = format === opt.value;
+                    const selected = format === opt.value && !multiCups;
                     const Icon = opt.icon;
                     return (
                       <button
@@ -856,6 +950,7 @@ export function CreateTournamentForm() {
                         aria-pressed={selected}
                         onClick={() => {
                           setFormat(opt.value);
+                          setMultiCups(false);
                           // Only "group-playoff" uses groups. For elimination and liga,
                           // clear any group config so phantom groups don't contaminate
                           // pricing/validation/creation.
@@ -898,6 +993,47 @@ export function CreateTournamentForm() {
                     );
                   })}
                 </div>
+
+                {/* Grupos + múltiples copas: a lo ancho de las tres de arriba. */}
+                {(() => {
+                  const selected = format === "group-playoff" && multiCups;
+                  const Icon = MULTI_CUPS_OPTION.icon;
+                  return (
+                    <button
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => {
+                        setFormat("group-playoff");
+                        setMultiCups(true);
+                        // Copas después de dos fases de grupos no va en la v1.
+                        setHasPhase2(false);
+                      }}
+                      className={`relative flex w-full flex-col items-start gap-2 rounded-lg border p-4 text-left transition-colors sm:flex-row sm:items-center sm:gap-4 ${
+                        selected
+                          ? "border-primary ring-2 ring-primary/20 bg-primary/5"
+                          : "border-border hover:border-primary/50 hover:bg-muted/40"
+                      }`}
+                    >
+                      <Badge variant="secondary" className="absolute right-2 top-2 text-[10px]">
+                        Plan pago · +{Math.round(CUPS_SURCHARGE_RATE * 100)}%
+                      </Badge>
+                      <span
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                          selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <div className="space-y-1 sm:pr-28">
+                        <div className="space-y-0.5">
+                          <p className="font-semibold leading-tight">{MULTI_CUPS_OPTION.title}</p>
+                          <p className="text-xs font-medium text-primary/80">{MULTI_CUPS_OPTION.tagline}</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{MULTI_CUPS_OPTION.description}</p>
+                      </div>
+                    </button>
+                  );
+                })()}
               </div>
               )}
 
@@ -905,7 +1041,9 @@ export function CreateTournamentForm() {
               <div className="space-y-8">
                 {/* Recap of the chosen format + quick way back to change it */}
                 {format && (() => {
-                  const opt = FORMAT_OPTIONS.find((o) => o.value === format);
+                  const opt = multiCups
+                    ? MULTI_CUPS_OPTION
+                    : FORMAT_OPTIONS.find((o) => o.value === format);
                   if (!opt) return null;
                   const Icon = opt.icon;
                   return (
@@ -985,7 +1123,7 @@ export function CreateTournamentForm() {
                     <Button
                       type="button"
                       variant={bestOf === 3 ? "default" : "outline"}
-                      className="flex-1 h-12 text-base"
+                      className="flex-1 min-w-0 h-12 px-2 text-sm sm:text-base"
                       onClick={() => setBestOf(3)}
                     >
                       Mejor de 3
@@ -993,7 +1131,7 @@ export function CreateTournamentForm() {
                     <Button
                       type="button"
                       variant={bestOf === 5 ? "default" : "outline"}
-                      className="flex-1 h-12 text-base"
+                      className="flex-1 min-w-0 h-12 px-2 text-sm sm:text-base"
                       onClick={() => setBestOf(5)}
                     >
                       Mejor de 5
@@ -1017,7 +1155,7 @@ export function CreateTournamentForm() {
                         key={n}
                         type="button"
                         variant={playersOnCourt === n ? "default" : "outline"}
-                        className="flex-1 h-12 text-base"
+                        className="flex-1 min-w-0 h-12 px-2 text-sm sm:text-base"
                         onClick={() => setPlayersOnCourt(n)}
                       >
                         {n} en cancha
@@ -1090,7 +1228,7 @@ export function CreateTournamentForm() {
                   })()}
 
                   {/* Phases: one (groups → playoffs) vs two (groups → groups → playoffs) */}
-                  {groups.length >= 1 && format === "group-playoff" && (
+                  {groups.length >= 1 && format === "group-playoff" && !multiCups && (
                     <div className="space-y-3 pt-2">
                       <div className="space-y-1">
                         <h3 className="font-semibold text-xl">¿Cómo quieres la estructura?</h3>
@@ -1138,7 +1276,92 @@ export function CreateTournamentForm() {
                     </div>
                   )}
 
-                  {groups.length >= 1 && format === "group-playoff" && !hasPhase2 && (
+                  {groups.length >= 1 && multiCups && (() => {
+                    const preview = previewCups(cupsPreviewTournament(), effectiveCups);
+                    const label = participantLabel.toLowerCase();
+                    return (
+                      <div className="space-y-3 pt-2">
+                        <div className="space-y-1">
+                          <h3 className="font-semibold text-xl">¿Cómo se reparten las copas?</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Cada copa se arma con ciertos puestos de cada grupo. Los puestos
+                            que no van a ninguna copa quedan eliminados.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">¿Cuántas copas?</span>
+                          {Array.from({ length: MAX_CUPS - 1 }, (_, i) => i + 2).map((n) => (
+                            <Button
+                              key={n}
+                              type="button"
+                              size="sm"
+                              variant={effectiveCups.length === n ? "default" : "outline"}
+                              onClick={() => setCupCount(n)}
+                            >
+                              {n}
+                            </Button>
+                          ))}
+                        </div>
+                        <div className="space-y-2">
+                          {effectiveCups.map((c, i) => {
+                            const p = preview[i];
+                            return (
+                              <div key={i} className="rounded-lg border p-3 space-y-2">
+                                <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+                                  <div className="space-y-1">
+                                    <Label className="text-xs text-muted-foreground">Nombre</Label>
+                                    <Input
+                                      value={c.name}
+                                      maxLength={40}
+                                      onChange={(e) => updateCupDraft(i, { name: e.target.value })}
+                                      className="h-9"
+                                    />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <div className="space-y-1">
+                                      <Label className="text-xs text-muted-foreground">Desde el puesto</Label>
+                                      <Input
+                                        type="number"
+                                        inputMode="numeric"
+                                        min={1}
+                                        value={c.positionFrom}
+                                        onChange={(e) => updateCupDraft(i, { positionFrom: parseInt(e.target.value) || 0 })}
+                                        className="h-9 w-24"
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <Label className="text-xs text-muted-foreground">Hasta el puesto</Label>
+                                      <Input
+                                        type="number"
+                                        inputMode="numeric"
+                                        min={1}
+                                        value={c.positionTo}
+                                        onChange={(e) => updateCupDraft(i, { positionTo: parseInt(e.target.value) || 0 })}
+                                        className="h-9 w-24"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                                {p && (
+                                  <p className={`text-xs ${p.teams < 2 ? "text-destructive" : "text-muted-foreground"}`}>
+                                    {p.teams} {label}
+                                    {p.byes > 0 &&
+                                      ` · ${p.byes} ${p.byes === 1 ? "pasa" : "pasan"} directo a la segunda ronda`}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                          Jugar con copas tiene un recargo del {Math.round(CUPS_SURCHARGE_RATE * 100)}% sobre
+                          el precio del torneo. Ya va incluido en el precio que vas a ver al confirmar.
+                        </p>
+                      </div>
+                    );
+                  })()}
+
+                  {groups.length >= 1 && format === "group-playoff" && !hasPhase2 && !multiCups && (
                     <div className="space-y-3 pt-2">
                       <div className="space-y-1">
                         <h3 className="font-semibold text-xl">
@@ -1476,7 +1699,7 @@ export function CreateTournamentForm() {
                 <SummaryRow label="Nombre" value={name} />
                 <SummaryRow label="Deporte" value={sportLabel} />
                 <SummaryRow label="Fecha de inicio" value={startDate} />
-                <SummaryRow label="Formato" value={format ? FORMAT_LABELS[format] : ""} />
+                <SummaryRow label="Formato" value={multiCups ? MULTI_CUPS_LABEL : format ? FORMAT_LABELS[format] : ""} />
                 <SummaryRow label={participantLabel} value={teamCount} />
                 {sport === "volleyball" && (
                   <SummaryRow label="Sets" value={`Mejor de ${bestOf}`} />
@@ -1487,8 +1710,16 @@ export function CreateTournamentForm() {
                 {groups.length > 0 && (
                   <SummaryRow label="Grupos" value={`${groups.length}`} />
                 )}
-                {format === "group-playoff" && !hasPhase2 && (
+                {format === "group-playoff" && !hasPhase2 && !multiCups && (
                   <SummaryRow label="Clasifican" value={`${advance1Total} ${participantLabel.toLowerCase()}`} />
+                )}
+                {multiCups && (
+                  <SummaryRow
+                    label="Copas"
+                    value={effectiveCups
+                      .map((c) => `${c.name.trim()} (${c.positionFrom === c.positionTo ? `${c.positionFrom}º` : `${c.positionFrom}º a ${c.positionTo}º`})`)
+                      .join(", ")}
+                  />
                 )}
                 {format === "group-playoff" && hasPhase2 && (
                   <SummaryRow label="Estructura" value="Fase 1 → Fase 2 → Playoffs" />
@@ -1565,7 +1796,12 @@ export function CreateTournamentForm() {
                 onClick={handleFinalSubmit}
                 disabled={creating}
               >
-                {creating ? "Creando..." : canUseFree ? "Crear Torneo Gratis" : "Crear Torneo"}
+                {creating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Creando...
+                  </>
+                ) : canUseFree ? "Crear Torneo Gratis" : "Crear Torneo"}
               </Button>
             )}
           </div>
@@ -1658,10 +1894,12 @@ export function CreateTournamentForm() {
         priceInfo={priceInfo}
         tournamentName={name}
         format={format as TournamentFormat}
+        formatLabel={multiCups ? MULTI_CUPS_LABEL : undefined}
         teamCount={parseInt(teamCount)}
         sport={sport as Sport}
         userId={user!.id}
         tournamentData={buildTournamentData()}
+        creating={creating}
       />
     )}
     </>

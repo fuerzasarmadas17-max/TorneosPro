@@ -344,9 +344,14 @@ function MatchDisplay({
     const isPostponed = match.status === "postponed";
     const isCompleted = match.status === "completed";
     const canEditDetails = canEdit && !isCompleted;
+    // Con copas, el partido de playoffs lleva el nombre de su copa en el
+    // mismo lugar donde los de grupos llevan el del grupo: si no, el público
+    // ve que se jugó "la final" y no sabe de cuál.
     const groupName = match.groupId
       ? tournament.groups?.find((g) => g.id === match.groupId)?.name || ""
-      : "";
+      : match.cupId
+        ? tournament.cups?.find((c) => c.id === match.cupId)?.name || ""
+        : "";
     const roundLabel = match.phase === "playoff"
       ? `Ronda ${match.round}`
       : match.round === 0

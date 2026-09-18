@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tournament, Match } from "@/types";
 import { useTournaments } from "@/context/tournament-context";
-import { getRoundLabel } from "@/data/helpers";
+import { cupNeedsFinalSetup, getRoundLabel } from "@/data/helpers";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CalendarIcon, Clock, MapPin, Check, ArrowRight, Filter } from "lucide-react";
 import { toast } from "sonner";
@@ -162,27 +162,31 @@ export function DateOrganizer({ tournament, phaseFilter, onScheduled }: DateOrga
   // al modal "Configurar la final" y elija el formato (Pieza I). Ahí
   // también se setean las fechas de los juegos de la final, así que no tiene
   // sentido que aparezcan aquí antes de eso.
-  const bracketHasTeams = tournament.matches.some(
-    (m) => m.phase === "playoff" && (!!m.homeTeamId || !!m.awayTeamId)
-  );
-  const allPlayoffMatches = tournament.matches.filter(
-    (m) => m.phase === "playoff"
-  );
-  const playoffMaxRound = allPlayoffMatches.length > 0
-    ? Math.max(...allPlayoffMatches.map((m) => m.round))
-    : 0;
-  const isPlayoffDoubleLeg = !!tournament.playoffDoubleLeg;
-  const finalRoundFloor = isPlayoffDoubleLeg
-    ? playoffMaxRound - 1
-    : playoffMaxRound;
-  const hideFinalUntilFormatChosen = !tournament.playoffFinalFormat;
-  const playoffPhaseMatches = bracketHasTeams
-    ? unscheduled.filter(
-        (m) =>
-          m.phase === "playoff" &&
-          (!hideFinalUntilFormatChosen || m.round < finalRoundFloor)
-      )
-    : [];
+  //
+  // Con copas se hace lo mismo por cada copa: cada una es su propia llave,
+  // con sus rondas y su final.
+  const playoffBrackets = (
+    tournament.cups?.length
+      ? tournament.cups.map((c) => ({ key: c.id, name: c.name as string | undefined, cupId: c.id as string | null }))
+      : [{ key: "unica", name: undefined, cupId: null }]
+  ).flatMap((b) => {
+    const all = tournament.matches.filter(
+      (m) => m.phase === "playoff" && (m.cupId ?? null) === b.cupId
+    );
+    if (!all.some((m) => !!m.homeTeamId || !!m.awayTeamId)) return [];
+    const maxRound = Math.max(...all.map((m) => m.round));
+    const finalRoundFloor = tournament.playoffDoubleLeg ? maxRound - 1 : maxRound;
+    const hideFinalUntilFormatChosen = b.cupId
+      ? !tournament.playoffFinalFormat || cupNeedsFinalSetup(tournament, b.cupId)
+      : !tournament.playoffFinalFormat;
+    const pending = unscheduled.filter(
+      (m) =>
+        m.phase === "playoff" &&
+        (m.cupId ?? null) === b.cupId &&
+        (!hideFinalUntilFormatChosen || m.round < finalRoundFloor)
+    );
+    return [{ ...b, all, pending }];
+  });
   const regularMatches = unscheduled.filter((m) => !m.phase);
 
   if (regularMatches.length > 0) {
@@ -255,18 +259,16 @@ export function DateOrganizer({ tournament, phaseFilter, onScheduled }: DateOrga
   // scheduled and drop out of this list. For double-leg the raw round
   // count is doubled (ida + vuelta), so we collapse pairs and prefix the
   // label with "Ida " / "Vuelta ".
-  if (playoffPhaseMatches.length > 0) {
-    const allPlayoff = tournament.matches.filter((m) => m.phase === "playoff");
-    const totalRawRounds = allPlayoff.length > 0
-      ? Math.max(...allPlayoff.map((m) => m.round))
-      : 1;
+  for (const bracket of playoffBrackets) {
+    if (bracket.pending.length === 0) continue;
+    const totalRawRounds = Math.max(...bracket.all.map((m) => m.round));
     const isDoubleLeg = !!tournament.playoffDoubleLeg;
     const totalBracketRounds = isDoubleLeg
       ? Math.ceil(totalRawRounds / 2)
       : totalRawRounds;
 
     const rounds = new Map<number, Match[]>();
-    for (const m of playoffPhaseMatches) {
+    for (const m of bracket.pending) {
       const arr = rounds.get(m.round) || [];
       arr.push(m);
       rounds.set(m.round, arr);
@@ -275,8 +277,8 @@ export function DateOrganizer({ tournament, phaseFilter, onScheduled }: DateOrga
       const bracketRound = isDoubleLeg ? Math.ceil(round / 2) : round;
       const leg = isDoubleLeg ? (round % 2 === 1 ? "Ida — " : "Vuelta — ") : "";
       sections.push({
-        key: `po-r${round}`,
-        label: `${leg}${getRoundLabel(bracketRound, totalBracketRounds)}`,
+        key: `po-${bracket.key}-r${round}`,
+        label: `${bracket.name ? `${bracket.name} · ` : ""}${leg}${getRoundLabel(bracketRound, totalBracketRounds)}`,
         matches,
       });
     }

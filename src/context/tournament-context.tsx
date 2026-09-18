@@ -10,14 +10,16 @@ import {
   useRef,
   ReactNode,
 } from "react";
-import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, VolleyballSet, Sponsor, PhaseConfig } from "@/types";
+import { Tournament, Team, TournamentFilters, Match, MatchEvent, Player, VolleyballSet, Sponsor, PhaseConfig, TournamentCup } from "@/types";
 import {
   generateRoundRobinCircle,
   generateAdditionalGroupRounds,
   generateEmptyPlayoffBracket,
-  getFinalSeriesChampion,
+  isBracketFinished,
+  nextPowerOf2,
 } from "@/data/helpers";
-import { fetchTournaments, fetchTournamentsWithMatches, fetchTournamentsByOrganizer, fetchTournamentsWithMatchesByOrganizer, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, deleteTournament as dbDeleteTournament, addTournamentTeams, removeTeamFromTournament as dbRemoveTeamFromTournament, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup, assignTeamsToPhaseGroups as dbAssignTeamsToPhaseGroups, assignTeamsToBracketSlots as dbAssignTeamsToBracketSlots, updateGroupName as dbUpdateGroupName } from "@/lib/db/tournaments";
+import { getCupClassified } from "@/lib/copas";
+import { fetchTournaments, fetchTournamentsWithMatches, fetchTournamentsByOrganizer, fetchTournamentsWithMatchesByOrganizer, createTournament as dbCreateTournament, updateTournament as dbUpdateTournament, deleteTournament as dbDeleteTournament, addTournamentTeams, removeTeamFromTournament as dbRemoveTeamFromTournament, updatePlayoffConfig as dbUpdatePlayoffConfig, updateTournamentSponsors, insertMatchesForPhase, assignTeamsToGroup, assignTeamsToPhaseGroups as dbAssignTeamsToPhaseGroups, assignTeamsToBracketSlots as dbAssignTeamsToBracketSlots, updateGroupName as dbUpdateGroupName, replaceTournamentCups as dbReplaceTournamentCups, updateCupName as dbUpdateCupName } from "@/lib/db/tournaments";
 import { fetchTeamsByIdsResult, createTeams as dbCreateTeams, updateTeam as dbUpdateTeam, updateTeamPlayers as dbUpdateTeamPlayers } from "@/lib/db/teams";
 import { createMatch as dbCreateMatch, createMatches as dbCreateMatches, updateMatchResult as dbUpdateMatchResult, updateMatchDetails as dbUpdateMatchDetails, deleteMatch as dbDeleteMatch, updateEventPaid as dbUpdateEventPaid, renameVenueForMatches as dbRenameVenueForMatches } from "@/lib/db/matches";
 import { toDbMatch } from "@/lib/db/mappers";
@@ -88,15 +90,30 @@ interface TournamentContextType {
   configurePlayoffFinal: (
     tournamentId: string,
     format: NonNullable<Tournament["playoffFinalFormat"]>,
-    schedules?: { date?: string; time?: string; venue?: string }[]
+    schedules?: { date?: string; time?: string; venue?: string }[],
+    /** Torneo con copas: la final de qué copa. Sin esto, la llave única. */
+    cupId?: string
   ) => Promise<boolean>;
+  /** Torneo con varias copas: guarda la lista de copas (o la vacía, para
+   *  volver a una sola llave). Borra las llaves que hubiera — por eso solo se
+   *  puede mientras ninguna tenga equipos puestos ni resultados. Devuelve false
+   *  si ya no se puede o si la base rechazó las copas. */
+  configureCups: (
+    tournamentId: string,
+    cups: Omit<TournamentCup, "id">[]
+  ) => Promise<boolean>;
+  renameCup: (tournamentId: string, cupId: string, name: string) => Promise<boolean>;
   /** Create the empty playoff bracket (round-1 slots + later rounds, linked
    *  by nextMatchId) for a tournament that never got one — e.g. a fixture
    *  built by hand jornada por jornada instead of through "Generar
    *  Aleatorio". Sized from `playoffConfig.totalAdvancing`. No-op (returns
    *  true) when the bracket already exists; false when there's no playoff
-   *  config to size it with. */
-  createPlayoffBracket: (tournamentId: string) => Promise<boolean>;
+   *  config to size it with.
+   *
+   *  Con `cupId`, la llave de esa copa, del tamaño de sus clasificados. Si la
+   *  copa ya tenía una llave vacía de otro tamaño (un descalificado le sacó un
+   *  equipo), la rehace. */
+  createPlayoffBracket: (tournamentId: string, cupId?: string) => Promise<boolean>;
   /** Finalize the playoff bracket: for single-leg just flips the
    *  `playoffFixtureGenerated` flag; for double-leg also rebuilds the bracket
    *  matches to include ida + vuelta legs (preserving round-1 team
@@ -1010,12 +1027,21 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     async (
       tournamentId: string,
       format: NonNullable<Tournament["playoffFinalFormat"]>,
-      schedules?: { date?: string; time?: string; venue?: string }[]
+      schedules?: { date?: string; time?: string; venue?: string }[],
+      cupId?: string
     ): Promise<boolean> => {
       const t = tournamentsRef.current.find((x) => x.id === tournamentId);
       if (!t) return false;
+      // Con copas el formato es uno solo para todas: la primera copa que llega
+      // a la final lo elige, y a las demás se les arma con ese mismo.
+      if (cupId && t.playoffFinalFormat && t.playoffFinalFormat !== format) {
+        return false;
+      }
 
-      const playoffMatches = t.matches.filter((m) => m.phase === "playoff");
+      // Solo la llave de esta copa (o la única, si no hay copas).
+      const playoffMatches = t.matches.filter(
+        (m) => m.phase === "playoff" && (m.cupId ?? null) === (cupId ?? null)
+      );
       if (playoffMatches.length === 0) return false;
 
       // The "final" occupies 1 round (single-leg) or 2 rounds (double-leg
@@ -1091,6 +1117,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
           status: "unscheduled",
           nextMatchId: null,
           phase: "playoff",
+          ...(cupId ? { cupId } : {}),
           date: schedule?.date,
           time: schedule?.time,
           venue: schedule?.venue,
@@ -1141,10 +1168,146 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const createPlayoffBracket = useCallback(
-    async (tournamentId: string): Promise<boolean> => {
+  const configureCups = useCallback(
+    async (
+      tournamentId: string,
+      cups: Omit<TournamentCup, "id">[]
+    ): Promise<boolean> => {
       const t = tournamentsRef.current.find((x) => x.id === tournamentId);
       if (!t) return false;
+
+      // Rearmar las copas borra las llaves. Solo se puede mientras ninguna
+      // tenga un equipo puesto o un resultado: después sería perder cruces.
+      const playoff = t.matches.filter((m) => m.phase === "playoff");
+      const enMarcha = playoff.some(
+        (m) =>
+          m.homeTeamId ||
+          m.awayTeamId ||
+          m.status === "completed" ||
+          m.homeScore != null ||
+          m.awayScore != null
+      );
+      if (enMarcha) return false;
+
+      // Primero los partidos, después las copas: borrar una copa deja a sus
+      // partidos con cup_id vacío, y parecerían la llave de siempre.
+      for (const m of playoff) {
+        const ok = await dbDeleteMatch(m.id);
+        if (!ok) return false;
+      }
+      const saved = await dbReplaceTournamentCups(tournamentId, cups);
+      if (!saved) {
+        // Las llaves ya se borraron: el estado local tiene que enterarse igual.
+        setTournaments((prev) =>
+          prev.map((x) =>
+            x.id === tournamentId
+              ? { ...x, matches: x.matches.filter((m) => m.phase !== "playoff") }
+              : x
+          )
+        );
+        return false;
+      }
+
+      setTournaments((prev) =>
+        prev.map((x) =>
+          x.id === tournamentId
+            ? {
+                ...x,
+                cups: saved.length > 0 ? saved : undefined,
+                matches: x.matches.filter((m) => m.phase !== "playoff"),
+              }
+            : x
+        )
+      );
+      return true;
+    },
+    []
+  );
+
+  const renameCup = useCallback(
+    async (tournamentId: string, cupId: string, name: string): Promise<boolean> => {
+      const ok = await dbUpdateCupName(cupId, name);
+      if (!ok) return false;
+      setTournaments((prev) =>
+        prev.map((x) =>
+          x.id === tournamentId
+            ? {
+                ...x,
+                cups: x.cups?.map((c) => (c.id === cupId ? { ...c, name } : c)),
+              }
+            : x
+        )
+      );
+      return true;
+    },
+    []
+  );
+
+  const createPlayoffBracket = useCallback(
+    async (tournamentId: string, cupId?: string): Promise<boolean> => {
+      const t = tournamentsRef.current.find((x) => x.id === tournamentId);
+      if (!t) return false;
+
+      if (cupId) {
+        const cup = t.cups?.find((c) => c.id === cupId);
+        if (!cup) return false;
+        const size = getCupClassified(t, cup).length;
+        if (size < 2) return false;
+
+        // Las llaves vacías que no son de ninguna copa sobran: son el esqueleto
+        // de una sola llave que se crea al generar el fixture de grupos.
+        const huerfanos = t.matches.filter(
+          (m) => m.phase === "playoff" && !m.cupId && !m.homeTeamId && !m.awayTeamId && m.status !== "completed"
+        );
+        const existing = t.matches.filter(
+          (m) => m.phase === "playoff" && m.cupId === cupId
+        );
+        const r1 = existing.filter((m) => m.round === 1);
+        const tieneEquipos = existing.some((m) => m.homeTeamId || m.awayTeamId);
+        const bracketSize = r1.length * 2;
+        const wanted = nextPowerOf2(size);
+        // Ya está y es del tamaño justo, o ya tiene equipos (no se rehace).
+        if (existing.length > 0 && (tieneEquipos || bracketSize === wanted) && huerfanos.length === 0) {
+          return true;
+        }
+
+        const aBorrar = [...huerfanos, ...(existing.length > 0 && !tieneEquipos && bracketSize !== wanted ? existing : [])];
+        for (const m of aBorrar) await dbDeleteMatch(m.id);
+        const borrados = new Set(aBorrar.map((m) => m.id));
+
+        let persisted: Match[] = [];
+        if (existing.length === 0 || borrados.has(existing[0].id)) {
+          const counterStart =
+            Math.max(0, ...t.matches.map((m) => m.matchNumber)) + 1;
+          const skeleton = generateEmptyPlayoffBracket(
+            tournamentId,
+            size,
+            counterStart
+          ).map((m) => ({ ...m, cupId }));
+          const idMapping = await insertMatchesForPhase(skeleton, tournamentId);
+          if (Object.keys(idMapping).length !== skeleton.length) return false;
+          persisted = skeleton.map((m) => ({
+            ...m,
+            id: idMapping[m.id] ?? m.id,
+            nextMatchId: m.nextMatchId ? idMapping[m.nextMatchId] ?? null : null,
+          }));
+        }
+
+        setTournaments((prev) =>
+          prev.map((x) =>
+            x.id === tournamentId
+              ? {
+                  ...x,
+                  matches: [
+                    ...x.matches.filter((m) => !borrados.has(m.id)),
+                    ...persisted,
+                  ],
+                }
+              : x
+          )
+        );
+        return true;
+      }
 
       // Already has a bracket — nothing to do.
       if (t.matches.some((m) => m.phase === "playoff")) return true;
@@ -1191,6 +1354,25 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
 
       const doubleLeg = !!t.playoffDoubleLeg;
 
+      // Con copas el fixture se genera para todas juntas, así que todas tienen
+      // que tener sus cruces armados.
+      const brackets: (string | null)[] = t.cups?.length
+        ? t.cups.map((c) => c.id)
+        : [null];
+      if (t.cups?.length) {
+        const sinArmar = t.cups.some(
+          (c) =>
+            !t.matches.some(
+              (m) =>
+                m.phase === "playoff" &&
+                m.cupId === c.id &&
+                m.round === 1 &&
+                (m.homeTeamId || m.awayTeamId)
+            )
+        );
+        if (sinArmar) return false;
+      }
+
       // Single-leg path: matchups already live on the existing bracket
       // matches. Just flip the flag so the UI moves to State C.
       if (!doubleLeg) {
@@ -1207,190 +1389,199 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       // legs. Round-1 team assignments from the current bracket are
       // preserved; everything else (later rounds) is regenerated empty with
       // the new nextMatchId chain. Existing playoff matches are deleted.
-      const currentBracket = t.matches.filter((m) => m.phase === "playoff");
-      const round1 = [...currentBracket]
-        .filter((m) => m.round === 1)
-        .sort((a, b) => a.matchNumber - b.matchNumber);
-      const round1Anchors = round1.map((m) => ({
-        homeTeamId: m.homeTeamId,
-        awayTeamId: m.awayTeamId,
-      }));
-      const bracketSize = round1.length * 2;
-      const singleRounds = Math.log2(bracketSize);
-
-      for (const m of currentBracket) {
-        await dbDeleteMatch(m.id);
-      }
-
-      // Build the single-leg skeleton first (matching how the wizard would
-      // have done it), then expand each match into an ida + vuelta pair.
       // Numbering picks up after the highest existing matchNumber so the
-      // ids don't collide with group-stage matches.
+      // ids don't collide with group-stage matches. With cups, each cup's
+      // bracket is rebuilt on its own and they share the numbering.
       let counter = Math.max(0, ...t.matches.map((m) => m.matchNumber)) + 1;
+      const allExpanded: Match[] = [];
+      const oldBracket: Match[] = [];
 
-      type Single = {
-        id: string;
-        round: number;
-        matchNumber: number;
-        homeTeamId: string | null;
-        awayTeamId: string | null;
-        nextMatchIdx: number | null;
-      };
-      const singles: Single[] = [];
-      const indexByRound: Record<number, number[]> = {};
+      for (const cupId of brackets) {
+        const currentBracket = t.matches.filter(
+          (m) => m.phase === "playoff" && (m.cupId ?? null) === cupId
+        );
+        const round1 = [...currentBracket]
+          .filter((m) => m.round === 1)
+          .sort((a, b) => a.matchNumber - b.matchNumber);
+        const round1Anchors = round1.map((m) => ({
+          homeTeamId: m.homeTeamId,
+          awayTeamId: m.awayTeamId,
+        }));
+        const bracketSize = round1.length * 2;
+        const singleRounds = Math.log2(bracketSize);
 
-      // Round 1.
-      for (let i = 0; i < round1.length; i++) {
-        const anchor = round1Anchors[i];
-        const idx = singles.length;
-        singles.push({
-          id: `${tournamentId}-m-${counter}`,
-          round: 1,
-          matchNumber: counter,
-          homeTeamId: anchor.homeTeamId,
-          awayTeamId: anchor.awayTeamId,
-          nextMatchIdx: null,
-        });
-        (indexByRound[1] ??= []).push(idx);
-        counter++;
-      }
-      // Subsequent rounds: each match feeds from two of the previous round.
-      for (let round = 2; round <= singleRounds; round++) {
-        const prev = indexByRound[round - 1];
-        const current: number[] = [];
-        for (let i = 0; i < prev.length / 2; i++) {
+        type Single = {
+          id: string;
+          round: number;
+          matchNumber: number;
+          homeTeamId: string | null;
+          awayTeamId: string | null;
+          nextMatchIdx: number | null;
+        };
+        const singles: Single[] = [];
+        const indexByRound: Record<number, number[]> = {};
+
+        // Round 1.
+        for (let i = 0; i < round1.length; i++) {
+          const anchor = round1Anchors[i];
           const idx = singles.length;
           singles.push({
             id: `${tournamentId}-m-${counter}`,
-            round,
+            round: 1,
             matchNumber: counter,
-            homeTeamId: null,
-            awayTeamId: null,
+            homeTeamId: anchor.homeTeamId,
+            awayTeamId: anchor.awayTeamId,
             nextMatchIdx: null,
           });
-          singles[prev[i * 2]].nextMatchIdx = idx;
-          singles[prev[i * 2 + 1]].nextMatchIdx = idx;
-          current.push(idx);
+          (indexByRound[1] ??= []).push(idx);
           counter++;
         }
-        indexByRound[round] = current;
-      }
-
-      // Double-leg expansion: each single becomes round*2-1 (ida) and
-      // round*2 (vuelta). Only the vuelta carries the nextMatchId to the
-      // ida of the next bracket round. Mirrors helpers.ts:toDoubleLegElimination
-      // but preserves phase="playoff" on the vuelta.
-      const expanded: Match[] = [];
-      const expandedIdaIndex: Map<number, number> = new Map();
-      const expandedVueltaIndex: Map<number, number> = new Map();
-
-      for (let i = 0; i < singles.length; i++) {
-        const s = singles[i];
-        // Ida
-        const idaIdx = expanded.length;
-        expanded.push({
-          id: s.id,
-          tournamentId,
-          round: s.round * 2 - 1,
-          matchNumber: s.matchNumber,
-          homeTeamId: s.homeTeamId,
-          awayTeamId: s.awayTeamId,
-          homeScore: null,
-          awayScore: null,
-          winnerId: null,
-          status: "unscheduled",
-          nextMatchId: null,
-          phase: "playoff",
-        });
-        expandedIdaIndex.set(i, idaIdx);
-        // Vuelta — same matchup with sides swapped, new id.
-        const vueltaId = `${tournamentId}-m-${counter}`;
-        const vueltaIdx = expanded.length;
-        expanded.push({
-          id: vueltaId,
-          tournamentId,
-          round: s.round * 2,
-          matchNumber: counter,
-          homeTeamId: s.awayTeamId,
-          awayTeamId: s.homeTeamId,
-          homeScore: null,
-          awayScore: null,
-          winnerId: null,
-          status: "unscheduled",
-          nextMatchId: null,
-          phase: "playoff",
-        });
-        expandedVueltaIndex.set(i, vueltaIdx);
-        counter++;
-      }
-      // Wire vuelta.nextMatchId → ida of the next bracket round.
-      for (let i = 0; i < singles.length; i++) {
-        const s = singles[i];
-        if (s.nextMatchIdx == null) continue;
-        const targetIda = expandedIdaIndex.get(s.nextMatchIdx);
-        const vueltaIdx = expandedVueltaIndex.get(i);
-        if (targetIda == null || vueltaIdx == null) continue;
-        expanded[vueltaIdx].nextMatchId = expanded[targetIda].id;
-      }
-
-      // Bye resolution after double-leg regen. The original single-leg bye
-      // auto-completes get wiped when this function deletes and recreates
-      // the bracket. Walk the new matches and re-resolve any bye pair (both
-      // the ida with one team set and its mirrored vuelta) — mark them
-      // completed with the lone team as winner. For vueltas with a
-      // nextMatchId, also propagate the winner to the next round's ida slot.
-      //
-      // Gated on "no feeder" so later rounds with one slot waiting for a
-      // R1 winner (e.g. semis already populated by a bye but missing the
-      // play-in winner) don't get auto-completed.
-      for (const m of expanded) {
-        const isOnlyOneTeam =
-          (!!m.homeTeamId && !m.awayTeamId) ||
-          (!m.homeTeamId && !!m.awayTeamId);
-        if (!isOnlyOneTeam) continue;
-        const hasFeeder = expanded.some((x) => x.nextMatchId === m.id);
-        if (hasFeeder) continue;
-        const winnerId = (m.homeTeamId ?? m.awayTeamId)!;
-        m.status = "completed";
-        m.homeScore = 0;
-        m.awayScore = 0;
-        m.winnerId = winnerId;
-      }
-      // Propagate vuelta bye winners to the next round's ida slot AND mirror
-      // to the paired vuelta (same matchup, sides swapped) so the next round's
-      // vuelta isn't left with null teams.
-      for (const m of expanded) {
-        if (m.status !== "completed" || !m.winnerId || !m.nextMatchId) continue;
-        const next = expanded.find((x) => x.id === m.nextMatchId);
-        if (!next) continue;
-        const feeders = expanded.filter((x) => x.nextMatchId === next.id);
-        const idx = feeders.findIndex((f) => f.id === m.id);
-        if (idx === 0) next.homeTeamId = m.winnerId;
-        else next.awayTeamId = m.winnerId;
-
-        // Mirror to the paired vuelta of `next` (= round+1, same position).
-        const idaRoundMatches = expanded
-          .filter((x) => x.round === next.round)
-          .sort((a, b) => a.matchNumber - b.matchNumber);
-        const pairPosition = idaRoundMatches.findIndex((x) => x.id === next.id);
-        const vueltaRoundMatches = expanded
-          .filter((x) => x.round === next.round + 1)
-          .sort((a, b) => a.matchNumber - b.matchNumber);
-        const pairedVuelta = vueltaRoundMatches[pairPosition];
-        if (pairedVuelta) {
-          if (idx === 0) pairedVuelta.awayTeamId = m.winnerId;
-          else pairedVuelta.homeTeamId = m.winnerId;
+        // Subsequent rounds: each match feeds from two of the previous round.
+        for (let round = 2; round <= singleRounds; round++) {
+          const prev = indexByRound[round - 1];
+          const current: number[] = [];
+          for (let i = 0; i < prev.length / 2; i++) {
+            const idx = singles.length;
+            singles.push({
+              id: `${tournamentId}-m-${counter}`,
+              round,
+              matchNumber: counter,
+              homeTeamId: null,
+              awayTeamId: null,
+              nextMatchIdx: null,
+            });
+            singles[prev[i * 2]].nextMatchIdx = idx;
+            singles[prev[i * 2 + 1]].nextMatchIdx = idx;
+            current.push(idx);
+            counter++;
+          }
+          indexByRound[round] = current;
         }
+
+        // Double-leg expansion: each single becomes round*2-1 (ida) and
+        // round*2 (vuelta). Only the vuelta carries the nextMatchId to the
+        // ida of the next bracket round. Mirrors helpers.ts:toDoubleLegElimination
+        // but preserves phase="playoff" on the vuelta.
+        const expanded: Match[] = [];
+        const expandedIdaIndex: Map<number, number> = new Map();
+        const expandedVueltaIndex: Map<number, number> = new Map();
+
+        for (let i = 0; i < singles.length; i++) {
+          const s = singles[i];
+          // Ida
+          const idaIdx = expanded.length;
+          expanded.push({
+            id: s.id,
+            tournamentId,
+            round: s.round * 2 - 1,
+            matchNumber: s.matchNumber,
+            homeTeamId: s.homeTeamId,
+            awayTeamId: s.awayTeamId,
+            homeScore: null,
+            awayScore: null,
+            winnerId: null,
+            status: "unscheduled",
+            nextMatchId: null,
+            phase: "playoff",
+            ...(cupId ? { cupId } : {}),
+          });
+          expandedIdaIndex.set(i, idaIdx);
+          // Vuelta — same matchup with sides swapped, new id.
+          const vueltaId = `${tournamentId}-m-${counter}`;
+          const vueltaIdx = expanded.length;
+          expanded.push({
+            id: vueltaId,
+            tournamentId,
+            round: s.round * 2,
+            matchNumber: counter,
+            homeTeamId: s.awayTeamId,
+            awayTeamId: s.homeTeamId,
+            homeScore: null,
+            awayScore: null,
+            winnerId: null,
+            status: "unscheduled",
+            nextMatchId: null,
+            phase: "playoff",
+            ...(cupId ? { cupId } : {}),
+          });
+          expandedVueltaIndex.set(i, vueltaIdx);
+          counter++;
+        }
+        // Wire vuelta.nextMatchId → ida of the next bracket round.
+        for (let i = 0; i < singles.length; i++) {
+          const s = singles[i];
+          if (s.nextMatchIdx == null) continue;
+          const targetIda = expandedIdaIndex.get(s.nextMatchIdx);
+          const vueltaIdx = expandedVueltaIndex.get(i);
+          if (targetIda == null || vueltaIdx == null) continue;
+          expanded[vueltaIdx].nextMatchId = expanded[targetIda].id;
+        }
+
+        // Bye resolution after double-leg regen. The original single-leg bye
+        // auto-completes get wiped when this function deletes and recreates
+        // the bracket. Walk the new matches and re-resolve any bye pair (both
+        // the ida with one team set and its mirrored vuelta) — mark them
+        // completed with the lone team as winner. For vueltas with a
+        // nextMatchId, also propagate the winner to the next round's ida slot.
+        //
+        // Gated on "no feeder" so later rounds with one slot waiting for a
+        // R1 winner (e.g. semis already populated by a bye but missing the
+        // play-in winner) don't get auto-completed.
+        for (const m of expanded) {
+          const isOnlyOneTeam =
+            (!!m.homeTeamId && !m.awayTeamId) ||
+            (!m.homeTeamId && !!m.awayTeamId);
+          if (!isOnlyOneTeam) continue;
+          const hasFeeder = expanded.some((x) => x.nextMatchId === m.id);
+          if (hasFeeder) continue;
+          const winnerId = (m.homeTeamId ?? m.awayTeamId)!;
+          m.status = "completed";
+          m.homeScore = 0;
+          m.awayScore = 0;
+          m.winnerId = winnerId;
+        }
+        // Propagate vuelta bye winners to the next round's ida slot AND mirror
+        // to the paired vuelta (same matchup, sides swapped) so the next round's
+        // vuelta isn't left with null teams.
+        for (const m of expanded) {
+          if (m.status !== "completed" || !m.winnerId || !m.nextMatchId) continue;
+          const next = expanded.find((x) => x.id === m.nextMatchId);
+          if (!next) continue;
+          const feeders = expanded.filter((x) => x.nextMatchId === next.id);
+          const idx = feeders.findIndex((f) => f.id === m.id);
+          if (idx === 0) next.homeTeamId = m.winnerId;
+          else next.awayTeamId = m.winnerId;
+
+          // Mirror to the paired vuelta of `next` (= round+1, same position).
+          const idaRoundMatches = expanded
+            .filter((x) => x.round === next.round)
+            .sort((a, b) => a.matchNumber - b.matchNumber);
+          const pairPosition = idaRoundMatches.findIndex((x) => x.id === next.id);
+          const vueltaRoundMatches = expanded
+            .filter((x) => x.round === next.round + 1)
+            .sort((a, b) => a.matchNumber - b.matchNumber);
+          const pairedVuelta = vueltaRoundMatches[pairPosition];
+          if (pairedVuelta) {
+            if (idx === 0) pairedVuelta.awayTeamId = m.winnerId;
+            else pairedVuelta.homeTeamId = m.winnerId;
+          }
+        }
+        oldBracket.push(...currentBracket);
+        allExpanded.push(...expanded);
+      }
+
+      for (const m of oldBracket) {
+        await dbDeleteMatch(m.id);
       }
 
       // Persist new matches and flip the flag.
-      const idMapping = await insertMatchesForPhase(expanded, tournamentId);
+      const idMapping = await insertMatchesForPhase(allExpanded, tournamentId);
       // Re-key both id AND nextMatchId so the in-memory bracket links stay
       // valid for the winner-propagation cascade. Without remapping
       // nextMatchId, the local state keeps the temp ids and findIndex by
       // nextMatchId would silently miss — playoff winners wouldn't appear
       // in the next round until a page reload.
-      const persisted = expanded.map((m) => ({
+      const persisted = allExpanded.map((m) => ({
         ...m,
         id: idMapping[m.id] ?? m.id,
         nextMatchId: m.nextMatchId
@@ -1465,8 +1656,10 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       // use. It sizes the bracket with nextPowerOf2 (5 -> 8, 8 -> 8, 9 -> 16)
       // so byes can go to the top seeds when totalAdvancing isn't a power of
       // two.
+      // Con copas no: cada copa arma su llave cuando el organizador abre sus
+      // cruces, del tamaño de sus clasificados.
       const bracketExists = tournament.matches.some((m) => m.phase === "playoff");
-      if (!bracketExists && tournament.playoffConfig?.totalAdvancing) {
+      if (!bracketExists && !tournament.cups?.length && tournament.playoffConfig?.totalAdvancing) {
         allNew.push(
           ...generateEmptyPlayoffBracket(
             tournamentId,
@@ -1799,9 +1992,16 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                   (t.format === "elimination" && t.doubleRoundRobin) ||
                   (t.format === "group-playoff" && t.playoffDoubleLeg);
                 if (isDoubleLegBracket && completedMatch.phase === "playoff") {
+                  // Con copas, solo la llave de esta copa: la ronda 3 de la
+                  // Oro y la de la Plata son rondas distintas.
+                  const sameBracket = (m: Match) =>
+                    (m.cupId ?? null) === (completedMatch.cupId ?? null);
                   const idaRoundMatches = updatedMatches
                     .filter(
-                      (m) => m.phase === "playoff" && m.round === nextMatch.round
+                      (m) =>
+                        m.phase === "playoff" &&
+                        m.round === nextMatch.round &&
+                        sameBracket(m)
                     )
                     .sort((a, b) => a.matchNumber - b.matchNumber);
                   const pairPosition = idaRoundMatches.findIndex(
@@ -1810,7 +2010,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                   const vueltaRoundMatches = updatedMatches
                     .filter(
                       (m) =>
-                        m.phase === "playoff" && m.round === nextMatch.round + 1
+                        m.phase === "playoff" &&
+                        m.round === nextMatch.round + 1 &&
+                        sameBracket(m)
                     )
                     .sort((a, b) => a.matchNumber - b.matchNumber);
                   const pairedVuelta = vueltaRoundMatches[pairPosition];
@@ -1888,14 +2090,11 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
           // Check if all matches are completed. For group-playoff and
           // elimination, the tournament is "completed" when the final SERIES
           // has a champion (Pieza I helper handles single / double_leg /
-          // best-of-N). Other formats fall back to "every match completed".
+          // best-of-N) — with cups, when EVERY cup has one. Other formats
+          // fall back to "every match completed".
           let allCompleted: boolean;
           if (t.format === "group-playoff" || t.format === "elimination") {
-            const champion = getFinalSeriesChampion({
-              ...t,
-              matches: updatedMatches,
-            });
-            allCompleted = champion != null;
+            allCompleted = isBracketFinished({ ...t, matches: updatedMatches });
           } else {
             allCompleted = updatedMatches.every(
               (m) => m.status === "completed"
@@ -2048,6 +2247,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       configurePhaseGroups,
       configurePlayoffFinal,
       createPlayoffBracket,
+      configureCups,
+      renameCup,
       generatePlayoffFixture,
       configureBracketSlots,
       generatePhaseMatches,
@@ -2087,6 +2288,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       configurePhaseGroups,
       configurePlayoffFinal,
       createPlayoffBracket,
+      configureCups,
+      renameCup,
       generatePlayoffFixture,
       configureBracketSlots,
       generatePhaseMatches,

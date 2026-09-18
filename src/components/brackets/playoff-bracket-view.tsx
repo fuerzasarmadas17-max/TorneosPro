@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Tournament } from "@/types";
+import { Tournament, TournamentCup } from "@/types";
 import { BracketView } from "./bracket-view";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,18 +9,28 @@ import { Label } from "@/components/ui/label";
 import { useTournaments } from "@/context/tournament-context";
 import { BracketMatchupBuilder } from "@/components/tournaments/bracket-matchup-builder";
 import { PlayoffFinalConfigDialog } from "@/components/tournaments/playoff-final-config-dialog";
+import { CupsConfigDialog } from "@/components/tournaments/cups-config-dialog";
+import { canEditCups, canUseCups, scopeToCup } from "@/lib/copas";
+import { cupNeedsFinalSetup, getCupFinalists } from "@/data/helpers";
 import { toast } from "sonner";
-import { Settings2 } from "lucide-react";
+import { Settings2, Trophy } from "lucide-react";
 
 interface PlayoffBracketViewProps {
+  /** El torneo entero, también cuando se muestra una copa. */
   tournament: Tournament;
   canEdit: boolean;
+  /** Torneo con copas: la llave de qué copa. La vista es la misma de la llave
+   *  única, recortada a esa copa (ver `CupsView`). */
+  cup?: TournamentCup;
 }
 
-export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewProps) {
+export function PlayoffBracketView({ tournament: fullTournament, canEdit, cup }: PlayoffBracketViewProps) {
   const { updatePlayoffConfig, generatePlayoffFixture, createPlayoffBracket } =
     useTournaments();
+  // Con copa, todo lo de abajo mira solo la llave de esa copa.
+  const tournament = cup ? scopeToCup(fullTournament, cup) : fullTournament;
   const [editing, setEditing] = useState(false);
+  const [cupsOpen, setCupsOpen] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [finalConfigOpen, setFinalConfigOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -89,17 +99,21 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
 
   // Opens the matchup builder. When the bracket rows don't exist yet they're
   // created first — the builder needs round-1 slots to render.
+  // Con copa se pasa siempre: si la llave de la copa quedó de otro tamaño
+  // (un descalificado le sacó un equipo), createPlayoffBracket la rehace.
   const handleOpenBuilder = async () => {
-    if (!bracketMissing) {
+    if (!bracketMissing && !cup) {
       setBuilderOpen(true);
       return;
     }
     setCreatingBracket(true);
-    const ok = await createPlayoffBracket(tournament.id);
+    const ok = await createPlayoffBracket(tournament.id, cup?.id);
     setCreatingBracket(false);
     if (!ok) {
       toast.error(
-        "Primero definí cuántos equipos clasifican a playoffs"
+        cup
+          ? `${cup.name} necesita al menos 2 equipos`
+          : "Primero definí cuántos equipos clasifican a playoffs"
       );
       return;
     }
@@ -112,14 +126,53 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
     setGenerating(false);
     if (ok) {
       toast.success(
-        tournament.playoffDoubleLeg
+        (tournament.playoffDoubleLeg
           ? "Fixture generado (ida y vuelta)"
-          : "Fixture generado"
+          : "Fixture generado") + (cup ? " para todas las copas" : "")
       );
     } else {
       toast.error("No pudimos generar el fixture");
     }
   };
+
+  // Torneo de una llave que todavía puede pasar a varias copas: nadie puso un
+  // equipo en la llave y es de una sola fase de grupos.
+  const offerCups =
+    !cup && canEdit && canUseCups(fullTournament) && canEditCups(fullTournament);
+  const cupsOffer = offerCups ? (
+    <div className="rounded-lg border border-dashed p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+      <div className="text-sm">
+        <p className="font-medium">¿Querés que todos sigan jugando?</p>
+        <p className="text-muted-foreground">
+          Repartí a los equipos en varias copas según su puesto: Oro, Plata,
+          Bronce. Cada copa tiene su llave y su campeón. Tiene un recargo del
+          15% sobre el precio del torneo.
+        </p>
+      </div>
+      <Button variant="outline" size="sm" onClick={() => setCupsOpen(true)} className="shrink-0">
+        <Trophy className="h-4 w-4 mr-2" />
+        Jugar con varias copas
+      </Button>
+      {cupsOpen && (
+        <CupsConfigDialog open={cupsOpen} onOpenChange={setCupsOpen} tournament={fullTournament} />
+      )}
+    </div>
+  ) : null;
+
+  // Con copas el fixture se genera para todas juntas: se habilita cuando
+  // todas tienen sus cruces armados.
+  const cupsPending = cup
+    ? (fullTournament.cups ?? []).filter(
+        (c) =>
+          !fullTournament.matches.some(
+            (m) =>
+              m.phase === "playoff" &&
+              m.cupId === c.id &&
+              m.round === 1 &&
+              (m.homeTeamId || m.awayTeamId)
+          )
+      )
+    : [];
 
   // ============================================================
   // STATE: group stage not finished yet
@@ -179,6 +232,7 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
             )}
           </div>
         )}
+        {cupsOffer}
       </div>
     );
   }
@@ -193,7 +247,8 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
           <div>
             <p className="text-base font-medium">Playoffs pendientes de configuración</p>
             <p className="text-sm text-muted-foreground">
-              La fase de grupos terminó. Armá los enfrentamientos del bracket.
+              La fase de grupos terminó. Armá los enfrentamientos
+              {cup ? ` — ${cup.name}` : " del bracket"}.
             </p>
           </div>
           {canEdit ? (
@@ -215,7 +270,9 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
           onOpenChange={setBuilderOpen}
           tournament={tournament}
           fromPhase={lastGroupPhase}
+          cup={cup}
         />
+        {cupsOffer}
       </div>
     );
   }
@@ -249,12 +306,22 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
               </Button>
               <Button
                 size="sm"
-                disabled={generating}
+                disabled={generating || cupsPending.length > 0}
                 onClick={handleGenerateFixture}
               >
-                {generating ? "Generando..." : "Generar fixture"}
+                {generating
+                  ? "Generando..."
+                  : cup
+                    ? "Generar fixture de todas las copas"
+                    : "Generar fixture"}
               </Button>
             </div>
+          )}
+          {canEdit && cupsPending.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              El fixture se genera para todas las copas juntas. Falta armar los
+              cruces de: {cupsPending.map((c) => c.name).join(", ")}.
+            </p>
           )}
         </div>
 
@@ -267,6 +334,7 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
           onOpenChange={setBuilderOpen}
           tournament={tournament}
           fromPhase={lastGroupPhase}
+          cup={cup}
         />
       </div>
     );
@@ -313,11 +381,18 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
   const finalHasAnyResult = finalAllMatches.some(
     (m) => m.homeScore != null || m.awayScore != null || m.winnerId != null
   );
-  const canConfigureFinal =
-    canEdit &&
-    finalsKnown &&
-    !finalHasAnyResult &&
-    !tournament.playoffFinalFormat;
+  // Con copas: la primera copa que llega a la final elige el formato de todas;
+  // a las otras se les arma la final con ese formato cuando llegan.
+  const canConfigureFinal = cup
+    ? canEdit &&
+      !!getCupFinalists(fullTournament, cup.id) &&
+      !finalHasAnyResult &&
+      (!fullTournament.playoffFinalFormat ||
+        cupNeedsFinalSetup(fullTournament, cup.id))
+    : canEdit &&
+      finalsKnown &&
+      !finalHasAnyResult &&
+      !tournament.playoffFinalFormat;
 
   return (
     <div className="space-y-3">
@@ -350,11 +425,14 @@ export function PlayoffBracketView({ tournament, canEdit }: PlayoffBracketViewPr
         onOpenChange={setBuilderOpen}
         tournament={tournament}
         fromPhase={lastGroupPhase}
+        cup={cup}
       />
       <PlayoffFinalConfigDialog
+        key={cup?.id ?? "final"}
         open={finalConfigOpen}
         onOpenChange={setFinalConfigOpen}
-        tournament={tournament}
+        tournament={cup ? fullTournament : tournament}
+        cup={cup}
       />
     </div>
   );

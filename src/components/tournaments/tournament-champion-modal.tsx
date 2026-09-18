@@ -3,7 +3,8 @@
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Tournament } from "@/types";
-import { getFinalSeriesChampion } from "@/data/helpers";
+import { getCupMatches, getFinalSeriesChampion, getPrincipalCup } from "@/data/helpers";
+import { getCupChampions } from "@/lib/copas";
 import { useTournaments } from "@/context/tournament-context";
 import { supabase } from "@/lib/supabase";
 import {
@@ -66,9 +67,15 @@ export function TournamentChampionModal({
   // double-leg AND best-of-N final formats uniformly. For the runner-up we
   // pick the other team that played in the final series.
   const championId = getFinalSeriesChampion(tournament);
-  const playoff = tournament.matches.filter(
-    (m) => m.phase === "playoff" || !m.phase
-  );
+  // Con copas, el campeón del torneo es el de la copa principal, y el
+  // subcampeón sale de la final de esa copa.
+  const principalCup = getPrincipalCup(tournament);
+  const playoff = principalCup
+    ? getCupMatches(tournament, principalCup.id)
+    : tournament.matches.filter((m) => m.phase === "playoff" || !m.phase);
+  const otherCupChampions = principalCup
+    ? getCupChampions(tournament).filter((x) => x.cup.id !== principalCup.id)
+    : [];
   const maxRound =
     playoff.length > 0 ? Math.max(...playoff.map((m) => m.round)) : 0;
   const lastRound = playoff
@@ -171,7 +178,7 @@ export function TournamentChampionModal({
                 <span className="font-semibold text-foreground">
                   {championName}
                 </span>{" "}
-                se consagró campeón del torneo{" "}
+                se consagró campeón {principalCup ? `de la ${principalCup.name} del torneo` : "del torneo"}{" "}
                 <span className="font-semibold text-foreground">
                   {tournament.name}
                 </span>
@@ -180,6 +187,19 @@ export function TournamentChampionModal({
             }
           />
         </DialogHeader>
+
+        {otherCupChampions.length > 0 && (
+          <div className="text-sm text-muted-foreground text-center -mt-2 space-y-0.5">
+            {otherCupChampions.map(({ cup, championId: id }) => (
+              <p key={cup.id}>
+                {cup.name}:{" "}
+                <span className="font-medium text-foreground">
+                  {id ? teams.find((t) => t.id === id)?.name ?? "—" : "—"}
+                </span>
+              </p>
+            ))}
+          </div>
+        )}
 
         {runnerUpName && (
           <p className="text-sm text-muted-foreground text-center -mt-2">

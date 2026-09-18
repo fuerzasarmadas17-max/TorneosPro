@@ -133,7 +133,7 @@ export async function fetchLandingTournaments(
   const { data, error } = await supabaseServer
     .from("tournaments")
     .select(
-      `*, tournament_teams(team_id), tournament_groups(*, tournament_group_teams(team_id)), playoff_configs(*), sponsors(*)`
+      `*, tournament_teams(team_id), tournament_groups(*, tournament_group_teams(team_id)), playoff_configs(*), tournament_cups(*), sponsors(*)`
     )
     // Los que están jugándose primero: es lo que le interesa a un visitante.
     // Dentro de cada grupo, los más nuevos arriba.
@@ -198,7 +198,7 @@ export async function fetchFeaturedTournaments(): Promise<Tournament[]> {
   const { data, error } = await supabaseServer
     .from("tournaments")
     .select(
-      `*, tournament_teams(team_id), tournament_groups(*, tournament_group_teams(team_id)), playoff_configs(*), sponsors(*)`
+      `*, tournament_teams(team_id), tournament_groups(*, tournament_group_teams(team_id)), playoff_configs(*), tournament_cups(*), sponsors(*)`
     )
     .eq("featured", true)
     .order("created_at", { ascending: false });

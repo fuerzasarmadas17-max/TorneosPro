@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
-import { Match, Tournament } from "@/types";
-import { mapTournament, toDbMatch, toDbTournament } from "./mappers";
+import { Match, Tournament, TournamentCup } from "@/types";
+import { mapTournament, mapTournamentCup, toDbMatch, toDbTournament } from "./mappers";
 
 // Hay TRES selects, de más pesado a más liviano. Medido contra prod con 13
 // torneos: con matches+events explota, con matches son 1,16 MB, sin matches
@@ -16,6 +16,7 @@ const TOURNAMENT_DETAIL_SELECT = `
   tournament_teams(team_id),
   tournament_groups(*, tournament_group_teams(team_id)),
   playoff_configs(*),
+  tournament_cups(*),
   matches(*, match_events(*), volleyball_sets(*)),
   sponsors(*)
 `;
@@ -28,6 +29,7 @@ const TOURNAMENT_WITH_MATCHES_SELECT = `
   tournament_teams(team_id),
   tournament_groups(*, tournament_group_teams(team_id)),
   playoff_configs(*),
+  tournament_cups(*),
   matches(*, volleyball_sets(*)),
   sponsors(*)
 `;
@@ -47,6 +49,7 @@ const TOURNAMENT_LIST_SELECT = `
   tournament_teams(team_id),
   tournament_groups(*, tournament_group_teams(team_id)),
   playoff_configs(*),
+  tournament_cups(*),
   sponsors(*)
 `;
 
@@ -543,6 +546,67 @@ export async function insertMatchesForPhase(
   }
 
   return idMapping;
+}
+
+/**
+ * Reemplaza las copas de un torneo por las que se pasan. Borra las que había y
+ * crea las nuevas; devuelve las copas guardadas (con sus ids reales) o null si
+ * algo falló.
+ *
+ * Quien llama tiene que haber borrado antes los partidos de las llaves viejas:
+ * borrar una copa no borra sus partidos, los deja con `cup_id` vacío (ON DELETE
+ * SET NULL), y quedarían colgando como si fueran el playoff de siempre.
+ *
+ * Los candados de la base (que dos copas no se pisen los puestos, nombres sin
+ * repetir, orden de 1 a 6) están en `20260917_copas.sql`. Si el pedido los
+ * rompe, el insert falla y esto devuelve null.
+ */
+export async function replaceTournamentCups(
+  tournamentId: string,
+  cups: Omit<TournamentCup, "id">[],
+  client: SupabaseClient = supabase
+): Promise<TournamentCup[] | null> {
+  const { error: deleteErr } = await client
+    .from("tournament_cups")
+    .delete()
+    .eq("tournament_id", tournamentId);
+  if (deleteErr) {
+    console.error("replaceTournamentCups: no se pudieron borrar las copas", deleteErr);
+    return null;
+  }
+  if (cups.length === 0) return [];
+
+  const { data, error } = await client
+    .from("tournament_cups")
+    .insert(
+      cups.map((c) => ({
+        tournament_id: tournamentId,
+        name: c.name,
+        sort_order: c.sortOrder,
+        position_from: c.positionFrom,
+        position_to: c.positionTo,
+      }))
+    )
+    .select("*");
+  if (error || !data) {
+    console.error("replaceTournamentCups: no se pudieron crear las copas", error);
+    return null;
+  }
+  return (data as Record<string, unknown>[])
+    .map(mapTournamentCup)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+export async function updateCupName(
+  cupId: string,
+  name: string,
+  client: SupabaseClient = supabase
+): Promise<boolean> {
+  const { error } = await client
+    .from("tournament_cups")
+    .update({ name })
+    .eq("id", cupId);
+  return !error;
 }
 
 export async function updateGroupName(

@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { getTournamentPriceInfo, TIER_PRICES } from "@/lib/pricing";
+import { getTournamentPriceInfo, TIER_PRICES, withCupsSurcharge } from "@/lib/pricing";
 import { Sport, TournamentTier } from "@/types";
 
 const INDIVIDUAL_SPORTS: Sport[] = ["tenis", "padel", "ping-pong"];
@@ -30,7 +30,7 @@ export async function computeUpgradeQuote(
 ): Promise<UpgradeQuote | null> {
   const { data: tournament } = await supabaseAdmin
     .from("tournaments")
-    .select("id, sport, plan, tier, coupon_id")
+    .select("id, sport, plan, tier, coupon_id, cups_surcharge_paid")
     .eq("id", tournamentId)
     .single();
 
@@ -58,26 +58,18 @@ export async function computeUpgradeQuote(
   const paidTierPrice = tournament.tier
     ? (TIER_PRICES[tournament.tier as TournamentTier] ?? 0)
     : 0;
+  // Un torneo que ya pagó las copas lleva el recargo en los dos precios, así
+  // la ampliación también lo cobra sobre la diferencia.
+  const conCopas = (price: number) =>
+    tournament.cups_surcharge_paid ? withCupsSurcharge(price) : price;
   const listaOld = hasPaidBaseline
-    ? Math.max(paidTierPrice, getTournamentPriceInfo(currentCount).price)
+    ? conCopas(Math.max(paidTierPrice, getTournamentPriceInfo(currentCount).price))
     : 0;
   const newInfo = getTournamentPriceInfo(newTotal);
-  const listaNew = newInfo.price;
+  const listaNew = conCopas(newInfo.price);
 
   // Recover the original discount fraction from the tournament's coupon.
-  let d = 0;
-  if (tournament.coupon_id) {
-    const { data: coupon } = await supabaseAdmin
-      .from("coupons")
-      .select("type, value")
-      .eq("id", tournament.coupon_id)
-      .single();
-    if (coupon) {
-      if (coupon.type === "free_tournament") d = 1;
-      else if (coupon.type === "percentage")
-        d = Math.min(1, Math.max(0, (coupon.value ?? 0) / 100));
-    }
-  }
+  const d = await getCouponDiscount(tournament.coupon_id);
 
   const needsUpgrade = listaNew > listaOld;
   const cobro = needsUpgrade
@@ -93,4 +85,24 @@ export async function computeUpgradeQuote(
     currentCount,
     isIndividual,
   };
+}
+
+/**
+ * El descuento del bono con el que se creó el torneo, como fracción: 0 sin
+ * bono, 0.5 para uno del 50%, 1 para uno del 100% (o de torneo gratis). Es la
+ * regla de todos los cobros posteriores a la creación: se cobran con el mismo
+ * descuento con el que se creó el torneo.
+ */
+export async function getCouponDiscount(couponId: string | null | undefined): Promise<number> {
+  if (!couponId) return 0;
+  const { data: coupon } = await supabaseAdmin
+    .from("coupons")
+    .select("type, value")
+    .eq("id", couponId)
+    .single();
+  if (!coupon) return 0;
+  if (coupon.type === "free_tournament") return 1;
+  if (coupon.type === "percentage")
+    return Math.min(1, Math.max(0, (coupon.value ?? 0) / 100));
+  return 0;
 }

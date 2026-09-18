@@ -42,10 +42,16 @@ interface TournamentCostDialogProps {
   priceInfo: TournamentPriceInfo;
   tournamentName: string;
   format: TournamentFormat;
+  /** Para mostrar un nombre de formato distinto al estándar (p. ej. "Grupos +
+   *  múltiples copas", que por dentro es un torneo de grupos + playoffs). */
+  formatLabel?: string;
   teamCount: number;
   sport: Sport;
   userId: string;
   tournamentData: Record<string, unknown>;
+  /** El torneo se está creando (lo lleva el formulario, que es el que crea).
+   *  Mientras tanto los botones quedan bloqueados y con la ruedita. */
+  creating?: boolean;
 }
 
 export function TournamentCostDialog({
@@ -55,13 +61,18 @@ export function TournamentCostDialog({
   priceInfo,
   tournamentName,
   format,
+  formatLabel,
   teamCount,
   sport,
   userId,
   tournamentData,
+  creating = false,
 }: TournamentCostDialogProps) {
   const sportInfo = getSportInfo(sport);
   const [processing, setProcessing] = useState(false);
+  // `processing` es el viaje a Wompi (nos vamos de la página); `creating`, la
+  // creación con crédito o cupón. Cualquiera de los dos bloquea los botones.
+  const busy = processing || creating;
 
   // Créditos que cubren un torneo de ESTE tamaño. Si el organizador tiene
   // créditos de hasta 24 equipos y arma uno de 30, acá da 0 — y el diálogo no
@@ -144,18 +155,13 @@ export function TournamentCostDialog({
     : false;
 
   const handleCreditConfirm = () => {
-    setProcessing(true);
     // El consumo real lo hace `createTournament` DESPUÉS de crear el torneo,
     // porque el crédito se ata a su id. Acá solo se avisa la intención.
     onConfirm(undefined, undefined, true);
   };
 
   const handleFreeConfirm = () => {
-    setProcessing(true);
-    setTimeout(() => {
-      setProcessing(false);
-      onConfirm(appliedCoupon?.id);
-    }, 500);
+    onConfirm(appliedCoupon?.id);
   };
 
   const handleContinueToPayment = async () => {
@@ -222,7 +228,7 @@ export function TournamentCostDialog({
               <Badge variant="outline">
                 {sportInfo?.emoji} {sportInfo?.label}
               </Badge>
-              <Badge variant="outline">{FORMAT_LABELS[format]}</Badge>
+              <Badge variant="outline">{formatLabel ?? FORMAT_LABELS[format]}</Badge>
               <Badge variant="outline">{teamCount} equipos</Badge>
               <Badge className="bg-primary/10 text-primary border-primary/20">
                 {priceInfo.tierLabel}
@@ -355,9 +361,9 @@ export function TournamentCostDialog({
                 className="w-full"
                 variant={creditIsWasteful ? "outline" : "default"}
                 onClick={handleCreditConfirm}
-                disabled={processing}
+                disabled={busy}
               >
-                {processing ? (
+                {busy ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     Creando...
@@ -371,7 +377,7 @@ export function TournamentCostDialog({
                 className="w-full"
                 variant={creditIsWasteful ? "default" : "outline"}
                 onClick={handleContinueToPayment}
-                disabled={processing}
+                disabled={busy}
               >
                 {processing ? (
                   <>
@@ -387,7 +393,7 @@ export function TournamentCostDialog({
                 variant="ghost"
                 className="w-full"
                 onClick={() => handleOpenChange(false)}
-                disabled={processing}
+                disabled={busy}
               >
                 Cancelar
               </Button>
@@ -398,7 +404,7 @@ export function TournamentCostDialog({
                 variant="outline"
                 className="flex-1"
                 onClick={() => handleOpenChange(false)}
-                disabled={processing}
+                disabled={busy}
               >
                 Cancelar
               </Button>
@@ -406,9 +412,9 @@ export function TournamentCostDialog({
                 <Button
                   className="flex-1"
                   onClick={handleFreeConfirm}
-                  disabled={processing}
+                  disabled={busy}
                 >
-                  {processing ? (
+                  {busy ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Creando...
@@ -421,7 +427,7 @@ export function TournamentCostDialog({
                 <Button
                   className="flex-1"
                   onClick={handleContinueToPayment}
-                  disabled={processing}
+                  disabled={busy}
                 >
                   {processing ? (
                     <>

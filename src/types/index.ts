@@ -276,6 +276,11 @@ export interface Match {
    * Ver `Por hacer/deportes/voley/APLAZADO-PLANILLA-URGENTE.md`.
    */
   volleyPartialState?: EstadoAplazado | null;
+  /** De qué copa es este partido de playoff (torneos con varias copas: Oro,
+   *  Plata, Bronce). Vacío = el playoff de siempre, de una sola llave. Un
+   *  partido de copa sigue siendo `phase: "playoff"`: la copa es solo una
+   *  etiqueta encima, por eso las stats de postemporada no cambian. */
+  cupId?: string | null;
 }
 
 export interface StandingsEntry {
@@ -342,6 +347,21 @@ export interface TournamentGroup {
   phase?: number;
 }
 
+/** Una copa de un torneo con varias copas: una llave de eliminación directa
+ *  que se alimenta de un bloque de puestos de cada grupo (Oro = 1º a 2º,
+ *  Plata = 3º a 4º…). El puesto que no reclama ninguna copa se va a casa.
+ *  Ver `Por hacer/torneos/grupos-y-copas.md`. */
+export interface TournamentCup {
+  id: string;
+  name: string;
+  /** 1 = la copa principal (la Oro). Define el orden de las pestañas y cuál
+   *  es la copa cuyo campeón es "el campeón del torneo". */
+  sortOrder: number;
+  /** Puestos de cada grupo que entran a esta copa, inclusive. */
+  positionFrom: number;
+  positionTo: number;
+}
+
 export interface PhaseConfig {
   phase: number;
   /**
@@ -404,6 +424,14 @@ export interface Tournament {
   endDate?: string;
   groups?: TournamentGroup[];
   playoffConfig?: PlayoffConfig;
+  /** Copas del torneo, ordenadas por `sortOrder`. Vacío o undefined = el
+   *  playoff de siempre, con una sola llave y un solo campeón. */
+  cups?: TournamentCup[];
+  /** Ya pagó (o se le dio por pagado con bono del 100%) el recargo por jugar
+   *  con copas. Solo se lee: lo escribe el servidor al cobrar
+   *  (`src/lib/payments/cups.ts`). Las ampliaciones de equipos de un torneo
+   *  que lo pagó llevan el recargo encima. */
+  cupsSurchargePaid?: boolean;
   groupStageComplete?: boolean;
   /** Playoff bracket: if true, every matchup is decided over two legs (ida y
    *  vuelta). Independent of `doubleRoundRobin` (which applies to the group

@@ -1,7 +1,8 @@
 # Torneo con varias copas — grupos y después Oro, Plata, Bronce…
 
-**Estado:** diseño hablado con el dueño el **2026-09-16**. **Faltan 5
-decisiones del flujo de creación (sección 10) para empezar.** Nada construido.
+**Estado:** **construido (2026-09-18), sin desplegar**, con la opción en el
+wizard y el recargo del 15%. Los dos SQL ya corrieron en producción. Falta
+terminar de probarlo y desplegar (ver 0).
 **Origen:** pedido por el dueño el 2026-09-06. Hay ligas que corren un solo
 torneo donde después de los grupos todos siguen jugando, repartidos en varias
 eliminaciones directas por nivel. Hoy ese torneo no se puede armar en la
@@ -11,10 +12,34 @@ plataforma.
 
 ## 0. Si estás retomando esto: leé solo esta sección
 
-**Dónde íbamos:** el formato está hablado entero, pero **faltan 5 decisiones
-sobre cómo se crea el torneo** antes de empezar. Están en la **sección 10**.
-**Al retomar, lo primero es traerle al dueño esas 5 preguntas**, con la
-recomendación de cada una. No se escribió una línea de código.
+**Dónde íbamos (2026-09-18):** la versión útil está escrita y compila, **sin
+desplegar**. La lógica (campeón por copa, que el torneo termine cuando TODAS
+tienen campeón, el reparto por puestos, descalificados afuera, el formato de la
+final compartido) se probó con un torneo inventado; **las pantallas no se
+probaron con clics**, porque probarlas escribe en la base de producción.
+
+**Cómo se prende hoy (sin wizard):** en la pestaña **Playoffs** de un torneo de
+grupos + playoffs de una sola fase, mientras nadie haya puesto equipos en la
+llave, aparece "Jugar con varias copas". Ahí se eligen 2 o 3 copas, sus nombres
+y de qué puestos sale cada una, con el aviso de cuántos equipos y descansos va a
+tener cada copa. Después, una pestaña por copa: cada una arma sus cruces, y el
+fixture se genera para todas juntas. La primera copa que llega a la final elige
+el formato de todas; a las demás se les arma la final con ese formato.
+
+**Lo que falta, en orden:**
+1. **El recargo del 15% ya está construido** (ver 6.4): se cobra con la regla
+   del bono, y con crédito del paquete va incluido. Su SQL
+   (`aplicadas/20260918_copas_recargo.sql`) corrió el 2026-09-18.
+2. Desplegar y probar con un torneo real (armar copas, cruces, jugar una final).
+3. La foto/MVP por copa (cuando lo pidan). El wizard ya tiene la opción
+   "Grupos + múltiples copas" (2026-09-18).
+
+**Dónde está el código:** `src/lib/copas.ts` (reparto, validación, vista de una
+copa), `src/data/helpers.ts` (campeón y final por copa, `isBracketFinished`),
+`src/components/brackets/cups-view.tsx` (las pestañas),
+`src/components/tournaments/cups-config-dialog.tsx` (armar las copas), y en
+`tournament-context.tsx` las acciones reciben la copa (`configureCups`,
+`createPlayoffBracket`, `configurePlayoffFinal`).
 
 **Lo que hay que construir, en una frase:** un torneo donde, después de los
 grupos, en vez de una sola llave se arman **hasta 3 llaves en paralelo** (para
@@ -29,8 +54,10 @@ grupo **ya existen y funcionan**. No hay motor nuevo.
 **Dónde está el trabajo de verdad:** en que todo el sistema hoy asume que hay
 **un solo campeón**. Ver sección 5.
 
-**Por dónde empezar:** la tabla de copas y la columna en los partidos (5.1). Es
-de donde cuelga todo lo demás y no rompe nada de lo que ya anda.
+**Por dónde empezar:** la tabla de copas y la columna en los partidos (4.1). Es
+de donde cuelga todo lo demás y no rompe nada de lo que ya anda. **El SQL ya
+corrió en producción** (2026-09-18), vive en
+`supabase/migrations/aplicadas/20260917_copas.sql`. Lo siguiente es código.
 
 ---
 
@@ -76,20 +103,24 @@ pantalla. Y los 17 archivos que mencionan `"playoff"` siguen siendo 17.
 
 ---
 
-## 3. Lo que decidió el dueño el 2026-09-16
+## 3. Lo que decidió el dueño (2026-09-16 y 2026-09-17)
 
 | Pregunta | Respuesta |
 |---|---|
 | ¿Cuántas copas como máximo? | **3 para empezar**, "como para probar" (cambió el 2026-09-16; antes se había dicho 6). El diseño no cambia: el tope es un número y subirlo a 6 es cambiar ese número |
-| ¿Cuántos grupos como máximo? | **Sin máximo** |
+| ¿Cuántos grupos como máximo? | **8**, el tope que ya tiene el formulario. No se toca (2026-09-17) |
 | ¿Las copas son una fase nueva? | **No. Son playoffs**, nada más que varias llaves en paralelo |
 | ¿Cuentan como postemporada en las stats? | **Sí**, por lo de arriba. No se hace nada especial |
 | ¿Grupos parejos obligatorios? | **No** |
-| ¿Tercer puesto? | **Por copa.** Que una lo tenga no obliga a las demás |
+| ¿Tercer puesto? | **No va en la v1** (2026-09-17). Hoy no existe en ningún torneo de la plataforma; cuando se haga, se hace para todos los torneos, no solo para las copas |
+| ¿Copas después de **dos fases** de grupos? | **No en la v1** (2026-09-17). Solo grupos → copas |
+| ¿El **formato de la final** es por copa? | **No: uno solo para todas las copas** (2026-09-17), elegido una vez, como hoy (`playoffFinalFormat`) |
+| ¿Los **sets** (mejor de 3 o de 5) cambian por copa? | **No: iguales para todo el torneo** (2026-09-17), como hoy (`bestOf`) |
 | ¿Filtrar por copa? | **Sí, en la vista de playoffs.** En el calendario no hace falta |
 | ¿Quién les pone el nombre? | **El organizador**, igual que a los grupos, **con nombres por defecto** (7b) |
 | ¿Y si un equipo se retira? | Copa empezada: **W al rival**. Antes: **no entra a ninguna copa y su rival pasa directo** (7a) |
 | ¿El precio cambia? | **Sí**, ver sección 6 |
+| ¿Foto del campeón y MVP en todas las copas? | **No en la v1** (2026-09-18). Solo la copa principal. **Se puede agregar después sin rehacer nada** (3 – 4 días, ver 5.3): se hace cuando un organizador lo pida |
 
 ---
 
@@ -257,6 +288,35 @@ lado**. Hasta hoy se vende por tamaño; acá se podría vender por lo que el tor
 *vale*. No hay que cobrarlo caro —el dueño dijo que no— pero **es la primera vez
 que existe esa carta**, y conviene saber que existe.
 
+### 6.4 Cómo quedó construido y el paquete de torneos (2026-09-18)
+
+**El recargo es del 15% del precio de lista y se cobra una sola vez por torneo**
+(columna `tournaments.cups_surcharge_paid`, SQL `20260918_copas_recargo.sql`).
+Con el bono del torneo se hace lo mismo que en las ampliaciones de equipos: un
+50% también descuenta el recargo; con un 100% no se cobra, pero el precio del
+torneo lo incluye, así que si el torneo está fiado contra publicidad la deuda
+sube sola. Se cobra al crear ("Grupos + múltiples copas", va dentro del precio)
+o al prender las copas después desde Playoffs (pago aparte por Wompi).
+
+**Con un crédito del paquete de 5 torneos, las copas van incluidas: no se cobra
+el recargo.** Decisión del dueño, 2026-09-18. Por qué:
+
+- Lo que se deja de cobrar tiene techo: 15% del crédito ($9.600 por torneo),
+  $48.000 por paquete en el peor caso (los 5 con copas). Es proporcional a lo
+  vendido, no crece más rápido.
+- El crédito cubre hasta 24 equipos: los torneos de copas grandes (4 grupos de
+  8 = 32) no pueden usarlo y pagan lista + 15%.
+- Cobrar $9.600 aparte obliga a un segundo pago en medio de la creación, y el
+  paquete ya es el producto que más se cae. En cambio "incluye copas" lo ayuda a
+  vender (va escrito en el banner del paquete).
+- Las copas suelen ser torneos de fin de semana o de una semana: gastan un
+  crédito rápido, así que el organizador vuelve a comprar antes.
+
+**Cuándo revisarlo:** si más de la mitad de los créditos consumidos son de
+torneos con copas, el regalo pasó a ser un descuento permanente. Ahí se decide
+entre subir un poco el paquete o cobrar el recargo aparte. También al subir el
+tope de 3 copas.
+
 ---
 
 ## 7. Lo que se decidió al final (2026-09-16)
@@ -322,9 +382,12 @@ organizador los cambia si quiere; en una liga pueden ser "Copa Presidente" y
 | Campeón de cada copa visible (5.2) + el arreglo de 5.5 | 1 – 2 días |
 | Recargo del 15% en el precio | medio día |
 | **Versión útil** | **≈ 2 semanas y media** |
-| Foto y MVP por copa (5.3) | 3 – 4 días |
+| Foto y MVP por copa (5.3) — **fuera de la v1 por decisión del dueño (2026-09-18); se hace cuando lo pidan** | 3 – 4 días |
 | Wizard de creación: nombres de copas y cupos, con validación | 3 – 4 días |
 | **Total completo** | **≈ 4 semanas** |
+
+**Estos tiempos siguen valiendo después de las decisiones del 2026-09-17:** el
+tercer puesto quedó fuera de la v1, así que no suma nada.
 
 ---
 
@@ -335,50 +398,4 @@ de qué copa es cada partido. **Ya no hace falta** (2026-09-16): el en vivo est�
 construido y la página arma cada tarjeta con los datos del partido que ya
 tiene. Cuando exista `cup_id`, alcanza con mostrar el nombre de la copa en la
 tarjeta de `src/components/tournaments/en-vivo-hoja.tsx`. La planilla no se toca.
-
----
-
-## 10. 🔴 Lo que falta decidir para empezar: el flujo de crear el torneo
-
-**Pendiente desde el 2026-09-16.** El dueño preguntó cómo impacta esto al crear un
-torneo de vóley, y mirando el formulario (`src/components/forms/create-tournament-form.tsx`)
-salieron cosas que el diseño no había tenido en cuenta. **Al retomar, traer
-esto primero.**
-
-### Cómo es hoy crear un torneo de vóley de Grupos + Playoffs
-
-En el paso **Formato**, en orden: cuántos equipos → **a cuántos sets** (mejor de
-3 o de 5, solo vóley) → **cuántos juegan por equipo** (6, 5 o 4, solo vóley) →
-cuántos grupos (1 a 8) → una fase o dos fases → cuántos clasifican de cada grupo.
-
-### Cómo entrarían las copas
-
-Después de "¿una fase o dos?", una pregunta nueva: **"Después de los grupos,
-¿una sola llave o varias copas?"**. Si elige copas, "cuántos clasifican por
-grupo" se reemplaza por una tarjeta por copa: nombre (viene puesto), de qué
-puestos se alimenta, y el aviso de copas desparejas antes de confirmar.
-
-### Lo que se encontró en el código
-
-1. **El tercer puesto no existe hoy** en ningún torneo. La sección 3 lo daba por
-   hecho ("tercer puesto por copa"); sería trabajo nuevo, no algo que se reusa.
-2. **El formato de la final es uno por torneo** (`playoffFinalFormat`: partido
-   único, ida y vuelta, mejor de 5 o de 7). El aviso que lo pide saldría una vez
-   por cada final.
-3. **Los sets (`bestOf`) son de todo el torneo**: aplican igual a todas las copas.
-4. **El formulario permite hasta 8 grupos**, y la sección 3 dice "sin máximo".
-5. **No está dicho si se pueden combinar copas con dos fases de grupos.**
-
-### Las 5 preguntas para el dueño
-
-| # | Pregunta | Recomendación |
-|---|---|---|
-| 1 | ¿Copas con **dos fases** de grupos (grupos → grupos → copas)? | **No en la v1.** Solo grupos → copas |
-| 2 | ¿**Tercer puesto** en la v1, sabiendo que hoy no existe? | **No.** Para después, y para todos los torneos, no solo copas |
-| 3 | ¿El **formato de la final** es por copa o uno para todas? | **Uno para todas**, elegido una vez |
-| 4 | ¿Los **sets** (mejor de 3 o 5) son iguales para todas las copas? | **Sí**, como hoy |
-| 5 | ¿**Máximo de grupos**: se deja en 8 o se quita? | **Dejar 8** por ahora |
-
-Cuando conteste: pasar las respuestas a la sección 3, ajustar el tiempo de la
-sección 8 (el tercer puesto, si entra, suma) y borrar esta sección.
 

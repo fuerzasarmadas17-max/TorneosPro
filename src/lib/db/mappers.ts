@@ -10,6 +10,7 @@ import {
   MatchEvent,
   VolleyballSet,
   TournamentGroup,
+  TournamentCup,
   PlayoffConfig,
   PhaseConfig,
   Sport,
@@ -119,6 +120,7 @@ export function mapTournament(row: Record<string, unknown>): Tournament {
   const playoffRow = row.playoff_configs as Record<string, unknown> | Record<string, unknown>[] | undefined;
   const sponsorsRows = row.sponsors as Record<string, unknown>[] | undefined;
   const teamRows = row.tournament_teams as Record<string, unknown>[] | undefined;
+  const cupRows = row.tournament_cups as Record<string, unknown>[] | undefined;
 
   // playoff_configs can come as array (from select) or single object
   let playoffConfig: PlayoffConfig | undefined;
@@ -144,7 +146,11 @@ export function mapTournament(row: Record<string, unknown>): Tournament {
     endDate: (row.end_date as string) ?? undefined,
     groups: groupsRows ? groupsRows.map(mapTournamentGroup) : undefined,
     playoffConfig,
+    cups: cupRows && cupRows.length > 0
+      ? cupRows.map(mapTournamentCup).sort((a, b) => a.sortOrder - b.sortOrder)
+      : undefined,
     groupStageComplete: (row.group_stage_complete as boolean) ?? false,
+    cupsSurchargePaid: (row.cups_surcharge_paid as boolean) ?? false,
     playoffDoubleLeg: (row.playoff_double_leg as boolean) ?? undefined,
     playoffFixtureGenerated: (row.playoff_fixture_generated as boolean) ?? undefined,
     playoffFinalFormat:
@@ -205,6 +211,7 @@ export function mapMatch(row: Record<string, unknown>): Match {
     fairPlayTeamId: (row.fair_play_team_id as string) ?? null,
     volleyPartialState:
       (row.volley_partial_state as Match["volleyPartialState"]) ?? null,
+    cupId: (row.cup_id as string) ?? null,
   };
 }
 
@@ -236,6 +243,16 @@ export function mapTournamentGroup(row: Record<string, unknown>): TournamentGrou
     name: row.name as string,
     teamIds: teamRows ? teamRows.map((t) => t.team_id as string) : [],
     phase: (row.phase as number) ?? 1,
+  };
+}
+
+export function mapTournamentCup(row: Record<string, unknown>): TournamentCup {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    sortOrder: row.sort_order as number,
+    positionFrom: row.position_from as number,
+    positionTo: row.position_to as number,
   };
 }
 
@@ -294,6 +311,10 @@ export function toDbTournament(t: Partial<Tournament>): Record<string, unknown> 
   if (t.department !== undefined) db.department = t.department;
   if (t.municipality !== undefined) db.municipality = t.municipality;
   if (t.cardImage !== undefined) db.card_image = t.cardImage;
+  // Solo al crear un torneo con copas desde el asistente, que ya cobró el
+  // recargo en el precio. Después lo escribe únicamente el servidor al cobrar
+  // (`src/lib/payments/cups.ts`): `updateTournamentProps` no lo deja pasar.
+  if (t.cupsSurchargePaid !== undefined) db.cups_surcharge_paid = t.cupsSurchargePaid;
   // `featured` NO se escribe desde acá a propósito: solo lo cambia el admin
   // por /api/admin/tournaments/[id]/featured, y la base tiene un trigger que
   // rechaza el resto. Ver 20260731_tournament_featured.sql.
@@ -324,6 +345,7 @@ export function toDbMatch(m: Partial<Match>): Record<string, unknown> {
   // juegue de cero" puede vaciar la casilla.
   if (m.volleyPartialState !== undefined)
     db.volley_partial_state = m.volleyPartialState;
+  if (m.cupId !== undefined) db.cup_id = m.cupId;
   return db;
 }
 

@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { fetchTournamentById, updateTournament, insertMatchesForPhase, assignTeamsToGroup } from "@/lib/db/tournaments";
 import { updateMatchResult, updateMatchDetails } from "@/lib/db/matches";
-import { fillPlayoffBracket, fillPhase2Groups, getFinalSeriesChampion } from "@/data/helpers";
+import { fillPlayoffBracket, fillPhase2Groups, isBracketFinished } from "@/data/helpers";
 import { Tournament, Match, PhaseConfig } from "@/types";
 import {
   generateRandomResult,
@@ -170,14 +170,15 @@ async function applyCascadeAfterMatchUpdate(
 
   // 4. Tournament status. For group-playoff / elimination, "completed" is
   // gated on the final SERIES having a champion (Pieza I helper handles
-  // single / double_leg / best-of-N). Mirrors tournament-context.tsx cascade.
+  // single / double_leg / best-of-N) — with cups, on every cup having one.
+  // Mirrors tournament-context.tsx cascade.
   const matches = updatedTournament.matches;
   let allCompleted: boolean;
   if (
     updatedTournament.format === "group-playoff" ||
     updatedTournament.format === "elimination"
   ) {
-    allCompleted = getFinalSeriesChampion(updatedTournament) != null;
+    allCompleted = isBracketFinished(updatedTournament);
   } else {
     allCompleted = matches.length > 0 && matches.every((m) => m.status === "completed");
   }
@@ -296,6 +297,13 @@ async function processSinglePhaseCascade(
     groupMatches.length > 0 &&
     groupMatches.every((m) => m.status === "completed");
   if (!allDone) return t;
+
+  // Con copas no hay una llave que llenar: cada copa arma sus cruces desde la
+  // pestaña de playoffs, con sus propios clasificados.
+  if (t.cups?.length) {
+    await updateTournament(t.id, { groupStageComplete: true }, supabaseAdmin);
+    return { ...t, groupStageComplete: true };
+  }
 
   const filled = fillPlayoffBracket(t);
   await persistPlayoffBracket(t, filled);
