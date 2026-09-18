@@ -15,6 +15,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Team, Player } from "@/types";
 import { useTournaments } from "@/context/tournament-context";
+import { fetchPlayersPrivateData } from "@/lib/db/teams";
 import { useAuth } from "@/context/auth-context";
 import { TeamLogoPicker } from "@/components/logos/team-logo-picker";
 import { toast } from "sonner";
@@ -57,6 +58,10 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
   );
   const [expandedPlayers, setExpandedPlayers] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
+  // La cédula, la fecha de nacimiento y la EPS no vienen con el equipo (no
+  // pueden viajar al público): se piden al abrir. Hasta que lleguen no se
+  // deja guardar, porque guardar sin ellas las borraría de todo el equipo.
+  const [privateState, setPrivateState] = useState<"loading" | "ready" | "error">("loading");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const toggleExpanded = (index: number) => {
@@ -194,7 +199,7 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
   // como la fecha de nacimiento. Ahora esperamos el resultado real y solo
   // cerramos si ambas escrituras confirmaron.
   const handleSave = async () => {
-    if (saving) return;
+    if (saving || privateState !== "ready") return;
     setSaving(true);
 
     const players: Player[] = playerEntries
@@ -204,9 +209,11 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
         name: entry.name.trim(),
         teamId: team.id,
         age: entry.age ? parseInt(entry.age) || undefined : undefined,
-        documentNumber: entry.documentNumber.trim() || undefined,
-        eps: entry.eps.trim() || undefined,
-        birthDate: entry.birthDate.trim() || undefined,
+        // `null` y no `undefined`: acá los datos privados están cargados, así
+        // que un campo vacío es "no tiene" y se guarda vacío.
+        documentNumber: entry.documentNumber.trim() || null,
+        eps: entry.eps.trim() || null,
+        birthDate: entry.birthDate.trim() || null,
       }));
 
     try {
@@ -248,7 +255,31 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
         team.players.map((p) => ({ id: p.id || crypto.randomUUID(), name: p.name, age: p.age ? String(p.age) : "", documentNumber: normalizeDocumentNumber(p.documentNumber || ""), eps: p.eps || "", birthDate: p.birthDate || "" }))
       );
       setExpandedPlayers(new Set());
+      void loadPrivateData();
     }
+  };
+
+  const loadPrivateData = async () => {
+    setPrivateState("loading");
+    const data = await fetchPlayersPrivateData([team.id]);
+    if (!data) {
+      setPrivateState("error");
+      return;
+    }
+    // Se completa sobre lo que haya en pantalla, por id de jugador.
+    setPlayerEntries((prev) =>
+      prev.map((e) => {
+        const d = data.get(e.id);
+        if (!d) return e;
+        return {
+          ...e,
+          documentNumber: normalizeDocumentNumber(d.documentNumber || ""),
+          eps: d.eps || "",
+          birthDate: d.birthDate || "",
+        };
+      })
+    );
+    setPrivateState("ready");
   };
 
   return (
@@ -509,6 +540,15 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
           </div>
         </div>
 
+        {privateState === "error" && (
+          <div className="flex items-center justify-between gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs text-destructive shrink-0">
+            <span>No pudimos cargar documentos y fechas de nacimiento. Para no perderlos, no se puede guardar todavía.</span>
+            <Button variant="outline" size="sm" className="h-7 shrink-0" onClick={() => void loadPrivateData()}>
+              Reintentar
+            </Button>
+          </div>
+        )}
+
         <div className="flex gap-2 pt-2 shrink-0">
           <Button
             variant="outline"
@@ -517,8 +557,16 @@ export function TeamRosterDialog({ team }: TeamRosterDialogProps) {
           >
             Cancelar
           </Button>
-          <Button className="flex-1" onClick={handleSave} disabled={saving}>
-            {saving ? "Guardando…" : "Guardar"}
+          <Button
+            className="flex-1"
+            onClick={handleSave}
+            disabled={saving || privateState !== "ready"}
+          >
+            {saving
+              ? "Guardando…"
+              : privateState === "loading"
+                ? "Cargando datos…"
+                : "Guardar"}
           </Button>
         </div>
       </DialogContent>

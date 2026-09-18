@@ -110,6 +110,7 @@ export function mapPlayer(row: Record<string, unknown>): Player {
     documentNumber: (row.document_number as string) ?? undefined,
     eps: (row.eps as string) ?? undefined,
     birthDate: (row.birth_date as string) ?? undefined,
+    edad: (row.edad as number) ?? null,
   };
 }
 

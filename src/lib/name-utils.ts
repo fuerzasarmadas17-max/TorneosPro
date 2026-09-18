@@ -44,6 +44,15 @@ export function getAgeFromBirthDate(birthDate?: string): number | null {
 }
 
 /**
+ * La edad que se muestra de un jugador. La base la manda ya calculada (`edad`,
+ * desde `players_publico`) porque la fecha de nacimiento no viaja al público;
+ * si hay fecha a mano (la nómina que edita el dueño), se usa esa.
+ */
+export function playerAge(p: { edad?: number | null; birthDate?: string | null }): number | null {
+  return p.edad ?? getAgeFromBirthDate(p.birthDate ?? undefined);
+}
+
+/**
  * Quita jugadores con nombre repetido, conservando el primero.
  *
  * La identidad de un jugador es su nombre: `match_events` guarda

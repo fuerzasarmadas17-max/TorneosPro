@@ -85,9 +85,16 @@ export interface Player {
   name: string;
   teamId: string;
   age?: number;
-  documentNumber?: string;
-  eps?: string;
-  birthDate?: string;
+  /** Datos privados: solo los ve el dueño del torneo (y el admin), vía
+   *  `fetchPlayersPrivateData`. En las cargas normales vienen vacíos
+   *  (`undefined` = "no se sabe", no "no tiene"), y al guardar un jugador un
+   *  `undefined` deja el dato como estaba; `null` lo borra. */
+  documentNumber?: string | null;
+  eps?: string | null;
+  birthDate?: string | null;
+  /** Edad calculada por la base a partir de la fecha de nacimiento (año actual
+   *  − año de nacimiento). Es lo único de la fecha que ve el público. */
+  edad?: number | null;
 }
 
 export interface Team {

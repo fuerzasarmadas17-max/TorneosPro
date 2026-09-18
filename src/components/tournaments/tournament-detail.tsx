@@ -45,7 +45,7 @@ import type { TournamentOrganizer } from "@/lib/db/tournaments-server";
 import { getDepartmentLabel, getMunicipalityLabel } from "@/data/colombia";
 import { getSportCategory, Tournament, Sponsor, Match } from "@/types";
 import { supabase } from "@/lib/supabase";
-import { getAgeFromBirthDate, getShortName } from "@/lib/name-utils";
+import { playerAge, getShortName } from "@/lib/name-utils";
 import { SponsorBanner } from "@/components/sponsors/sponsor-banner";
 import { EnVivo, partidosDeMuestra } from "@/components/tournaments/en-vivo";
 import { useEnVivo } from "@/hooks/use-en-vivo";
@@ -338,7 +338,7 @@ function TeamsRosterSection({
   const averageAge = (() => {
     if (!selectedTeam) return null;
     const ages = selectedTeam.players
-      .map((p) => getAgeFromBirthDate(p.birthDate))
+      .map((p) => playerAge(p))
       .filter((a): a is number => a !== null);
     if (ages.length === 0) return null;
     return Math.round(ages.reduce((sum, a) => sum + a, 0) / ages.length);
@@ -436,7 +436,7 @@ function TeamsRosterSection({
                 </TableHeader>
                 <TableBody>
                   {selectedTeam.players.map((player, i) => {
-                    const age = getAgeFromBirthDate(player.birthDate);
+                    const age = playerAge(player);
                     return (
                       <TableRow key={player.id || `${player.name}-${i}`}>
                         <TableCell className="tabular-nums text-muted-foreground">
