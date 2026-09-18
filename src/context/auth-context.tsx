@@ -10,6 +10,7 @@ import {
   ReactNode,
 } from "react";
 import { User, AuthState, OrganizationProfile } from "@/types";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { mapOrganizationProfile, mapSponsor } from "@/lib/db/mappers";
 
@@ -72,9 +73,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadedUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // Lo que hay que hacer con cada evento de sesión. Es async y hace
+    // consultas a la base, así que NUNCA se corre directo dentro de
+    // `onAuthStateChange`: ver el comentario de abajo.
+    const handleAuthEvent = async (event: AuthChangeEvent, session: Session | null) => {
       // Password recovery: redirect to reset-password page instead of
       // treating it as a normal sign-in that loads the dashboard.
       if (event === "PASSWORD_RECOVERY" && session) {
@@ -145,6 +147,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // No session exists — user is not logged in
         setIsLoading(false);
       }
+    };
+
+    // El callback de `onAuthStateChange` corre ADENTRO del candado interno de
+    // Supabase, y Supabase espera a que termine antes de soltarlo. Cualquier
+    // consulta a la base necesita ese mismo candado para leer el token. Si el
+    // callback hace `await` de una consulta, se esperan mutuamente para
+    // siempre: la app queda en "Cargando…" hasta que se refresca la página.
+    //
+    // Pasaba al volver a la app después de un rato: el token estaba vencido,
+    // Supabase lo renovaba y avisaba con SIGNED_IN / TOKEN_REFRESHED, y ahí
+    // `loadUserData` se quedaba esperando. Al refrescar andaba porque el token
+    // ya estaba renovado. La propia librería lo advierte (ver la doc de
+    // `onAuthStateChange` en @supabase/auth-js).
+    //
+    // Por eso el callback no espera nada: agenda el trabajo para después de
+    // que Supabase suelte el candado.
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      setTimeout(() => {
+        void handleAuthEvent(event, session);
+      }, 0);
     });
 
     // Kick off session restoration (triggers INITIAL_SESSION event above)
@@ -163,8 +187,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let timedOut = false;
     const safetyTimer = setTimeout(async () => {
       try {
-        const { data } = await supabase.auth.getSession();
-        const sessionUser = data.session?.user;
+        // Con tope: si Supabase está trabado, `getSession` no vuelve nunca y
+        // esta red de seguridad tampoco bajaría el "Cargando…".
+        const result = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+        ]);
+        const sessionUser = result?.data.session?.user;
         if (
           !timedOut &&
           sessionUser &&
